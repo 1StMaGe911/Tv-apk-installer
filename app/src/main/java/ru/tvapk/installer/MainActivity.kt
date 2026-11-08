@@ -479,6 +479,7 @@ fun TvInstallerApp() {
 
     var usbMode by remember { mutableStateOf(false) }
     var showCleanYourTv by remember { mutableStateOf(false) }
+    var showRebootConfirm by remember { mutableStateOf(false) }
 
     var versionStatus by remember {
         mutableStateOf("Проверка ещё не выполнялась")
@@ -888,6 +889,56 @@ fun TvInstallerApp() {
                             })
                         }) { Text("Диагностика: память, хранилище, батарея") }
                         Text(diagnostics, color = Color.LightGray, fontSize = 11.sp)
+
+                        Text("УПРАВЛЕНИЕ ТЕЛЕВИЗОРОМ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val host = ip.trim()
+                            val p = port.toIntOrNull() ?: 5555
+                            runTask({
+                                connectWithRetry(context, host, p) { adb ->
+                                    shellText(adb, "input keyevent 3")
+                                    "На телевизоре открыт главный экран"
+                                }
+                            })
+                        }) { Text("Открыть главный экран TV") }
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val host = ip.trim()
+                            val p = port.toIntOrNull() ?: 5555
+                            runTask({
+                                connectWithRetry(context, host, p) { adb ->
+                                    shellText(adb, "am start -a android.settings.SETTINGS")
+                                    "Открыты настройки телевизора"
+                                }
+                            })
+                        }) { Text("Открыть настройки Android TV") }
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            showRebootConfirm = true
+                        }) { Text("Перезагрузить телевизор") }
+                        Text("Команды выполняются через Wi-Fi ADB. Перезагрузка требует отдельного подтверждения.", color = Color.LightGray, fontSize = 11.sp)
+
+                        if (showRebootConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showRebootConfirm = false },
+                                title = { Text("Перезагрузить телевизор?") },
+                                text = { Text("Текущая ADB-сессия будет разорвана, телевизор перезапустится. После загрузки подключись снова.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        showRebootConfirm = false
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                adb.shell("reboot")
+                                                "Команда перезагрузки отправлена"
+                                            }
+                                        })
+                                    }) { Text("Перезагрузить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showRebootConfirm = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
 
                         val cleanupCandidates = findCleanupCandidates(allPackages)
                         Text("Проверка всего списка: ${allPackages.size} пакетов. Возможных рекламных или диагностических совпадений: ${cleanupCandidates.size}", color = Color.LightGray, fontSize = 12.sp)
