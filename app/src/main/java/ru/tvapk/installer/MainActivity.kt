@@ -354,11 +354,12 @@ fun TvInstallerApp() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                                        Button(
                         onClick = { usbMode = false },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!usbMode) Accent else Panel
+                            containerColor = if (!usbMode) Accent else Panel,
+                            contentColor = if (!usbMode) Color(0xFF171006) else GoldLight
                         )
                     ) {
                         Text("Wi-Fi ADB")
@@ -368,7 +369,8 @@ fun TvInstallerApp() {
                         onClick = { usbMode = true },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (usbMode) Accent else Panel
+                            containerColor = if (usbMode) Accent else Panel,
+                            contentColor = if (usbMode) Color(0xFF171006) else GoldLight
                         )
                     ) {
                         Text("USB OTG")
