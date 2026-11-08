@@ -35,7 +35,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.4"
+private const val APP_VERSION = "0.4.5"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -243,6 +243,36 @@ private fun readDisabledUserPackages(adb: Dadb): Set<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
 
+private fun readDisabledPackages(adb: Dadb): Set<String> =
+    shellText(adb, "pm list packages -d").lineSequence()
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+        .toSet()
+
+private fun isProtectedSystemPackage(packageName: String): Boolean {
+    val protected = setOf(
+        "android",
+        "com.android.systemui",
+        "com.android.settings",
+        "com.android.providers.settings",
+        "com.android.permissioncontroller",
+        "com.android.packageinstaller",
+        "com.android.providers.media",
+        "com.android.providers.downloads",
+        "com.google.android.gms",
+        "com.google.android.gsf",
+        "com.google.android.gsf.login",
+        "com.google.android.webview",
+        "com.google.android.tvlauncher",
+        "com.google.android.tv",
+        "com.android.tv.settings",
+        "com.android.vending"
+    )
+    return packageName in protected ||
+        packageName.startsWith("com.android.systemui.") ||
+        packageName.startsWith("com.google.android.gms.")
+}
+
 private fun detectTvProfile(details: String): String {
     val value = details.lowercase()
     val brand = when {
@@ -305,6 +335,9 @@ fun TvInstallerApp() {
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
+    var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
+    var systemPackageFilter by remember { mutableStateOf("") }
+    var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
     var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
@@ -680,8 +713,14 @@ fun TvInstallerApp() {
                                     val details = readTvDetails(adb)
                                     val packages = readUserPackages(adb)
                                     val installed = readAllPackages(adb)
-                                    activity.runOnUiThread { tvDetails = details; userPackages = packages; allPackages = installed }
-                                    "Устройство определено. Пользовательских приложений: ${packages.size}; всего пакетов: ${installed.size}"
+                                    val disabled = readDisabledPackages(adb)
+                                    activity.runOnUiThread {
+                                        tvDetails = details
+                                        userPackages = packages
+                                        allPackages = installed
+                                        disabledOnDevice = disabled
+                                    }
+                                    "Устройство определено. Пользовательских приложений: ${packages.size}; всего пакетов: ${installed.size}; отключено на устройстве: ${disabled.size}"
                                 }
                             })
                         }) { Text("Определить устройство и найти приложения") }
@@ -753,6 +792,81 @@ fun TvInstallerApp() {
                                 }
                             }
                             HorizontalDivider(color = Color.DarkGray)
+                        }
+                        Text("Системные приложения: ${(allPackages - userPackages.toSet()).size}", color = GoldLight)
+                        Text("Осторожно: отключение системных компонентов может нарушить запуск телевизора, звук, сеть или обновления. Защищённые компоненты отключить нельзя.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        OutlinedTextField(
+                            value = systemPackageFilter,
+                            onValueChange = { systemPackageFilter = it },
+                            label = { Text("Поиск системного пакета") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        (allPackages - userPackages.toSet())
+                            .filter { it.contains(systemPackageFilter, ignoreCase = true) }
+                            .take(150)
+                            .forEach { pkg ->
+                                val protected = isProtectedSystemPackage(pkg)
+                                val isDisabled = pkg in disabledOnDevice
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(pkg, fontSize = 12.sp, color = TextMain)
+                                    if (protected) {
+                                        Text("Защищённый системный компонент", color = GoldLight, fontSize = 11.sp)
+                                    } else {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            if (isDisabled) {
+                                                OutlinedButton(enabled = !busy, onClick = {
+                                                    val host = ip.trim()
+                                                    val p = port.toIntOrNull() ?: 5555
+                                                    runTask({
+                                                        connectWithRetry(context, host, p) { adb ->
+                                                            changePackageState(adb, pkg, true)
+                                                            "Системный пакет восстановлен: $pkg"
+                                                        }
+                                                    }, { result ->
+                                                        if (!result.startsWith("Ошибка")) disabledOnDevice = disabledOnDevice - pkg
+                                                    })
+                                                }) { Text("Восстановить") }
+                                            } else {
+                                                OutlinedButton(enabled = !busy, onClick = {
+                                                    pendingSystemDisable = pkg
+                                                }) { Text("Отключить") }
+                                            }
+                                        }
+                                    }
+                                }
+                                HorizontalDivider(color = Color.DarkGray)
+                            }
+                        if ((allPackages - userPackages.toSet()).size > 150) {
+                            Text("Показаны первые 150 совпадений. Уточни поиск, чтобы найти остальные пакеты.", color = Color.LightGray, fontSize = 11.sp)
+                        }
+                        if (pendingSystemDisable != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingSystemDisable = null },
+                                title = { Text("Отключить системное приложение?") },
+                                text = {
+                                    Text("Пакет: ${pendingSystemDisable}\n\nОтключение может нарушить работу телевизора. Продолжай только если точно знаешь назначение пакета.")
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val pkg = pendingSystemDisable ?: return@TextButton
+                                        pendingSystemDisable = null
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                changePackageState(adb, pkg, false)
+                                                "Системный пакет отключён: $pkg"
+                                            }
+                                        }, { result ->
+                                            if (!result.startsWith("Ошибка")) disabledOnDevice = disabledOnDevice + pkg
+                                        })
+                                    }) { Text("Отключить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingSystemDisable = null }) { Text("Отмена") }
+                                }
+                            )
                         }
                         if (disabledPackages.isNotEmpty()) {
                             Text("Отключено этим приложением: ${disabledPackages.size}", color = GoldLight)
