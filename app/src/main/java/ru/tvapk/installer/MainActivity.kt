@@ -47,7 +47,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.4"
+private const val APP_VERSION = "0.5.5"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -85,6 +85,50 @@ class MainActivity : ComponentActivity() {
 
 private fun prefs(context: Context) =
     context.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
+
+private fun exportAppSettings(context: Context): String {
+    val root = JSONObject()
+    prefs(context).all.forEach { (key, value) ->
+        when (value) {
+            is String -> root.put(key, JSONObject().put("type", "string").put("value", value))
+            is Boolean -> root.put(key, JSONObject().put("type", "boolean").put("value", value))
+            is Int -> root.put(key, JSONObject().put("type", "int").put("value", value))
+            is Long -> root.put(key, JSONObject().put("type", "long").put("value", value))
+            is Float -> root.put(key, JSONObject().put("type", "float").put("value", value.toDouble()))
+            is Set<*> -> {
+                val array = JSONArray()
+                value.filterIsInstance<String>().forEach { array.put(it) }
+                root.put(key, JSONObject().put("type", "string_set").put("value", array))
+            }
+        }
+    }
+    return JSONObject().put("format", 1).put("preferences", root).toString(2)
+}
+
+private fun importAppSettings(context: Context, jsonText: String) {
+    val root = JSONObject(jsonText)
+    require(root.optInt("format") == 1) { "Неподдерживаемый формат резервной копии" }
+    val values = root.getJSONObject("preferences")
+    val editor = prefs(context).edit().clear()
+    val keys = values.keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val item = values.getJSONObject(key)
+        when (item.getString("type")) {
+            "string" -> editor.putString(key, item.getString("value"))
+            "boolean" -> editor.putBoolean(key, item.getBoolean("value"))
+            "int" -> editor.putInt(key, item.getInt("value"))
+            "long" -> editor.putLong(key, item.getLong("value"))
+            "float" -> editor.putFloat(key, item.getDouble("value").toFloat())
+            "string_set" -> {
+                val array = item.getJSONArray("value")
+                editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+            }
+            else -> throw Exception("Неизвестный тип настройки")
+        }
+    }
+    editor.apply()
+}
 
 private fun getAdbKey(context: Context): AdbKeyPair {
     val dir = File(context.filesDir, "adb")
@@ -544,6 +588,38 @@ fun TvInstallerApp() {
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
     }
 
+    val settingsBackupExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter()?.use {
+                    it.write(exportAppSettings(context))
+                } ?: throw Exception("Не удалось создать файл")
+                status = "Резервная копия настроек сохранена"
+            } catch (e: Exception) {
+                status = "Ошибка экспорта настроек: \${errorText(e)}"
+            }
+        }
+    }
+
+    val settingsBackupImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            try {
+                val json = context.contentResolver.openInputStream(sourceUri)?.bufferedReader()?.use { it.readText() }
+                    ?: throw Exception("Не удалось прочитать файл")
+                importAppSettings(context, json)
+                status = "Настройки восстановлены. Перезапускаю приложение..."
+                activity.recreate()
+            } catch (e: Exception) {
+                status = "Ошибка восстановления: \${errorText(e)}"
+            }
+        }
+    }
+
+
 
     fun runTask(
         action: () -> String,
@@ -649,7 +725,7 @@ fun TvInstallerApp() {
         ) {
         Scaffold(containerColor = Bg) { padding ->
         if (showSettings) {
-            Column(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { drawerScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Меню") }
                     Text("Настройки", style = MaterialTheme.typography.headlineSmall, color = GoldLight)
@@ -664,6 +740,18 @@ fun TvInstallerApp() {
                             isDarkTheme = enabled
                             settings.edit().putBoolean("dark_theme", enabled).apply()
                         })
+                    }
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Резервная копия настроек", style = MaterialTheme.typography.titleMedium, color = TextMain)
+                        Text("Сохраняет список телевизоров, IP и порт, тему, историю установок и настройки Clean Your TV. APK-файлы и данные телевизора не включаются.", color = TextMuted)
+                        OutlinedButton(onClick = { settingsBackupExporter.launch("tv-apk-installer-settings.json") }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Создать резервную копию")
+                        }
+                        Button(onClick = { settingsBackupImporter.launch(arrayOf("application/json", "text/*")) }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Восстановить настройки")
+                        }
                     }
                 }
                 Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
@@ -684,6 +772,189 @@ fun TvInstallerApp() {
                         }
                     }
                 }
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Обновления приложения",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            "Текущая версия: $APP_VERSION",
+                            color = Color.LightGray
+                        )
+
+                        OutlinedButton(
+                            onClick = { showChangelog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Что нового в обновлениях")
+                        }
+
+                        if (showChangelog) {
+                            AlertDialog(
+                                onDismissRequest = { showChangelog = false },
+                                title = { Text("История обновлений") },
+                                text = {
+                                    Column(
+                                        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Text("v0.5.5 • Резервная копия настроек", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены экспорт и восстановление настроек приложения. Проверка обновлений перенесена в раздел настроек.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.4 • Меню и темы", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены боковое меню, настройки и переключение светлой/тёмной темы.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.3 • История обновлений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен этот раздел с описанием изменений версий прямо в приложении.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.2 • Запуск приложений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("В Clean Your TV добавлена кнопка запуска установленных пользовательских приложений через Wi-Fi ADB.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.1 • Управление телевизором", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены команды открытия главного экрана, настроек Android TV и перезагрузки телевизора с подтверждением.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.0 • Диагностика", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена диагностика оперативной памяти, хранилища, батареи и времени работы устройства.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.4.9 • Резервное копирование", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Улучшено создание ZIP-резервной копии: сведения об устройстве, список приложений и APK пользовательских приложений, включая split APK.", color = TextMain)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { showChangelog = false }) { Text("Закрыть") }
+                                }
+                            )
+                        }
+
+                        Text(
+                            versionStatus,
+                            color = Color.LightGray
+                        )
+
+                        Button(
+                            enabled = !busy,
+                            onClick = {
+                                busy = true
+
+                                Thread {
+                                    val result = try {
+                                        checkLatestVersion()
+                                    } catch (e: Exception) {
+                                        UpdateInfo(
+                                            "Ошибка: ${errorText(e)}",
+                                            null,
+                                            null,
+                                            0L
+                                        )
+                                    }
+
+                                    activity.runOnUiThread {
+                                        versionStatus = result.status
+                                        releaseUrl = result.releaseUrl
+                                        updateApkUrl = result.apkUrl
+                                        downloadedUpdatePath = null
+                                        status = result.status
+                                        busy = false
+                                    }
+                                }.start()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Проверить обновления")
+                        }
+
+                        if (updateApkUrl != null) {
+                            Text(
+                                if (versionStatus.contains("Доступно обновление"))
+                                    "APK доступен для загрузки • ${if (downloadedUpdatePath == null) "ещё не скачан" else "скачан"}"
+                                else "",
+                                color = GoldLight,
+                                fontSize = 12.sp
+                            )
+                            Button(
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val url = updateApkUrl ?: return@Button
+                                    runTask(
+                                        action = { downloadUpdateApk(context, url).absolutePath },
+                                        onFinished = { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                downloadedUpdatePath = result
+                                                status = "Обновление скачано. Нажми «Установить обновление»."
+                                            }
+                                        }
+                                    )
+                                }
+                            ) {
+                                Text(if (busy) "Загрузка..." else "Скачать обновление")
+                            }
+                        }
+
+                        if (downloadedUpdatePath != null) {
+                            Button(
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val path = downloadedUpdatePath ?: return@Button
+                                    val apk = File(path)
+                                    if (!apk.exists()) {
+                                        downloadedUpdatePath = null
+                                        status = "Файл обновления не найден. Скачай его заново."
+                                    } else if (android.os.Build.VERSION.SDK_INT >= 26 &&
+                                        !activity.packageManager.canRequestPackageInstalls()
+                                    ) {
+                                        status = "Разреши установку неизвестных приложений для TV APK Installer и вернись сюда."
+                                        activity.startActivity(
+                                            Intent(
+                                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                AndroidUri.parse("package:${activity.packageName}")
+                                            )
+                                        )
+                                    } else {
+                                        try {
+                                            val contentUri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                apk
+                                            )
+                                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(contentUri, "application/vnd.android.package-archive")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            activity.startActivity(installIntent)
+                                        } catch (e: Exception) {
+                                            status = "Не удалось открыть установщик: ${errorText(e)}"
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Установить обновление")
+                            }
+                        }
+
+                        if (releaseUrl != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    releaseUrl?.let { uriHandler.openUri(it) }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Открыть страницу релиза")
+                            }
+                        }
+                    }
+                }
+
             }
         } else {
 
@@ -1372,183 +1643,6 @@ fun TvInstallerApp() {
                                 }
                             ) {
                                 Text("Очистить историю")
-                            }
-                        }
-                    }
-                }
-
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Panel
-                    )
-                ) {
-                    Column(
-                        Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            "Обновления приложения",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-
-                        Text(
-                            "Текущая версия: $APP_VERSION",
-                            color = Color.LightGray
-                        )
-
-                        OutlinedButton(
-                            onClick = { showChangelog = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Что нового в обновлениях")
-                        }
-
-                        if (showChangelog) {
-                            AlertDialog(
-                                onDismissRequest = { showChangelog = false },
-                                title = { Text("История обновлений") },
-                                text = {
-                                    Column(
-                                        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        Text("v0.5.3 • История обновлений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Добавлен этот раздел с описанием изменений версий прямо в приложении.", color = TextMain)
-                                        HorizontalDivider(color = Color.DarkGray)
-                                        Text("v0.5.2 • Запуск приложений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("В Clean Your TV добавлена кнопка запуска установленных пользовательских приложений через Wi-Fi ADB.", color = TextMain)
-                                        HorizontalDivider(color = Color.DarkGray)
-                                        Text("v0.5.1 • Управление телевизором", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Добавлены команды открытия главного экрана, настроек Android TV и перезагрузки телевизора с подтверждением.", color = TextMain)
-                                        HorizontalDivider(color = Color.DarkGray)
-                                        Text("v0.5.0 • Диагностика", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Добавлена диагностика оперативной памяти, хранилища, батареи и времени работы устройства.", color = TextMain)
-                                        HorizontalDivider(color = Color.DarkGray)
-                                        Text("v0.4.9 • Резервное копирование", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Улучшено создание ZIP-резервной копии: сведения об устройстве, список приложений и APK пользовательских приложений, включая split APK.", color = TextMain)
-                                    }
-                                },
-                                confirmButton = {
-                                    TextButton(onClick = { showChangelog = false }) { Text("Закрыть") }
-                                }
-                            )
-                        }
-
-                        Text(
-                            versionStatus,
-                            color = Color.LightGray
-                        )
-
-                        Button(
-                            enabled = !busy,
-                            onClick = {
-                                busy = true
-
-                                Thread {
-                                    val result = try {
-                                        checkLatestVersion()
-                                    } catch (e: Exception) {
-                                        UpdateInfo(
-                                            "Ошибка: ${errorText(e)}",
-                                            null,
-                                            null,
-                                            0L
-                                        )
-                                    }
-
-                                    activity.runOnUiThread {
-                                        versionStatus = result.status
-                                        releaseUrl = result.releaseUrl
-                                        updateApkUrl = result.apkUrl
-                                        downloadedUpdatePath = null
-                                        status = result.status
-                                        busy = false
-                                    }
-                                }.start()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Проверить обновления")
-                        }
-
-                        if (updateApkUrl != null) {
-                            Text(
-                                if (versionStatus.contains("Доступно обновление"))
-                                    "APK доступен для загрузки • ${if (downloadedUpdatePath == null) "ещё не скачан" else "скачан"}"
-                                else "",
-                                color = GoldLight,
-                                fontSize = 12.sp
-                            )
-                            Button(
-                                enabled = !busy,
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = {
-                                    val url = updateApkUrl ?: return@Button
-                                    runTask(
-                                        action = { downloadUpdateApk(context, url).absolutePath },
-                                        onFinished = { result ->
-                                            if (!result.startsWith("Ошибка")) {
-                                                downloadedUpdatePath = result
-                                                status = "Обновление скачано. Нажми «Установить обновление»."
-                                            }
-                                        }
-                                    )
-                                }
-                            ) {
-                                Text(if (busy) "Загрузка..." else "Скачать обновление")
-                            }
-                        }
-
-                        if (downloadedUpdatePath != null) {
-                            Button(
-                                enabled = !busy,
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = {
-                                    val path = downloadedUpdatePath ?: return@Button
-                                    val apk = File(path)
-                                    if (!apk.exists()) {
-                                        downloadedUpdatePath = null
-                                        status = "Файл обновления не найден. Скачай его заново."
-                                    } else if (android.os.Build.VERSION.SDK_INT >= 26 &&
-                                        !activity.packageManager.canRequestPackageInstalls()
-                                    ) {
-                                        status = "Разреши установку неизвестных приложений для TV APK Installer и вернись сюда."
-                                        activity.startActivity(
-                                            Intent(
-                                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                                                AndroidUri.parse("package:${activity.packageName}")
-                                            )
-                                        )
-                                    } else {
-                                        try {
-                                            val contentUri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                apk
-                                            )
-                                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                setDataAndType(contentUri, "application/vnd.android.package-archive")
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            activity.startActivity(installIntent)
-                                        } catch (e: Exception) {
-                                            status = "Не удалось открыть установщик: ${errorText(e)}"
-                                        }
-                                    }
-                                }
-                            ) {
-                                Text("Установить обновление")
-                            }
-                        }
-
-                        if (releaseUrl != null) {
-                            OutlinedButton(
-                                onClick = {
-                                    releaseUrl?.let { uriHandler.openUri(it) }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Открыть страницу релиза")
                             }
                         }
                     }
