@@ -10,14 +10,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
@@ -30,7 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dadb.AdbKeyPair
 import dadb.Dadb
-import dadb.InstallResult
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -54,7 +50,9 @@ data class TvDevice(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { TvInstallerApp() }
+        setContent {
+            TvInstallerApp()
+        }
     }
 }
 
@@ -131,10 +129,6 @@ private fun saveHistory(context: Context, history: List<String>) {
         .apply()
 }
 
-/**
- * Повторное подключение ADB.
- * Выполняет до трёх попыток.
- */
 private fun withAdbRetry(
     context: Context,
     host: String,
@@ -152,10 +146,7 @@ private fun withAdbRetry(
             }
         } catch (e: Exception) {
             lastError = e
-
-            if (attempt < 2) {
-                Thread.sleep(1500)
-            }
+            if (attempt < 2) Thread.sleep(1500)
         }
     }
 
@@ -176,7 +167,6 @@ private fun compareVersions(first: String, second: String): Int {
     for (i in 0 until maxOf(a.size, b.size)) {
         val x = a.getOrElse(i) { 0 }
         val y = b.getOrElse(i) { 0 }
-
         if (x != y) return x.compareTo(y)
     }
 
@@ -227,7 +217,6 @@ private fun checkLatestVersion(): Pair<String, String?> {
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
-
     val prefs = remember { getPrefs(context) }
 
     var ip by remember {
@@ -239,10 +228,7 @@ fun TvInstallerApp() {
     }
 
     var tvName by remember { mutableStateOf("") }
-
-    var status by remember {
-        mutableStateOf("Не подключено")
-    }
+    var status by remember { mutableStateOf("Не подключено") }
 
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedName by remember { mutableStateOf("APK не выбран") }
@@ -267,7 +253,8 @@ fun TvInstallerApp() {
         }
     }
 
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val uriHandler =
+        androidx.compose.ui.platform.LocalUriHandler.current
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -321,7 +308,6 @@ fun TvInstallerApp() {
 
         devices.add(device)
         saveDevices(context, devices)
-
         status = "Телевизор сохранён"
     }
 
@@ -343,7 +329,6 @@ fun TvInstallerApp() {
                 verticalArrangement = Arrangement.spacedBy(15.dp)
             ) {
 
-                // Заголовок
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Tv,
@@ -355,10 +340,7 @@ fun TvInstallerApp() {
                     Spacer(Modifier.width(12.dp))
 
                     Column {
-                        Text(
-                            "TV APK Installer",
-                            fontSize = 24.sp
-                        )
+                        Text("TV APK Installer", fontSize = 24.sp)
                         Text(
                             "Управление Android TV",
                             color = Color.LightGray
@@ -366,7 +348,6 @@ fun TvInstallerApp() {
                     }
                 }
 
-                // Выбор подключения
                 SingleChoiceSegmentedButtonRow(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -387,7 +368,6 @@ fun TvInstallerApp() {
                     }
                 }
 
-                // Подключение
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = Panel
@@ -445,11 +425,7 @@ fun TvInstallerApp() {
                                             .apply()
 
                                         runBackground {
-                                            withAdbRetry(
-                                                context,
-                                                host,
-                                                p
-                                            ) {
+                                            withAdbRetry(context, host, p) {
                                                 "ADB подключён: $host:$p"
                                             }
                                         }
@@ -469,7 +445,6 @@ fun TvInstallerApp() {
                             ) {
                                 Text("Сохранить телевизор")
                             }
-
                         } else {
                             Button(
                                 onClick = {
@@ -497,7 +472,6 @@ fun TvInstallerApp() {
                     }
                 }
 
-                // Сохранённые телевизоры
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = Panel
@@ -558,14 +532,11 @@ fun TvInstallerApp() {
                                 }
                             }
 
-                            HorizontalDivider(
-                                color = Color.DarkGray
-                            )
+                            HorizontalDivider(color = Color.DarkGray)
                         }
                     }
                 }
 
-                // Выбор и установка APK
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = Panel
@@ -588,14 +559,30 @@ fun TvInstallerApp() {
                             )
                         }
 
-                        Text(
-                            selectedName,
-                            color = Color.LightGray
-                        )
+                        Text(selectedName, color = Color.LightGray)
 
                         OutlinedButton(
                             onClick = {
                                 picker.launch(
                                     "application/vnd.android.package-archive"
                                 )
-    
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Выбрать APK")
+                        }
+
+                        Button(
+                            enabled = !busy && selectedUri != null,
+                            onClick = {
+                                val uri = selectedUri
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+
+                                if (uri == null) {
+                                    status = "Сначала выбери APK"
+                                } else if (
+                                    host.isBlank() || p == null ||
+                                    p !in 1..65535
+                                ) {
+                                    status = "Прове
