@@ -427,7 +427,7 @@ fun TvInstallerApp() {
                                             ) {
                                                 "ADB подключён: $host:$p"
                                             }
-                                        }
+                                        })
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth()
