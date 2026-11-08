@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.4"
+private const val APP_VERSION = "0.6.5"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -823,6 +823,67 @@ fun TvInstallerApp() {
     }
 
 
+    val cleanYourTvModulePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            val host = ip.trim()
+            val p = port.toIntOrNull()
+            if (host.isBlank() || p == null || p !in 1..65535) {
+                status = "Сначала укажи IP и порт ADB и подключись к телевизору"
+            } else {
+                runTask({
+                    val sourceApk = File(context.cacheDir, "cleanyourtv-source.apk")
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        sourceApk.outputStream().use { output -> input.copyTo(output) }
+                    } ?: throw Exception("Не удалось прочитать исходный APK")
+                    fun extractBundled(entryName: String, outputName: String): File {
+                        val outputFile = File(context.cacheDir, outputName)
+                        var extracted = false
+                        java.util.zip.ZipInputStream(sourceApk.inputStream()).use { zip ->
+                            var entry = zip.nextEntry
+                            while (entry != null) {
+                                if (entry.name == entryName) {
+                                    outputFile.outputStream().use { output ->
+                                        val buffer = ByteArray(8192)
+                                        var total = 0
+                                        while (true) {
+                                            val count = zip.read(buffer)
+                                            if (count <= 0) break
+                                            total += count
+                                            if (total > 8 * 1024 * 1024) throw Exception("Модуль слишком большой")
+                                            output.write(buffer, 0, count)
+                                        }
+                                    }
+                                    extracted = true
+                                    break
+                                }
+                                zip.closeEntry()
+                                entry = zip.nextEntry
+                            }
+                        }
+                        if (!extracted || !outputFile.exists() || outputFile.length() < 1024) {
+                            throw Exception("В APK не найден модуль: $entryName")
+                        }
+                        return outputFile
+                    }
+                    val launcherApk = extractBundled("assets/bundled/cleanyourtv-launcher.apk", "cleanyourtv-launcher.apk")
+                    val curtainApk = extractBundled("assets/bundled/cleanyourtv-curtain.apk", "cleanyourtv-curtain.apk")
+                    connectWithRetry(context, host, p) { adb ->
+                        adb.install(launcherApk)
+                        adb.install(curtainApk)
+                        val launcher = shellText(adb, "pm path com.gathin.tvhome")
+                        val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
+                        if (!launcher.contains("package:") || !curtain.contains("package:")) {
+                            throw Exception("Проверка установки не пройдена. Launcher: $launcher; Curtain: $curtain")
+                        }
+                        "Модули установлены и проверены: Launcher и Curtain. Штатный экран телевизора не отключался."
+                    }
+                })
+            }
+        }
+    }
+
     fun saveCurrentDevice() {
         val host = ip.trim()
         val p = port.toIntOrNull()
@@ -882,6 +943,9 @@ fun TvInstallerApp() {
                     NavigationDrawerItem(label = { Text("Clean Your TV") }, selected = activeSection == "clean",
                         icon = { Text("🧹") },
                         onClick = { showSettings = false; activeSection = "clean"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Модули Clean Your TV") }, selected = activeSection == "modules",
+                        icon = { Text("🧩") },
+                        onClick = { showSettings = false; activeSection = "modules"; drawerScope.launch { drawerState.close() } })
                     NavigationDrawerItem(label = { Text("Пульт TV") }, selected = activeSection == "remote",
                         icon = { Text("🎮") },
                         onClick = { showSettings = false; activeSection = "remote"; drawerScope.launch { drawerState.close() } })
@@ -979,7 +1043,7 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Text("v0.6.4 • Навигация и USB OTG", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("v0.6.5 • Модули Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Кнопка в заголовке каждого раздела открывает левое меню. Во вкладке USB OTG убраны IP, порт, подключение по ADB и список сохранённых телевизоров.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.3 • Левое меню разделов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
@@ -1154,6 +1218,7 @@ fun TvInstallerApp() {
                 "usb" -> "USB OTG"
                 "clean" -> "Clean Your TV"
                 "remote" -> "Пульт TV"
+                "modules" -> "Модули Clean Your TV"
                 "apk" -> "Установка APK"
                 else -> "Раздел"
             }
@@ -1197,7 +1262,7 @@ fun TvInstallerApp() {
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
                                             if (section == "remote") showRemoteControl = true
-                                            activeSection = null
+                                            if (section != "modules") activeSection = null
                                         }
                                     })
                                 }
@@ -1216,6 +1281,44 @@ fun TvInstallerApp() {
                                     Text("Выбрать APK-файл")
                                 }
                             }
+                        }
+                    }
+                }
+                if (section == "modules") {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Выбери исходный APK Clean Your TV 0.4.8. TV APK Installer извлечёт из него оригинальные модули Launcher и Curtain и установит их на подключённый Android TV.", color = TextMuted, fontSize = 12.sp)
+                            Button(enabled = !busy, onClick = { cleanYourTvModulePicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Установка модулей..." else "Выбрать APK Clean Your TV и установить модули")
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
+                                else runTask({ connectWithRetry(context, host, p) { adb ->
+                                    val launcher = shellText(adb, "pm path com.gathin.tvhome")
+                                    val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
+                                    "Launcher: ${if (launcher.contains("package:")) "установлен" else "не найден"}; Curtain: ${if (curtain.contains("package:")) "установлен" else "не найден"}"
+                                } })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Проверить установленные модули") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
+                                else runTask({ connectWithRetry(context, host, p) { adb ->
+                                    shellText(adb, "monkey -p com.gathin.tvhome -c android.intent.category.LAUNCHER 1")
+                                    "Запрос запуска Clean Your TV Launcher отправлен на телевизор."
+                                } })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Открыть Launcher") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
+                                else runTask({ connectWithRetry(context, host, p) { adb ->
+                                    shellText(adb, "am start -a android.settings.HOME_SETTINGS")
+                                    "Открыты системные настройки выбора домашнего экрана. Не отключай штатный Launcher."
+                                } })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Выбор домашнего экрана телевизора") }
+                            Text("Безопасность: новый Launcher не назначается автоматически, а штатный экран не отключается. На части моделей замена домашнего экрана нарушает работу кнопок пульта, трансляции или запуск после перезагрузки. Для возврата выбери штатный Launcher в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("Curtain устанавливается как компонент Launcher. Полный откат настроек, профили и каталог модулей оригинала требуют отдельной проверки совместимости и пока не считаются перенесёнными.", color = TextMuted, fontSize = 11.sp)
                         }
                     }
                 }
