@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.5"
+private const val APP_VERSION = "0.6.6"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -589,7 +589,39 @@ private fun detectTvProfile(details: String): String {
     return "$brand • $platform"
 }
 
-private fun findCleanupCandidates(packages: List<String>): List<String> {
+private data class PackageFact(
+    val packageName: String,
+    val name: String,
+    val description: String,
+    val category: String
+)
+
+private fun loadPackageFacts(context: Context): Map<String, PackageFact> {
+    return try {
+        context.assets.open("cleanyourtv/facts.tsv").bufferedReader().useLines { lines ->
+            lines.drop(1).mapNotNull { line ->
+                val columns = line.split('\t', limit = 4)
+                if (columns.size < 4 || columns[0].isBlank()) null
+                else PackageFact(columns[0], columns[1], columns[2], columns[3])
+            }.associateBy { it.packageName }
+        }
+    } catch (_: Exception) {
+        emptyMap()
+    }
+}
+
+private fun cleanupCategoryLabel(category: String): String = when (category) {
+    "ads" -> "Реклама"
+    "tracking" -> "Слежение и аналитика"
+    "demo" -> "Демо-компонент"
+    "preloads" -> "Предустановленное приложение"
+    else -> category
+}
+
+private fun findCleanupCandidates(
+    packages: List<String>,
+    facts: Map<String, PackageFact>
+): List<String> {
     val protected = setOf(
         "com.google.android.tvlauncher",
         "com.google.android.gms",
@@ -598,9 +630,13 @@ private fun findCleanupCandidates(packages: List<String>): List<String> {
         "com.android.systemui",
         "com.android.providers.settings"
     )
+    val reviewedCategories = setOf("ads", "tracking", "demo", "preloads")
     val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
     return packages.filter { pkg ->
-        pkg !in protected && markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
+        pkg !in protected && (
+            facts[pkg]?.category in reviewedCategories ||
+                markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
+            )
     }.distinct().sorted()
 }
 
@@ -645,6 +681,7 @@ fun TvInstallerApp() {
     val uriHandler = LocalUriHandler.current
 
     val settings = remember { prefs(context) }
+    val packageFacts = remember { loadPackageFacts(context) }
 
     var ip by remember {
         mutableStateOf(settings.getString("ip", "") ?: "")
@@ -1043,6 +1080,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.6 • Справочник Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен локальный справочник из 1 113 описаний пакетов Clean Your TV. Раздел очистки показывает назначение и категорию известных совпадений. Подсказки информационные: ничего не отключается автоматически.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.5 • Модули Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен импорт исходного APK Clean Your TV 0.4.8: извлечение и установка Launcher и Curtain, проверка пакетов, запуск Launcher и переход к системному выбору домашнего экрана. Штатный Launcher не отключается автоматически.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1650,13 +1690,24 @@ fun TvInstallerApp() {
                             )
                         }
 
-                        val cleanupCandidates = findCleanupCandidates(allPackages)
-                        Text("Проверка всего списка: ${allPackages.size} пакетов. Возможных рекламных или диагностических совпадений: ${cleanupCandidates.size}", color = Color.LightGray, fontSize = 12.sp)
+                        val cleanupCandidates = findCleanupCandidates(allPackages, packageFacts)
+                        val knownCandidates = cleanupCandidates.count { packageFacts.containsKey(it) }
+                        Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
+                        Text("Справочник Clean Your TV: " + packageFacts.size + " известных пакетов. Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         cleanupCandidates.forEach { candidate ->
-                            Text("• $candidate", color = GoldLight, fontSize = 12.sp)
+                            val fact = packageFacts[candidate]
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("• " + candidate, color = GoldLight, fontSize = 12.sp)
+                                if (fact != null) {
+                                    Text(fact.name + " • " + cleanupCategoryLabel(fact.category), color = TextMain, fontSize = 11.sp)
+                                    Text(fact.description, color = Color.LightGray, fontSize = 10.sp)
+                                } else {
+                                    Text("Совпадение по названию пакета; назначение не подтверждено справочником.", color = Color.LightGray, fontSize = 10.sp)
+                                }
+                            }
                         }
-                        if (cleanupCandidates.isNotEmpty()) Text("В список могут попасть системные компоненты. Это только поисковые совпадения: приложение не отключает и не удаляет их. Проверяй назначение каждого пакета отдельно.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (cleanupCandidates.isNotEmpty()) Text("Ничего не отключается автоматически. Перед любым действием проверяй назначение пакета: отключение системных компонентов может нарушить работу телевизора.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
                             if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
