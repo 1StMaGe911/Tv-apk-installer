@@ -498,7 +498,7 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
 }
 
 private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String {
-    val restoreDir = File(context.cacheDir, "tv-restore-\${System.currentTimeMillis()}")
+    val restoreDir = File(context.cacheDir, "tv-restore-${System.currentTimeMillis()}")
     if (restoreDir.exists()) restoreDir.deleteRecursively()
     if (!restoreDir.mkdirs()) throw Exception("Не удалось создать временную папку восстановления")
     val grouped = linkedMapOf<String, MutableList<File>>()
@@ -512,7 +512,7 @@ private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String 
                     parts[1].matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))
                 ) {
                     val packageName = parts[1]
-                    val target = File(restoreDir, "\${packageName.replace('.', '_')}_\${grouped[packageName]?.size ?: 0}.apk")
+                    val target = File(restoreDir, "${packageName.replace('.', '_')}_${grouped[packageName]?.size ?: 0}.apk")
                     target.outputStream().use { output -> zip.copyTo(output) }
                     if (target.length() > 0L) grouped.getOrPut(packageName) { mutableListOf() }.add(target)
                 }
@@ -528,13 +528,13 @@ private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String 
                 val result = if (files.size > 1) adb.installMultiple(files) else adb.install(files.first())
                 when (result) {
                     is InstallResult.Success -> installed++
-                    is InstallResult.Failure -> failures.add("$packageName: \${result.reason}")
+                    is InstallResult.Failure -> failures.add("$packageName: ${result.reason}")
                 }
             } catch (e: Exception) {
-                failures.add("$packageName: \${e.message ?: "ошибка установки"}")
+                failures.add("$packageName: ${e.message ?: "ошибка установки"}")
             }
         }
-        return "Восстановлено приложений: $installed из \${grouped.size}. Ошибок: \${failures.size}" +
+        return "Восстановлено приложений: $installed из ${grouped.size}. Ошибок: ${failures.size}" +
             if (failures.isEmpty()) "" else "\n" + failures.take(10).joinToString("\n")
     } finally {
         restoreDir.deleteRecursively()
