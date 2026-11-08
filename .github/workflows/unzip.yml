@@ -1,0 +1,32 @@
+name: Auto Unzip Archive
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '**/*.zip'
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract ZIP archives
+        run: |
+          find . -type f -name "*.zip" -not -path "./.git/*" | while read zip; do
+            echo "Extracting: $zip"
+            unzip -o "$zip" -d "$(dirname "$zip")"
+          done
+
+      - name: Commit extracted files
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Automatically extract ZIP archives"
