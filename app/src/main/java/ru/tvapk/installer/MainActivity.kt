@@ -47,7 +47,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.5"
+private const val APP_VERSION = "0.5.6"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -367,6 +367,32 @@ private fun launchTvApp(adb: Dadb, packageName: String): String {
 }
 
 
+private data class AutoStartReceiver(val component: String, val packageName: String)
+
+private fun findAutoStartReceivers(adb: Dadb): List<AutoStartReceiver> {
+    val userPackages = readUserPackages(adb).toSet()
+    val actions = listOf("android.intent.action.BOOT_COMPLETED", "android.intent.action.LOCKED_BOOT_COMPLETED")
+    val found = linkedMapOf<String, AutoStartReceiver>()
+    actions.forEach { action ->
+        val output = shellText(adb, "cmd package query-receivers --brief --components -a $action")
+        output.lineSequence().forEach { line ->
+            val component = Regex("([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+)")
+                .find(line)?.groupValues?.get(1) ?: return@forEach
+            val packageName = component.substringBefore("/")
+            if (packageName in userPackages) found[component] = AutoStartReceiver(component, packageName)
+        }
+    }
+    return found.values.sortedBy { it.component }
+}
+
+private fun setAutoStartReceiverEnabled(adb: Dadb, component: String, enabled: Boolean): String {
+    require(component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) {
+        "Некорректный компонент автозапуска"
+    }
+    val command = if (enabled) "pm enable --user 0 $component" else "pm disable-user --user 0 $component"
+    return shellText(adb, command)
+}
+
 private fun readDisabledUserPackages(adb: Dadb): Set<String> =
     shellText(adb, "pm list packages -3 -d").lineSequence()
         .map { it.removePrefix("package:").trim() }
@@ -523,6 +549,10 @@ fun TvInstallerApp() {
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
+    var autoStartReceivers by remember { mutableStateOf(listOf<AutoStartReceiver>()) }
+    var disabledAutoStart by remember { mutableStateOf(settings.getStringSet("disabled_autostart_components", emptySet())?.toSet() ?: emptySet()) }
+    var pendingAutoStartDisable by remember { mutableStateOf<String?>(null) }
+    var autoStartLoaded by remember { mutableStateOf(false) }
     var systemPackageFilter by remember { mutableStateOf("") }
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
@@ -807,6 +837,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.5.6 • Управление автозапуском", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен поиск компонентов автозапуска пользовательских приложений и их включение/отключение через ADB с подтверждением.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.5.5 • Резервная копия настроек", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлены экспорт и восстановление настроек приложения. Проверка обновлений перенесена в раздел настроек.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1235,6 +1268,93 @@ fun TvInstallerApp() {
                             })
                         }) { Text("Диагностика: память, хранилище, батарея") }
                         Text(diagnostics, color = Color.LightGray, fontSize = 11.sp)
+
+                        HorizontalDivider(color = Color.DarkGray)
+                        Text("АВТОЗАПУСК ПРИ ВКЛЮЧЕНИИ TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                        Text("Поиск получателей BOOT_COMPLETED и LOCKED_BOOT_COMPLETED среди пользовательских приложений. Системные пакеты не изменяются.", color = Color.LightGray, fontSize = 11.sp)
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val host = ip.trim()
+                            val p = port.toIntOrNull() ?: 5555
+                            runTask({
+                                connectWithRetry(context, host, p) { adb ->
+                                    val found = findAutoStartReceivers(adb)
+                                    activity.runOnUiThread {
+                                        autoStartReceivers = found
+                                        autoStartLoaded = true
+                                    }
+                                    "Найдено компонентов автозапуска: ${found.size}"
+                                }
+                            })
+                        }) { Text(if (autoStartLoaded) "Обновить список автозапуска" else "Найти автозапуск") }
+                        if (!autoStartLoaded) {
+                            Text("Сначала подключись к телевизору и нажми «Найти автозапуск».", color = TextMuted, fontSize = 11.sp)
+                        } else if (autoStartReceivers.isEmpty() && disabledAutoStart.isEmpty()) {
+                            Text("Получатели автозапуска не найдены или команда не поддерживается этой прошивкой.", color = TextMuted, fontSize = 11.sp)
+                        }
+                        autoStartReceivers.forEach { receiver ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(receiver.packageName, color = TextMain, fontSize = 12.sp)
+                                Text(receiver.component.substringAfter("/"), color = TextMuted, fontSize = 11.sp)
+                                OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                    pendingAutoStartDisable = receiver.component
+                                }) { Text("Отключить автозапуск этого компонента") }
+                            }
+                            HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (disabledAutoStart.isNotEmpty()) {
+                            Text("Отключено в TV APK Installer: ${disabledAutoStart.size}", color = GoldLight)
+                            disabledAutoStart.sorted().forEach { component ->
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(component, color = TextMuted, fontSize = 11.sp)
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                setAutoStartReceiverEnabled(adb, component, true)
+                                                "Автозапуск восстановлен: $component"
+                                            }
+                                        }, { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                disabledAutoStart = disabledAutoStart - component
+                                                settings.edit().putStringSet("disabled_autostart_components", disabledAutoStart).apply()
+                                                autoStartReceivers = autoStartReceivers + AutoStartReceiver(component, component.substringBefore("/"))
+                                            }
+                                        })
+                                    }) { Text("Восстановить автозапуск") }
+                                }
+                            }
+                        }
+                        if (pendingAutoStartDisable != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingAutoStartDisable = null },
+                                title = { Text("Отключить автозапуск?") },
+                                text = { Text("Компонент: ${pendingAutoStartDisable}\n\nПриложение может перестать выполнять фоновые задачи после включения телевизора. Само приложение не удаляется. Продолжить?") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val component = pendingAutoStartDisable ?: return@TextButton
+                                        pendingAutoStartDisable = null
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                setAutoStartReceiverEnabled(adb, component, false)
+                                                "Автозапуск отключён: $component"
+                                            }
+                                        }, { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                disabledAutoStart = disabledAutoStart + component
+                                                settings.edit().putStringSet("disabled_autostart_components", disabledAutoStart).apply()
+                                                autoStartReceivers = autoStartReceivers.filterNot { it.component == component }
+                                            }
+                                        })
+                                    }) { Text("Отключить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingAutoStartDisable = null }) { Text("Отмена") }
+                                }
+                            )
+                        }
 
                         Text("УПРАВЛЕНИЕ ТЕЛЕВИЗОРОМ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                         OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
