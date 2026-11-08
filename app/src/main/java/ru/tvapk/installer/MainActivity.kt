@@ -331,7 +331,10 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
                 if (paths.isEmpty()) throw Exception("Пути APK не найдены")
                 paths.forEachIndexed { index, remotePath ->
                     val local = File(tempDir, "${pkg.replace('.', '_')}_${index}.apk")
-                    adb.pull(local, remotePath).orThrow()
+                    when (val pullResult = adb.pull(local, remotePath)) {
+                        is dadb.SyncResult.Success -> Unit
+                        is dadb.SyncResult.Failure -> throw Exception(pullResult.toString())
+                    }
                     if (!local.exists() || local.length() == 0L) throw Exception("Пустой APK")
                     zip.putNextEntry(ZipEntry("apks/$pkg/${local.name}"))
                     local.inputStream().use { input -> input.copyTo(zip) }
@@ -492,6 +495,29 @@ fun TvInstallerApp() {
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
     }
 
+
+    fun runTask(
+        action: () -> String,
+        onFinished: (String) -> Unit = {}
+    ) {
+        if (busy) return
+        busy = true
+
+        Thread {
+            val result = try {
+                action()
+            } catch (e: Exception) {
+                "Ошибка: ${errorText(e)}"
+            }
+
+            activity.runOnUiThread {
+                status = result
+                busy = false
+                onFinished(result)
+            }
+        }.start()
+    }
+
     val backupSaver = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
     ) { destinationUri ->
@@ -516,27 +542,6 @@ fun TvInstallerApp() {
         }
     }
 
-    fun runTask(
-        action: () -> String,
-        onFinished: (String) -> Unit = {}
-    ) {
-        if (busy) return
-        busy = true
-
-        Thread {
-            val result = try {
-                action()
-            } catch (e: Exception) {
-                "Ошибка: ${errorText(e)}"
-            }
-
-            activity.runOnUiThread {
-                status = result
-                busy = false
-                onFinished(result)
-            }
-        }.start()
-    }
 
     fun saveCurrentDevice() {
         val host = ip.trim()
