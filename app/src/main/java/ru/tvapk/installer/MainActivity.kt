@@ -21,6 +21,10 @@ import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +46,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.3"
+private const val APP_VERSION = "0.5.4"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -486,6 +490,17 @@ fun TvInstallerApp() {
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var isDarkTheme by remember { mutableStateOf(settings.getBoolean("dark_theme", true)) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+
+    val Bg = if (isDarkTheme) Color(0xFF080808) else Color(0xFFF5F2EA)
+    val Panel = if (isDarkTheme) Color(0xFF17130C) else Color(0xFFFFFFFF)
+    val Accent = Color(0xFFD6A84F)
+    val GoldLight = if (isDarkTheme) Color(0xFFF4D58A) else Color(0xFF8A641D)
+    val TextMain = if (isDarkTheme) Color(0xFFF7F1E5) else Color(0xFF211B12)
+    val TextMuted = if (isDarkTheme) Color(0xFFBDB4A3) else Color(0xFF665D50)
 
     var versionStatus by remember {
         mutableStateOf("Проверка ещё не выполнялась")
@@ -605,21 +620,71 @@ fun TvInstallerApp() {
     }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(
-    background = Bg,
-    onBackground = TextMain,
-    surface = Panel,
-    onSurface = TextMain,
-    surfaceVariant = Color(0xFF292216),
-    onSurfaceVariant = TextMuted,
-    primary = Accent,
-    onPrimary = Color(0xFF171006),
-    secondary = GoldLight,
-    onSecondary = Color(0xFF171006),
-    outline = Color(0xFF6B542B)
-)
+        colorScheme = if (isDarkTheme) darkColorScheme(
+            background = Bg, onBackground = TextMain, surface = Panel, onSurface = TextMain,
+            surfaceVariant = Color(0xFF292216), onSurfaceVariant = TextMuted,
+            primary = Accent, onPrimary = Color(0xFF171006), secondary = GoldLight,
+            onSecondary = Color(0xFF171006), outline = Color(0xFF6B542B)
+        ) else lightColorScheme(
+            background = Bg, onBackground = TextMain, surface = Panel, onSurface = TextMain,
+            surfaceVariant = Color(0xFFECE5D7), onSurfaceVariant = TextMuted,
+            primary = Accent, onPrimary = Color(0xFF171006), secondary = GoldLight,
+            onSecondary = Color.White, outline = Color(0xFF9A7A3E)
+        )
     ) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = TextMain) {
+                    Text("TV APK Installer", modifier = Modifier.padding(20.dp), color = GoldLight, style = MaterialTheme.typography.titleLarge)
+                    NavigationDrawerItem(label = { Text("Главная") }, selected = !showSettings,
+                        icon = { Icon(Icons.Default.Tv, contentDescription = null) },
+                        onClick = { showSettings = false; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Настройки") }, selected = showSettings,
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        onClick = { showSettings = true; drawerScope.launch { drawerState.close() } })
+                }
+            }
+        ) {
         Scaffold(containerColor = Bg) { padding ->
+        if (showSettings) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { drawerScope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, contentDescription = "Меню") }
+                    Text("Настройки", style = MaterialTheme.typography.headlineSmall, color = GoldLight)
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Тёмная тема", color = TextMain, style = MaterialTheme.typography.titleMedium)
+                            Text(if (isDarkTheme) "Чёрно-золотое оформление" else "Светлое оформление", color = TextMuted, fontSize = 12.sp)
+                        }
+                        Switch(checked = isDarkTheme, onCheckedChange = { enabled ->
+                            isDarkTheme = enabled
+                            settings.edit().putBoolean("dark_theme", enabled).apply()
+                        })
+                    }
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Обратная связь", style = MaterialTheme.typography.titleMedium, color = TextMain)
+                        Text("Сообщить об ошибке или предложить улучшение.", color = TextMuted)
+                        OutlinedButton(onClick = { uriHandler.openUri("https://github.com/1StMaGe911/Tv-apk-installer/issues/new") }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Feedback, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Написать отзыв")
+                        }
+                    }
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Связь с автором", style = MaterialTheme.typography.titleMedium, color = TextMain)
+                        Text("Открыть страницу автора проекта на GitHub.", color = TextMuted)
+                        OutlinedButton(onClick = { uriHandler.openUri("https://github.com/1StMaGe911") }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Person, contentDescription = null); Spacer(Modifier.width(8.dp)); Text("Связаться с автором")
+                        }
+                    }
+                }
+            }
+        } else {
 
             Column(
                 modifier = Modifier
@@ -631,6 +696,9 @@ fun TvInstallerApp() {
             ) {
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Открыть меню", tint = GoldLight)
+                    }
                     Icon(
                         Icons.Default.Tv,
                         contentDescription = null,
@@ -1521,6 +1589,8 @@ fun TvInstallerApp() {
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
             }
+        }
+        }
         }
     }
 }
