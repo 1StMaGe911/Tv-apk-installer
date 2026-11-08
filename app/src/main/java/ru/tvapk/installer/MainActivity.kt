@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.1"
+private const val APP_VERSION = "0.6.2"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -684,6 +684,7 @@ fun TvInstallerApp() {
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var activeSection by remember { mutableStateOf<String?>(null) }
     var isDarkTheme by remember { mutableStateOf(settings.getBoolean("dark_theme", true)) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
@@ -961,6 +962,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.2 • Отдельные экраны разделов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Плитки открывают отдельные экраны подключения и меню выбранного инструмента. Добавлен выбор сохранённого телевизора.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.1 • Главный экран-плитки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Главный экран переработан: основные функции собраны в крупные интерактивные карточки быстрого доступа.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1119,6 +1123,83 @@ fun TvInstallerApp() {
                 }
 
             }
+
+        } else if (activeSection != null) {
+            val section = activeSection ?: "wifi"
+            val sectionTitle = when (section) {
+                "wifi" -> "Wi-Fi ADB"
+                "usb" -> "USB OTG"
+                "clean" -> "Clean Your TV"
+                "remote" -> "Пульт TV"
+                "apk" -> "Установка APK"
+                else -> "Раздел"
+            }
+            Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { activeSection = null }) { Icon(Icons.Default.Refresh, contentDescription = "Назад", tint = GoldLight) }
+                    Text(sectionTitle, color = GoldLight, style = MaterialTheme.typography.headlineSmall)
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(if (section == "usb") "USB OTG" else "ПОДКЛЮЧЕНИЕ К ТЕЛЕВИЗОРУ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                        if (section == "usb") {
+                            Text("Доступно обнаружение USB-устройств. USB ADB пока не реализован.", color = TextMuted)
+                            Button(onClick = {
+                                val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+                                val found = manager.deviceList.values
+                                status = if (found.isEmpty()) "USB-устройства не обнаружены" else "Найдены USB-устройства: " + found.joinToString { "${it.vendorId}:${it.productId}" } + ". USB ADB пока не реализован."
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Найти USB-устройства") }
+                        } else {
+                            OutlinedTextField(value = tvName, onValueChange = { tvName = it }, label = { Text("Название телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IP телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт ADB") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт"
+                                else {
+                                    settings.edit().putString("ip", host).putString("port", p.toString()).apply()
+                                    runTask(action = { connectWithRetry(context, host, p) { "ADB подключён: $host:$p" } }, onFinished = { result ->
+                                        if (!result.startsWith("Ошибка")) {
+                                            if (section == "clean") showCleanYourTv = true
+                                            if (section == "remote") showRemoteControl = true
+                                            activeSection = null
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Подключиться") }
+                            OutlinedButton(enabled = !busy, onClick = { saveCurrentDevice() }, modifier = Modifier.fillMaxWidth()) { Text("Сохранить телевизор") }
+                        }
+                    }
+                }
+                if (section != "usb") {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("СОХРАНЁННЫЕ ТЕЛЕВИЗОРЫ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            if (devices.isEmpty()) Text("Пока нет сохранённых устройств", color = TextMuted)
+                            devices.toList().forEach { device ->
+                                OutlinedButton(onClick = {
+                                    tvName = device.name
+                                    ip = device.ip
+                                    port = device.port.toString()
+                                    status = "Выбран ${device.name}"
+                                }, modifier = Modifier.fillMaxWidth()) { Text("${device.name} • ${device.ip}:${device.port}") }
+                            }
+                        }
+                    }
+                }
+                if (section == "clean" || section == "remote") {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("МЕНЮ РАЗДЕЛА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text(if (section == "clean") "После подключения откроется Clean Your TV: диагностика, приложения, автозапуск и резервные копии." else "После подключения откроется экранный пульт: навигация, громкость и системные клавиши.", color = TextMuted)
+                        }
+                    }
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Text(status, modifier = Modifier.padding(16.dp), color = GoldLight)
+                }
+            }
         } else {
 
             Column(
@@ -1157,27 +1238,27 @@ fun TvInstallerApp() {
                     DashboardTile(
                         title = "Wi-Fi ADB", subtitle = "Подключение к TV", symbol = "📶",
                         modifier = Modifier.weight(1f), selected = !usbMode
-                    ) { usbMode = false }
+                    ) { usbMode = false; activeSection = "wifi" }
                     DashboardTile(
                         title = "USB OTG", subtitle = "Поиск USB", symbol = "🔌",
                         modifier = Modifier.weight(1f), selected = usbMode
-                    ) { usbMode = true }
+                    ) { usbMode = true; activeSection = "usb" }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DashboardTile(
                         title = "Clean Your TV", subtitle = "Очистка и приложения", symbol = "🧹",
                         modifier = Modifier.weight(1f), selected = showCleanYourTv
-                    ) { showCleanYourTv = !showCleanYourTv }
+                    ) { activeSection = "clean" }
                     DashboardTile(
                         title = "Пульт TV", subtitle = "Управление телевизором", symbol = "🎮",
                         modifier = Modifier.weight(1f), selected = showRemoteControl
-                    ) { showRemoteControl = !showRemoteControl }
+                    ) { activeSection = "remote" }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     DashboardTile(
                         title = "Установить APK", subtitle = "Выбрать файл", symbol = "📦",
                         modifier = Modifier.weight(1f)
-                    ) { picker.launch("application/vnd.android.package-archive") }
+                    ) { activeSection = "apk" }
                     DashboardTile(
                         title = "Настройки", subtitle = "Тема и обновления", symbol = "⚙️",
                         modifier = Modifier.weight(1f)
