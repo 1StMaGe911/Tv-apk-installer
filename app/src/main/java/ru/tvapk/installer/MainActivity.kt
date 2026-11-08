@@ -36,10 +36,13 @@ import dadb.Dadb
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.7"
+private const val APP_VERSION = "0.4.8"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -297,6 +300,59 @@ private fun readDisabledPackages(adb: Dadb): Set<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
 
+
+private fun createTvBackup(adb: Dadb, context: Context): File {
+    val packages = readUserPackages(adb)
+    val tempDir = File(context.cacheDir, "tv-backup-temp")
+    if (tempDir.exists()) tempDir.deleteRecursively()
+    if (!tempDir.mkdirs()) throw Exception("Не удалось создать временную папку резервной копии")
+
+    val backupDir = File(context.cacheDir, "backups")
+    if (!backupDir.exists() && !backupDir.mkdirs()) throw Exception("Не удалось создать папку резервных копий")
+    val archive = File(backupDir, "tv-backup-${System.currentTimeMillis()}.zip")
+    val failures = mutableListOf<String>()
+    var savedApks = 0
+
+    ZipOutputStream(FileOutputStream(archive)).use { zip ->
+        fun addText(name: String, value: String) {
+            zip.putNextEntry(ZipEntry(name))
+            zip.write(value.toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+        }
+
+        addText("device-info.txt", readTvDetails(adb))
+        addText("applications.txt", packages.joinToString("\\n"))
+        packages.forEach { pkg ->
+            try {
+                val paths = shellText(adb, "pm path $pkg").lineSequence()
+                    .map { it.removePrefix("package:").trim() }
+                    .filter { it.startsWith("/") }
+                    .toList()
+                if (paths.isEmpty()) throw Exception("Пути APK не найдены")
+                paths.forEachIndexed { index, remotePath ->
+                    val local = File(tempDir, "${pkg.replace('.', '_')}_${index}.apk")
+                    adb.pull(local, remotePath).orThrow()
+                    if (!local.exists() || local.length() == 0L) throw Exception("Пустой APK")
+                    zip.putNextEntry(ZipEntry("apks/$pkg/${local.name}"))
+                    local.inputStream().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                    savedApks++
+                    local.delete()
+                }
+            } catch (e: Exception) {
+                failures.add("$pkg: ${e.message ?: "ошибка копирования"}")
+            }
+        }
+        addText(
+            "backup-report.txt",
+            "Всего пользовательских приложений: ${packages.size}\nСохранено APK-файлов: $savedApks\nОшибок по приложениям: ${failures.size}\n\n" +
+                if (failures.isEmpty()) "Ошибок нет" else failures.joinToString("\\n")
+        )
+    }
+    tempDir.deleteRecursively()
+    return archive
+}
+
 private fun isProtectedSystemPackage(packageName: String): Boolean {
     val protected = setOf(
         "android",
@@ -434,6 +490,30 @@ fun TvInstallerApp() {
     ) { uri ->
         selectedUri = uri
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
+    }
+
+    val backupSaver = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            val host = ip.trim()
+            val p = port.toIntOrNull()
+            if (host.isBlank() || p == null || p !in 1..65535) {
+                status = "Сначала укажи IP и порт ADB"
+            } else {
+                runTask({
+                    val archivePath = connectWithRetry(context, host, p) { adb ->
+                        createTvBackup(adb, context).absolutePath
+                    }
+                    val archive = File(archivePath)
+                    context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                        archive.inputStream().use { input -> input.copyTo(output) }
+                    } ?: throw Exception("Не удалось сохранить ZIP-файл")
+                    archive.delete()
+                    "Резервная копия сохранена. APK и список приложений упакованы в ZIP."
+                })
+            }
+        }
     }
 
     fun runTask(
@@ -829,6 +909,21 @@ fun TvInstallerApp() {
                             if (restorePointExists) "Точка сохранена: отключённых пользовательских приложений — ${restorePoint.size}"
                             else "Точка восстановления ещё не создана",
                             color = Color.LightGray, fontSize = 11.sp
+                        )
+
+                        Button(
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())
+                                backupSaver.launch("TV-backup-$stamp.zip")
+                            }
+                        ) {
+                            Text(if (busy) "Создание копии..." else "Создать резервную копию APK")
+                        }
+                        Text(
+                            "В ZIP сохраняются APK пользовательских приложений (в том числе split APK), список пакетов и сведения об устройстве. Данные внутри приложений и системные настройки без root не копируются.",
+                            color = Color(0xFFFFD98A), fontSize = 11.sp
                         )
                         Text("Пользовательские приложения: ${userPackages.size}", color = GoldLight)
                         if (userPackages.isEmpty()) Text("Сначала выполни определение устройства. Системные пакеты здесь не показываются.", color = Color.LightGray, fontSize = 12.sp)
