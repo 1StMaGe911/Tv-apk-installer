@@ -230,6 +230,13 @@ private fun changePackageState(adb: Dadb, packageName: String, enabled: Boolean)
     return shellText(adb, if (enabled) "pm enable --user 0 $packageName" else "pm disable-user --user 0 $packageName")
 }
 
+
+private fun readDisabledUserPackages(adb: Dadb): Set<String> =
+    shellText(adb, "pm list packages -3 -d").lineSequence()
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+        .toSet()
+
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
@@ -255,6 +262,9 @@ fun TvInstallerApp() {
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
+    var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
+    var restorePointExists by remember { mutableStateOf(settings.getBoolean("restore_point_exists", false)) }
+
 
     var usbMode by remember { mutableStateOf(false) }
 
@@ -611,6 +621,45 @@ fun TvInstallerApp() {
                         }) { Text("Определить устройство и найти приложения") }
                         OutlinedTextField(value = packageFilter, onValueChange = { packageFilter = it },
                             label = { Text("Поиск приложения по имени пакета") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        val snapshot = readDisabledUserPackages(adb)
+                                        activity.runOnUiThread {
+                                            restorePoint = snapshot
+                                            restorePointExists = true
+                                            settings.edit().putStringSet("restore_point_user_disabled", snapshot)
+                                                .putBoolean("restore_point_exists", true).apply()
+                                        }
+                                        "Точка восстановления создана. Отключённых пользовательских приложений: ${snapshot.size}"
+                                    }
+                                })
+                            }) { Text("Создать точку") }
+                            OutlinedButton(enabled = !busy && restorePointExists, modifier = Modifier.weight(1f), onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                val snapshot = restorePoint
+                                runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        val current = readDisabledUserPackages(adb)
+                                        val toEnable = current - snapshot
+                                        val toDisable = snapshot - current
+                                        val failures = mutableListOf<String>()
+                                        toEnable.forEach { pkg -> try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) } }
+                                        toDisable.forEach { pkg -> try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) } }
+                                        if (failures.isEmpty()) "Состояние пользовательских приложений восстановлено по точке"
+                                        else "Не удалось изменить: ${failures.joinToString()}"
+                                    }
+                                })
+                            }) { Text("Восстановить точку") }
+                        }
+                        Text(
+                            if (restorePointExists) "Точка сохранена: отключённых пользовательских приложений — ${restorePoint.size}"
+                            else "Точка восстановления ещё не создана",
+                            color = Color.LightGray, fontSize = 11.sp
+                        )
                         Text("Пользовательские приложения: ${userPackages.size}", color = GoldLight)
                         if (userPackages.isEmpty()) Text("Сначала выполни определение устройства. Системные пакеты здесь не показываются.", color = Color.LightGray, fontSize = 12.sp)
                         userPackages.filter { it.contains(packageFilter, ignoreCase = true) }.forEach { pkg ->
