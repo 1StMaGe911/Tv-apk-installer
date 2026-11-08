@@ -1,27 +1,56 @@
+
 name: Собрать APK
+
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
+
       - name: Установить Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Собрать APK
-        run: gradle :app:assembleDebug
+        with:
+          cache-disabled: false
+
+      - name: Собрать APK с повторными попытками
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.internal.http.connectionTimeout=60000 -Dorg.gradle.internal.http.socketTimeout=120000"
+        run: |
+          for attempt in 1 2 3 4; do
+            echo "Попытка сборки $attempt из 4"
+            if gradle :app:assembleDebug --no-daemon; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Ошибка сборки. Повтор через 20 секунд..."
+              sleep 20
+            fi
+          done
+          echo "Все попытки сборки завершились ошибкой"
+          exit 1
+
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
           name: TV-APK-Installer-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+          
