@@ -392,6 +392,21 @@ fun TvInstallerApp() {
     var updateApkUrl by remember { mutableStateOf<String?>(null) }
     var downloadedUpdatePath by remember { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(Unit) {
+        Thread {
+            val result = try {
+                checkLatestVersion()
+            } catch (e: Exception) {
+                UpdateInfo("Не удалось проверить обновления: ${errorText(e)}", null, null, 0L)
+            }
+            activity.runOnUiThread {
+                versionStatus = result.status
+                releaseUrl = result.releaseUrl
+                updateApkUrl = result.apkUrl
+            }
+        }.start()
+    }
+
     val devices = remember {
         mutableStateListOf<TvDevice>().apply {
             addAll(loadDevices(context))
@@ -1111,9 +1126,11 @@ fun TvInstallerApp() {
                                     val result = try {
                                         checkLatestVersion()
                                     } catch (e: Exception) {
-                                        Pair(
+                                        UpdateInfo(
                                             "Ошибка: ${errorText(e)}",
-                                            null
+                                            null,
+                                            null,
+                                            0L
                                         )
                                     }
 
