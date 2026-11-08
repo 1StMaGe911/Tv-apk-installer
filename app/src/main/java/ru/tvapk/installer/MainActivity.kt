@@ -35,7 +35,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.3"
+private const val APP_VERSION = "0.4.4"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -312,6 +312,7 @@ fun TvInstallerApp() {
 
 
     var usbMode by remember { mutableStateOf(false) }
+    var showCleanYourTv by remember { mutableStateOf(false) }
 
     var versionStatus by remember {
         mutableStateOf("Проверка ещё не выполнялась")
@@ -455,6 +456,17 @@ fun TvInstallerApp() {
                     ) {
                         Text("USB OTG")
                     }
+                }
+
+                Button(
+                    onClick = { showCleanYourTv = !showCleanYourTv },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (showCleanYourTv) Accent else Panel,
+                        contentColor = if (showCleanYourTv) Color(0xFF171006) else GoldLight
+                    )
+                ) {
+                    Text(if (showCleanYourTv) "Скрыть Clean Your TV" else "Clean Your TV")
                 }
 
                 Card(
@@ -647,7 +659,7 @@ fun TvInstallerApp() {
                     }
                 }
 
-
+                if (showCleanYourTv) {
                 Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
@@ -763,6 +775,7 @@ fun TvInstallerApp() {
                         }
                         Text("Показываются только пользовательские приложения. Системные службы и лаунчер не затрагиваются. Отключение приложения может нарушить его работу.", color = Color.LightGray, fontSize = 11.sp)
                     }
+                }
                 }
 
                 Card(
