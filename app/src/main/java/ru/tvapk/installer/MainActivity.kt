@@ -321,7 +321,6 @@ fun TvInstallerApp() {
     onSecondary = Color(0xFF171006),
     outline = Color(0xFF6B542B)
 )
-        )
     ) {
         Scaffold(containerColor = Bg) { padding ->
 
@@ -381,9 +380,6 @@ fun TvInstallerApp() {
     colors = CardDefaults.cardColors(
         containerColor = Panel
     ),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Panel
-                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
