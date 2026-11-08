@@ -35,7 +35,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.3.0"
+private const val APP_VERSION = "0.4.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -210,6 +210,26 @@ private fun checkLatestVersion(): Pair<String, String?> {
     }
 }
 
+
+private fun shellText(adb: Dadb, command: String): String {
+    val response = adb.shell(command)
+    if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
+    return response.output.trim()
+}
+private fun readTvDetails(adb: Dadb): String {
+    fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
+    return "Производитель: ${prop("ro.product.manufacturer")}\nМодель: ${prop("ro.product.model")}\nAndroid: ${prop("ro.build.version.release")}\nТип: ${prop("ro.build.characteristics")}"
+}
+private fun readUserPackages(adb: Dadb): List<String> =
+    shellText(adb, "pm list packages -3").lineSequence()
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+        .distinct().sorted().toList()
+private fun changePackageState(adb: Dadb, packageName: String, enabled: Boolean): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    return shellText(adb, if (enabled) "pm enable --user 0 $packageName" else "pm disable-user --user 0 $packageName")
+}
+
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
@@ -231,6 +251,11 @@ fun TvInstallerApp() {
     var selectedName by remember { mutableStateOf("APK не выбран") }
 
     var busy by remember { mutableStateOf(false) }
+    var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
+    var userPackages by remember { mutableStateOf(listOf<String>()) }
+    var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
+    var packageFilter by remember { mutableStateOf("") }
+
     var usbMode by remember { mutableStateOf(false) }
 
     var versionStatus by remember {
@@ -564,6 +589,76 @@ fun TvInstallerApp() {
                             }
                             HorizontalDivider(color = Color.DarkGray)
                         }
+                    }
+                }
+
+
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
+                        Text(tvDetails, color = Color.LightGray, fontSize = 13.sp)
+                        Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val host = ip.trim(); val p = port.toIntOrNull()
+                            if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
+                            else runTask({
+                                connectWithRetry(context, host, p) { adb ->
+                                    val details = readTvDetails(adb)
+                                    val packages = readUserPackages(adb)
+                                    activity.runOnUiThread { tvDetails = details; userPackages = packages }
+                                    "Устройство определено. Найдено пользовательских приложений: ${packages.size}"
+                                }
+                            })
+                        }) { Text("Определить устройство и найти приложения") }
+                        OutlinedTextField(value = packageFilter, onValueChange = { packageFilter = it },
+                            label = { Text("Поиск приложения по имени пакета") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Text("Пользовательские приложения: ${userPackages.size}", color = GoldLight)
+                        if (userPackages.isEmpty()) Text("Сначала выполни определение устройства. Системные пакеты здесь не показываются.", color = Color.LightGray, fontSize = 12.sp)
+                        userPackages.filter { it.contains(packageFilter, ignoreCase = true) }.forEach { pkg ->
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(pkg, fontSize = 12.sp, color = TextMain)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(enabled = !busy && pkg !in disabledPackages, onClick = {
+                                        val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageState(adb, pkg, false) } }, { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                disabledPackages = disabledPackages + pkg
+                                                settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
+                                            }
+                                        })
+                                    }) { Text("Отключить") }
+                                    OutlinedButton(enabled = !busy && pkg in disabledPackages, onClick = {
+                                        val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageState(adb, pkg, true) } }, { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                disabledPackages = disabledPackages - pkg
+                                                settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
+                                            }
+                                        })
+                                    }) { Text("Восстановить") }
+                                }
+                            }
+                            HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (disabledPackages.isNotEmpty()) {
+                            Text("Отключено этим приложением: ${disabledPackages.size}", color = GoldLight)
+                            Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                val restoreList = disabledPackages.toList()
+                                runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        val failed = mutableListOf<String>()
+                                        restoreList.forEach { pkg -> try { changePackageState(adb, pkg, true) } catch (_: Exception) { failed.add(pkg) } }
+                                        if (failed.isEmpty()) "Все приложения восстановлены" else "Не удалось восстановить: ${failed.joinToString()}"
+                                    }
+                                }, { result ->
+                                    if (result == "Все приложения восстановлены") {
+                                        disabledPackages = emptySet()
+                                        settings.edit().remove("disabled_packages").apply()
+                                    }
+                                })
+                            }) { Text("Восстановить все отключённые") }
+                        }
+                        Text("Показываются только пользовательские приложения. Системные службы и лаунчер не затрагиваются. Отключение приложения может нарушить его работу.", color = Color.LightGray, fontSize = 11.sp)
                     }
                 }
 
