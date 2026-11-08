@@ -1156,65 +1156,67 @@ fun TvInstallerApp() {
             }
             Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { activeSection = null }) { Icon(Icons.Default.Refresh, contentDescription = "Назад", tint = GoldLight) }
-                    Text(sectionTitle, color = GoldLight, style = MaterialTheme.typography.headlineSmall)
-                    Spacer(Modifier.weight(1f))
                     IconButton(onClick = { drawerScope.launch { drawerState.open() } }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Разделы", tint = GoldLight)
+                        Icon(Icons.Default.Menu, contentDescription = "Открыть меню разделов", tint = GoldLight)
                     }
+                    Text(sectionTitle, color = GoldLight, style = MaterialTheme.typography.headlineSmall)
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("ПОДКЛЮЧЕНИЕ К ТЕЛЕВИЗОРУ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                        Text("Каждый инструмент подключается к выбранному Android TV отдельно через ADB. Включи «Отладку по сети» в настройках телевизора.", color = TextMuted, fontSize = 12.sp)
-                        OutlinedTextField(value = tvName, onValueChange = { tvName = it }, label = { Text("Название телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IP телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт ADB") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                        Button(enabled = !busy, onClick = {
-                            val host = ip.trim()
-                            val p = port.toIntOrNull()
-                            if (host.isBlank() || p == null || p !in 1..65535) {
-                                status = "Проверь IP и порт"
-                            } else {
-                                settings.edit().putString("ip", host).putString("port", p.toString()).apply()
-                                runTask(action = {
-                                    connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
-                                }, onFinished = { result ->
-                                    if (!result.startsWith("Ошибка")) {
-                                        if (section == "clean") showCleanYourTv = true
-                                        if (section == "remote") showRemoteControl = true
-                                        activeSection = null
-                                    }
-                                })
-                            }
-                        }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.Refresh, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (busy) "Подключение..." else "Подключиться")
-                        }
-                        OutlinedButton(enabled = !busy, onClick = { saveCurrentDevice() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Сохранить этот телевизор")
-                        }
-                        if (section == "usb") {
-                            HorizontalDivider(color = Color.DarkGray)
-                            Text("USB OTG", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                            Text("Проверка подключённых USB-устройств. ADB по USB пока не поддерживается.", color = TextMuted, fontSize = 12.sp)
+                if (section == "usb") {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("USB OTG", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Проверка USB-устройств, подключённых непосредственно к телефону или планшету. Подключение к телевизору по IP для этой функции не требуется.", color = TextMuted, fontSize = 12.sp)
                             OutlinedButton(onClick = {
                                 val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
                                 val found = manager.deviceList.values
                                 status = if (found.isEmpty()) "USB-устройства не обнаружены" else "Найдены USB-устройства: " + found.joinToString { "${it.vendorId}:${it.productId}" } + ". USB ADB пока не реализован."
                             }, modifier = Modifier.fillMaxWidth()) { Text("Найти USB-устройства") }
                         }
-                        if (section == "apk") {
-                            HorizontalDivider(color = Color.DarkGray)
-                            Text("После подключения можно выбрать APK и установить его на телевизор.", color = TextMuted, fontSize = 12.sp)
-                            OutlinedButton(onClick = { activeSection = null; picker.launch("application/vnd.android.package-archive") }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Выбрать APK-файл")
+                    }
+                } else {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("ПОДКЛЮЧЕНИЕ К ТЕЛЕВИЗОРУ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Этот инструмент подключается к выбранному Android TV через ADB. Включи «Отладку по сети» в настройках телевизора.", color = TextMuted, fontSize = 12.sp)
+                            OutlinedTextField(value = tvName, onValueChange = { tvName = it }, label = { Text("Название телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IP телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт ADB") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) {
+                                    status = "Проверь IP и порт"
+                                } else {
+                                    settings.edit().putString("ip", host).putString("port", p.toString()).apply()
+                                    runTask(action = {
+                                        connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
+                                    }, onFinished = { result ->
+                                        if (!result.startsWith("Ошибка")) {
+                                            if (section == "clean") showCleanYourTv = true
+                                            if (section == "remote") showRemoteControl = true
+                                            activeSection = null
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Refresh, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(if (busy) "Подключение..." else "Подключиться")
+                            }
+                            OutlinedButton(enabled = !busy, onClick = { saveCurrentDevice() }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Сохранить этот телевизор")
+                            }
+                            if (section == "apk") {
+                                HorizontalDivider(color = Color.DarkGray)
+                                Text("После подключения можно выбрать APK и установить его на телевизор.", color = TextMuted, fontSize = 12.sp)
+                                OutlinedButton(onClick = { activeSection = null; picker.launch("application/vnd.android.package-archive") }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Выбрать APK-файл")
+                                }
                             }
                         }
                     }
                 }
-                if (devices.isNotEmpty()) {
+                if (section != "usb" && devices.isNotEmpty()) {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text("СОХРАНЁННЫЕ ТЕЛЕВИЗОРЫ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
