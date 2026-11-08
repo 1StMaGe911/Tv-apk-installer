@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Delete
@@ -38,9 +39,12 @@ private const val APP_VERSION = "0.3.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
-private val Bg = Color(0xFF10131B)
-private val Panel = Color(0xFF1B2230)
-private val Accent = Color(0xFF69B7FF)
+private val Bg = Color(0xFF080808)
+private val Panel = Color(0xFF17130C)
+private val Accent = Color(0xFFD6A84F)
+private val GoldLight = Color(0xFFF4D58A)
+private val TextMain = Color(0xFFF7F1E5)
+private val TextMuted = Color(0xFFBDB4A3)
 
 data class TvDevice(
     val name: String,
@@ -305,9 +309,18 @@ fun TvInstallerApp() {
 
     MaterialTheme(
         colorScheme = darkColorScheme(
-            background = Bg,
-            surface = Panel,
-            primary = Accent
+    background = Bg,
+    onBackground = TextMain,
+    surface = Panel,
+    onSurface = TextMain,
+    surfaceVariant = Color(0xFF292216),
+    onSurfaceVariant = TextMuted,
+    primary = Accent,
+    onPrimary = Color(0xFF171006),
+    secondary = GoldLight,
+    onSecondary = Color(0xFF171006),
+    outline = Color(0xFF6B542B)
+)
         )
     ) {
         Scaffold(containerColor = Bg) { padding ->
@@ -364,6 +377,10 @@ fun TvInstallerApp() {
                 }
 
                 Card(
+    shape = RoundedCornerShape(22.dp),
+    colors = CardDefaults.cardColors(
+        containerColor = Panel
+    ),
                     colors = CardDefaults.cardColors(
                         containerColor = Panel
                     ),
