@@ -2,7 +2,10 @@
 package ru.tvapk.installer
 
 import android.content.Context
+import android.content.Intent
 import android.hardware.usb.UsbManager
+import android.net.Uri as AndroidUri
+import android.provider.Settings
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -27,6 +30,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import dadb.AdbKeyPair
 import dadb.Dadb
 import org.json.JSONArray
@@ -35,7 +39,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.5"
+private const val APP_VERSION = "0.4.6"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -167,44 +171,78 @@ private fun compareVersions(first: String, second: String): Int {
     return 0
 }
 
-private fun checkLatestVersion(): Pair<String, String?> {
-    val connection =
-        URL(RELEASES_URL).openConnection() as HttpURLConnection
+private data class UpdateInfo(
+    val status: String,
+    val releaseUrl: String?,
+    val apkUrl: String?,
+    val apkSize: Long
+)
 
+private fun checkLatestVersion(): UpdateInfo {
+    val connection = URL(RELEASES_URL).openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "GET"
-        connection.connectTimeout = 10000
-        connection.readTimeout = 10000
+        connection.connectTimeout = 15000
+        connection.readTimeout = 15000
         connection.setRequestProperty("User-Agent", "TV-APK-Installer")
-        connection.setRequestProperty(
-            "Accept",
-            "application/vnd.github+json"
-        )
+        connection.setRequestProperty("Accept", "application/vnd.github+json")
 
         if (connection.responseCode != 200) {
-            return Pair(
-                "Ошибка проверки: HTTP ${connection.responseCode}",
-                null
-            )
+            return UpdateInfo("Ошибка проверки: HTTP ${connection.responseCode}", null, null, 0L)
         }
 
-        val response = connection.inputStream.bufferedReader().use {
-            it.readText()
-        }
-
-        val json = JSONObject(response)
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
         val tag = json.optString("tag_name")
-        val url = json.optString("html_url")
+        val releaseUrl = json.optString("html_url").takeIf { it.isNotBlank() }
+        if (tag.isBlank()) return UpdateInfo("Версия релиза не найдена", releaseUrl, null, 0L)
 
-        if (tag.isBlank()) {
-            return Pair("Версия релиза не найдена", null)
+        if (compareVersions(tag, APP_VERSION) <= 0) {
+            return UpdateInfo("Установлена актуальная версия $APP_VERSION", releaseUrl, null, 0L)
         }
 
-        return if (compareVersions(tag, APP_VERSION) > 0) {
-            Pair("Доступно обновление: $tag", url)
+        val assets = json.optJSONArray("assets") ?: JSONArray()
+        var apkUrl: String? = null
+        var apkSize = 0L
+        for (i in 0 until assets.length()) {
+            val asset = assets.optJSONObject(i) ?: continue
+            val name = asset.optString("name")
+            if (name.endsWith(".apk", ignoreCase = true)) {
+                apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
+                apkSize = asset.optLong("size", 0L)
+                if (apkUrl != null) break
+            }
+        }
+
+        return if (apkUrl != null) {
+            UpdateInfo("Доступно обновление: $tag", releaseUrl, apkUrl, apkSize)
         } else {
-            Pair("Установлена актуальная версия $APP_VERSION", null)
+            UpdateInfo("Доступно обновление $tag, но APK ещё не прикреплён к релизу", releaseUrl, null, 0L)
         }
+    } finally {
+        connection.disconnect()
+    }
+}
+
+private fun downloadUpdateApk(context: Context, downloadUrl: String): File {
+    val directory = File(context.cacheDir, "updates")
+    if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
+    val apkFile = File(directory, "tv-apk-installer-update.apk")
+    val connection = URL(downloadUrl).openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+        connection.instanceFollowRedirects = true
+        connection.setRequestProperty("User-Agent", "TV-APK-Installer")
+        if (connection.responseCode != 200) throw Exception("Ошибка загрузки: HTTP ${connection.responseCode}")
+        connection.inputStream.use { input ->
+            apkFile.outputStream().use { output -> input.copyTo(output) }
+        }
+        if (!apkFile.exists() || apkFile.length() < 1024L) {
+            apkFile.delete()
+            throw Exception("Загруженный APK повреждён или пуст")
+        }
+        return apkFile
     } finally {
         connection.disconnect()
     }
@@ -351,6 +389,8 @@ fun TvInstallerApp() {
         mutableStateOf("Проверка ещё не выполнялась")
     }
     var releaseUrl by remember { mutableStateOf<String?>(null) }
+    var updateApkUrl by remember { mutableStateOf<String?>(null) }
+    var downloadedUpdatePath by remember { mutableStateOf<String?>(null) }
 
     val devices = remember {
         mutableStateListOf<TvDevice>().apply {
@@ -1078,9 +1118,11 @@ fun TvInstallerApp() {
                                     }
 
                                     activity.runOnUiThread {
-                                        versionStatus = result.first
-                                        releaseUrl = result.second
-                                        status = result.first
+                                        versionStatus = result.status
+                                        releaseUrl = result.releaseUrl
+                                        updateApkUrl = result.apkUrl
+                                        downloadedUpdatePath = null
+                                        status = result.status
                                         busy = false
                                     }
                                 }.start()
@@ -1090,16 +1132,84 @@ fun TvInstallerApp() {
                             Text("Проверить обновления")
                         }
 
+                        if (updateApkUrl != null) {
+                            Text(
+                                if (versionStatus.contains("Доступно обновление"))
+                                    "APK доступен для загрузки • ${if (downloadedUpdatePath == null) "ещё не скачан" else "скачан"}"
+                                else "",
+                                color = GoldLight,
+                                fontSize = 12.sp
+                            )
+                            Button(
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val url = updateApkUrl ?: return@Button
+                                    runTask(
+                                        action = { downloadUpdateApk(context, url).absolutePath },
+                                        onFinished = { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                downloadedUpdatePath = result
+                                                status = "Обновление скачано. Нажми «Установить обновление»."
+                                            }
+                                        }
+                                    )
+                                }
+                            ) {
+                                Text(if (busy) "Загрузка..." else "Скачать обновление")
+                            }
+                        }
+
+                        if (downloadedUpdatePath != null) {
+                            Button(
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val path = downloadedUpdatePath ?: return@Button
+                                    val apk = File(path)
+                                    if (!apk.exists()) {
+                                        downloadedUpdatePath = null
+                                        status = "Файл обновления не найден. Скачай его заново."
+                                    } else if (android.os.Build.VERSION.SDK_INT >= 26 &&
+                                        !activity.packageManager.canRequestPackageInstalls()
+                                    ) {
+                                        status = "Разреши установку неизвестных приложений для TV APK Installer и вернись сюда."
+                                        activity.startActivity(
+                                            Intent(
+                                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                                AndroidUri.parse("package:${activity.packageName}")
+                                            )
+                                        )
+                                    } else {
+                                        try {
+                                            val contentUri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                apk
+                                            )
+                                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(contentUri, "application/vnd.android.package-archive")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
+                                            activity.startActivity(installIntent)
+                                        } catch (e: Exception) {
+                                            status = "Не удалось открыть установщик: ${errorText(e)}"
+                                        }
+                                    }
+                                }
+                            ) {
+                                Text("Установить обновление")
+                            }
+                        }
+
                         if (releaseUrl != null) {
                             OutlinedButton(
                                 onClick = {
-                                    releaseUrl?.let {
-                                        uriHandler.openUri(it)
-                                    }
+                                    releaseUrl?.let { uriHandler.openUri(it) }
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Открыть страницу обновления")
+                                Text("Открыть страницу релиза")
                             }
                         }
                     }
