@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.3"
+private const val APP_VERSION = "0.6.4"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -979,6 +979,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.4 • Навигация и USB OTG", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Кнопка в заголовке каждого раздела открывает левое меню. Во вкладке USB OTG убраны IP, порт, подключение по ADB и список сохранённых телевизоров.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.3 • Левое меню разделов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Все инструменты перенесены в левое боковое меню. Для каждого рабочего раздела добавлен отдельный экран подключения к телевизору и выбор сохранённых устройств.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
