@@ -1,7 +1,7 @@
 
 package ru.tvapk.installer
 
-import android.app.Activity
+import android.content.Context
 import android.hardware.usb.UsbManager
 import android.net.Uri
 import android.os.Bundle
@@ -24,7 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dadb.AdbKeyPair
 import dadb.Dadb
+import dadb.InstallResult
 import java.io.File
 
 private val Bg = Color(0xFF10131B)
@@ -38,10 +40,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun getAdbKey(context: Context): AdbKeyPair {
+    val directory = File(context.filesDir, "adb")
+    val privateKey = File(directory, "adbkey")
+    val publicKey = File(directory, "adbkey.pub")
+
+    if (!privateKey.exists()) {
+        directory.mkdirs()
+        AdbKeyPair.generate(privateKey, publicKey)
+    }
+
+    return AdbKeyPair.read(privateKey, publicKey)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
+
     var ip by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("5555") }
     var status by remember { mutableStateOf("Не подключено") }
@@ -59,14 +75,17 @@ fun TvInstallerApp() {
 
     fun runBackground(action: () -> String) {
         if (busy) return
+
         busy = true
+
         Thread {
             val result = try {
                 action()
             } catch (e: Exception) {
-                "Ошибка: ${e.message}"
+                "Ошибка: ${e.message ?: "неизвестная ошибка"}"
             }
-            (context as Activity).runOnUiThread {
+
+            (context as ComponentActivity).runOnUiThread {
                 status = result
                 busy = false
             }
@@ -81,6 +100,7 @@ fun TvInstallerApp() {
         )
     ) {
         Scaffold(containerColor = Bg) { padding ->
+
             Column(
                 Modifier
                     .fillMaxSize()
@@ -89,12 +109,23 @@ fun TvInstallerApp() {
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Tv, null, tint = Accent)
+                    Icon(
+                        Icons.Default.Tv,
+                        null,
+                        tint = Accent,
+                        modifier = Modifier.size(38.dp)
+                    )
+
                     Spacer(Modifier.width(12.dp))
+
                     Column {
                         Text("TV APK Installer", fontSize = 23.sp)
-                        Text("Установка приложений на ТВ", color = Color.LightGray)
+                        Text(
+                            "Установка приложений на ТВ",
+                            color = Color.LightGray
+                        )
                     }
                 }
 
@@ -105,24 +136,35 @@ fun TvInstallerApp() {
                         selected = mode == 0,
                         onClick = { mode = 0 },
                         shape = SegmentedButtonDefaults.itemShape(0, 2)
-                    ) { Text("Wi-Fi") }
+                    ) {
+                        Text("Wi-Fi")
+                    }
 
                     SegmentedButton(
                         selected = mode == 1,
                         onClick = { mode = 1 },
                         shape = SegmentedButtonDefaults.itemShape(1, 2)
-                    ) { Text("USB OTG") }
+                    ) {
+                        Text("USB OTG")
+                    }
                 }
 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Panel)
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
                 ) {
                     Column(
                         Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+
                         if (mode == 0) {
-                            Text("Подключение по Wi-Fi ADB")
+
+                            Text(
+                                "Подключение по Wi-Fi ADB",
+                                style = MaterialTheme.typography.titleMedium
+                            )
 
                             OutlinedTextField(
                                 value = ip,
@@ -146,11 +188,19 @@ fun TvInstallerApp() {
                                     val host = ip.trim()
                                     val p = port.toIntOrNull()
 
-                                    if (host.isBlank() || p == null || p !in 1..65535) {
+                                    if (host.isBlank() || p == null ||
+                                        p !in 1..65535
+                                    ) {
                                         status = "Проверь IP и порт"
                                     } else {
                                         runBackground {
-                                            Dadb.create(host, p).use {
+                                            val key = getAdbKey(context)
+
+                                            Dadb.create(
+                                                host,
+                                                p,
+                                                key
+                                            ).use {
                                                 "ADB подключён: $host:$p"
                                             }
                                         }
@@ -158,16 +208,21 @@ fun TvInstallerApp() {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Проверить подключение")
+                                Text("Подключиться")
                             }
+
                         } else {
-                            Text("USB OTG")
+
+                            Text(
+                                "Подключение USB OTG",
+                                style = MaterialTheme.typography.titleMedium
+                            )
 
                             Button(
                                 enabled = !busy,
                                 onClick = {
                                     val manager = context.getSystemService(
-                                        android.content.Context.USB_SERVICE
+                                        Context.USB_SERVICE
                                     ) as UsbManager
 
                                     val devices = manager.deviceList.values
@@ -175,11 +230,11 @@ fun TvInstallerApp() {
                                     status = if (devices.isEmpty()) {
                                         "USB-устройства не обнаружены"
                                     } else {
-                                        "Найдены USB-устройства: " +
-                                            devices.joinToString { 
+                                        "Найдены устройства: " +
+                                            devices.joinToString {
                                                 "${it.vendorId}:${it.productId}"
                                             } +
-                                            ". ADB-транспорт ещё не реализован."
+                                            ". ADB-транспорт ещё не подключён."
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -188,7 +243,7 @@ fun TvInstallerApp() {
                             }
 
                             Text(
-                                "USB Host обнаруживает устройства. Для полноценной установки через USB ещё потребуется ADB-транспорт.",
+                                "Для установки по USB потребуется отдельный ADB-транспорт поверх USB Host API.",
                                 color = Color.LightGray,
                                 fontSize = 12.sp
                             )
@@ -197,23 +252,35 @@ fun TvInstallerApp() {
                 }
 
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Panel)
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
                 ) {
                     Column(
                         Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Android, null, tint = Accent)
+                            Icon(
+                                Icons.Default.Android,
+                                null,
+                                tint = Accent
+                            )
                             Spacer(Modifier.width(8.dp))
-                            Text("Установка APK")
+                            Text(
+                                "Установка APK",
+                                style = MaterialTheme.typography.titleMedium
+                            )
                         }
 
                         Text(selectedName, color = Color.LightGray)
 
                         OutlinedButton(
                             onClick = {
-                                picker.launch("application/vnd.android.package-archive")
+                                picker.launch(
+                                    "application/vnd.android.package-archive"
+                                )
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -223,7 +290,9 @@ fun TvInstallerApp() {
                         }
 
                         Button(
-                            enabled = !busy && selectedUri != null && mode == 0,
+                            enabled = !busy &&
+                                selectedUri != null &&
+                                mode == 0,
                             onClick = {
                                 val uri = selectedUri!!
 
@@ -233,17 +302,84 @@ fun TvInstallerApp() {
                                         "selected_app.apk"
                                     )
 
-                                    context.contentResolver.openInputStream(uri).use { input ->
-                                        requireNotNull(input) {
-                                            "Не удалось открыть APK"
-                                        }.use { source ->
-                                            file.outputStream().use { output ->
-                                                source.copyTo(output)
+                                    context.contentResolver
+                                        .openInputStream(uri).use { input ->
+                                            requireNotNull(input) {
+                                                "Не удалось открыть APK"
+                                            }.use { source ->
+                                                file.outputStream().use { output ->
+                                                    source.copyTo(output)
+                                                }
                                             }
                                         }
-                                    }
 
                                     require(file.length() > 0) {
+                                        "APK-файл пустой"
+                                    }
+
+                                    val key = getAdbKey(context)
+
+                                    Dadb.create(
+                                        ip.trim(),
+                                        port.toInt(),
+                                        key
+                                    ).use { adb ->
+
+                                        when (val result = adb.install(file)) {
+                                            is InstallResult.Success ->
+                                                "APK успешно установлен!"
+
+                                            is InstallResult.Failure ->
+                                                "Ошибка установки: ${result.reason}"
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Установить на телевизор")
+                        }
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Состояние",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(status, color = Color.LightGray)
+
+                        if (busy) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+
+                Text(
+                    "ADB поддерживается только совместимыми Android TV и приставками. VIDAA не поддерживает APK.",
+                    color = Color(0xFFFFC66D),
+                    fontSize = 12.sp
+                )
+
+                Text(
+                    "TV APK Installer • версия 0.2.0",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
+require(file.length() > 0) {
                                         "Файл пустой"
                                     }
 
