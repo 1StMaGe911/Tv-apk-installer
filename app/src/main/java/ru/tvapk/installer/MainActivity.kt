@@ -1235,7 +1235,6 @@ fun TvInstallerApp() {
                     Text(status, modifier = Modifier.padding(16.dp), color = if (status.startsWith("Ошибка")) Color(0xFFFF7777) else GoldLight)
                 }
             }
-        }
         } else {
 
             Column(
