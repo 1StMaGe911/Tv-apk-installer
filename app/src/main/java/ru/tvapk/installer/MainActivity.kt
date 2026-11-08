@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.0"
+private const val APP_VERSION = "0.6.1"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -603,6 +604,40 @@ private fun findCleanupCandidates(packages: List<String>): List<String> {
     }.distinct().sorted()
 }
 
+
+@Composable
+private fun DashboardTile(
+    title: String,
+    subtitle: String,
+    symbol: String,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.height(118.dp).clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Color(0xFF30230F) else Color(0xFF17130C)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (selected) Color(0xFFD6A84F) else Color(0xFF5A4525)
+        )
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(13.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(symbol, fontSize = 23.sp)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = Color(0xFFF4D58A), style = MaterialTheme.typography.titleSmall)
+                Text(subtitle, color = Color(0xFFBDB4A3), fontSize = 10.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
@@ -926,6 +961,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.1 • Главный экран-плитки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Главный экран переработан: основные функции собраны в крупные интерактивные карточки быстрого доступа.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.0 • Центр управления и пульт", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлены расширенный паспорт телевизора, анализ хранилища, управление пользовательскими приложениями (информация и удаление с подтверждением), а также экранный ADB-пульт с навигацией, громкостью, меню и системными клавишами.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1112,53 +1150,38 @@ fun TvInstallerApp() {
                     }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                                        Button(
-                        onClick = { usbMode = false },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (!usbMode) Accent else Panel,
-                            contentColor = if (!usbMode) Color(0xFF171006) else GoldLight
-                        )
-                    ) {
-                        Text("Wi-Fi ADB")
-                    }
+                Text("ЦЕНТР УПРАВЛЕНИЯ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                Text("Выбери нужный инструмент", color = TextMuted, fontSize = 12.sp)
 
-                    Button(
-                        onClick = { usbMode = true },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (usbMode) Accent else Panel,
-                            contentColor = if (usbMode) Color(0xFF171006) else GoldLight
-                        )
-                    ) {
-                        Text("USB OTG")
-                    }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DashboardTile(
+                        title = "Wi-Fi ADB", subtitle = "Подключение к TV", symbol = "📶",
+                        modifier = Modifier.weight(1f), selected = !usbMode
+                    ) { usbMode = false }
+                    DashboardTile(
+                        title = "USB OTG", subtitle = "Поиск USB", symbol = "🔌",
+                        modifier = Modifier.weight(1f), selected = usbMode
+                    ) { usbMode = true }
                 }
-
-                Button(
-                    onClick = { showCleanYourTv = !showCleanYourTv },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showCleanYourTv) Accent else Panel,
-                        contentColor = if (showCleanYourTv) Color(0xFF171006) else GoldLight
-                    )
-                ) {
-                    Text(if (showCleanYourTv) "Скрыть Clean Your TV" else "Clean Your TV")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DashboardTile(
+                        title = "Clean Your TV", subtitle = "Очистка и приложения", symbol = "🧹",
+                        modifier = Modifier.weight(1f), selected = showCleanYourTv
+                    ) { showCleanYourTv = !showCleanYourTv }
+                    DashboardTile(
+                        title = "Пульт TV", subtitle = "Управление телевизором", symbol = "🎮",
+                        modifier = Modifier.weight(1f), selected = showRemoteControl
+                    ) { showRemoteControl = !showRemoteControl }
                 }
-
-                Button(
-                    onClick = { showRemoteControl = !showRemoteControl },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (showRemoteControl) Accent else Panel,
-                        contentColor = if (showRemoteControl) Color(0xFF171006) else GoldLight
-                    )
-                ) {
-                    Text(if (showRemoteControl) "Скрыть пульт управления" else "Пульт управления TV")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    DashboardTile(
+                        title = "Установить APK", subtitle = "Выбрать файл", symbol = "📦",
+                        modifier = Modifier.weight(1f)
+                    ) { picker.launch("application/vnd.android.package-archive") }
+                    DashboardTile(
+                        title = "Настройки", subtitle = "Тема и обновления", symbol = "⚙️",
+                        modifier = Modifier.weight(1f)
+                    ) { showSettings = true }
                 }
 
                 Card(
