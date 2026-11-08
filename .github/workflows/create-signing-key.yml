@@ -1,0 +1,32 @@
+name: Создать постоянный ключ подписи
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-key:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Создать ключ
+        run: |
+          keytool -genkeypair \
+            -v \
+            -keystore signing.jks \
+            -storepass tvapk2026 \
+            -keypass tvapk2026 \
+            -alias tvapk \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=TV APK Installer, OU=Apps, O=TVAPK, L=Unknown, ST=Unknown, C=NL"
+
+      - name: Сохранить ключ
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-APK-Signing-Key
+          path: signing.jks
+          retention-days: 1
