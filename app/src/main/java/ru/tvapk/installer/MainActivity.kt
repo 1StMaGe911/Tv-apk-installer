@@ -385,4 +385,33 @@ fun TvInstallerApp() {
         }
     }
 }
+                // Дополнительная информация о приложении
+                Spacer(Modifier.height(8.dp))
 
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF252F40)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "TV APK Installer 2.0",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Accent
+                        )
+                        Text(
+                            "Удобная установка приложений на Android TV",
+                            color = Color.LightGray,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            "Настройки IP и порта сохраняются автоматически.",
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
