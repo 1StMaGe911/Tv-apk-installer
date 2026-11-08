@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.6"
+private const val APP_VERSION = "0.6.7"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -610,6 +610,118 @@ private fun loadPackageFacts(context: Context): Map<String, PackageFact> {
     }
 }
 
+
+private data class TvProfilePackage(val category: String, val ask: Boolean)
+
+private data class TvModelProfile(
+    val id: String,
+    val platform: String,
+    val models: Set<String>,
+    val devices: Set<String>,
+    val brand: String,
+    val sdkMin: Int?,
+    val sdkMax: Int?,
+    val fingerprintPrefix: String?,
+    val neverDisable: Set<String>,
+    val packages: Map<String, TvProfilePackage>
+)
+
+private data class TvProfileMatch(
+    val profile: TvModelProfile,
+    val matchLabel: String
+)
+
+private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
+    return try {
+        val root = JSONObject(context.assets.open("cleanyourtv/profile-meta.json").bufferedReader().use { it.readText() })
+        val profiles = root.optJSONObject("profiles") ?: return emptyList()
+        val result = mutableListOf<TvModelProfile>()
+        val keys = profiles.keys()
+        while (keys.hasNext()) {
+            val id = keys.next()
+            val item = profiles.optJSONObject(id) ?: continue
+            val match = item.optJSONObject("match") ?: JSONObject()
+            fun stringSet(array: JSONArray?): Set<String> {
+                if (array == null) return emptySet()
+                return buildSet {
+                    for (i in 0 until array.length()) {
+                        val value = array.optString(i).trim()
+                        if (value.isNotEmpty()) add(value)
+                    }
+                }
+            }
+            fun nullableInt(key: String): Int? =
+                if (match.has(key) && !match.isNull(key)) match.optInt(key).takeIf { it >= 0 } else null
+
+            val packageMap = linkedMapOf<String, TvProfilePackage>()
+            val packageJson = item.optJSONObject("packages") ?: JSONObject()
+            val packageKeys = packageJson.keys()
+            while (packageKeys.hasNext()) {
+                val packageName = packageKeys.next()
+                val packageInfo = packageJson.optJSONObject(packageName) ?: continue
+                packageMap[packageName] = TvProfilePackage(
+                    packageInfo.optString("category", "other"),
+                    packageInfo.optBoolean("ask", true)
+                )
+            }
+            result += TvModelProfile(
+                id = id,
+                platform = item.optString("platform", "Android TV"),
+                models = stringSet(match.optJSONArray("models")),
+                devices = stringSet(match.optJSONArray("devices")),
+                brand = match.optString("brand", ""),
+                sdkMin = nullableInt("sdkMin"),
+                sdkMax = nullableInt("sdkMax"),
+                fingerprintPrefix = match.optString("fingerprintPrefix").takeIf { it.isNotBlank() && it != "null" },
+                neverDisable = stringSet(item.optJSONArray("neverDisable")),
+                packages = packageMap
+            )
+        }
+        result
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>): TvProfileMatch? {
+    fun field(label: String) = details.lineSequence()
+        .firstOrNull { it.trim().startsWith("$label:", ignoreCase = true) }
+        ?.substringAfter(":")?.trim().orEmpty()
+
+    val manufacturer = field("Производитель")
+    val model = field("Модель")
+    val device = field("Устройство")
+    val sdk = Regex("SDK\\s+(\\d+)", RegexOption.IGNORE_CASE)
+        .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
+    val fingerprint = field("Отпечаток")
+
+    return profiles.mapNotNull { profile ->
+        val modelHit = profile.models.any { it.equals(model, ignoreCase = true) }
+        val deviceHit = profile.devices.any { it.equals(device, ignoreCase = true) }
+        val fingerprintHit = profile.fingerprintPrefix?.let { fingerprint.startsWith(it, ignoreCase = true) } == true
+        val hasIdentityRule = profile.models.isNotEmpty() || profile.devices.isNotEmpty() || profile.fingerprintPrefix != null
+        if (!hasIdentityRule || !(modelHit || deviceHit || fingerprintHit)) return@mapNotNull null
+        if (sdk != null && profile.sdkMin != null && sdk < profile.sdkMin) return@mapNotNull null
+        if (sdk != null && profile.sdkMax != null && sdk > profile.sdkMax) return@mapNotNull null
+
+        val brandHit = profile.brand.isNotBlank() &&
+            (manufacturer.contains(profile.brand, ignoreCase = true) || profile.brand.contains(manufacturer, ignoreCase = true))
+        val score = (if (modelHit) 100 else 0) + (if (fingerprintHit) 80 else 0) +
+            (if (deviceHit) 50 else 0) + (if (brandHit) 10 else 0)
+        val label = when {
+            modelHit -> "точная модель"
+            fingerprintHit -> "совпадение прошивки"
+            else -> "совпадение кода устройства"
+        }
+        Triple(score, profile, label)
+    }.maxByOrNull { it.first }?.let { TvProfileMatch(it.second, it.third) }
+}
+
+private fun tvProfileDisplayName(id: String): String = id
+    .replace('-', ' ').replace('_', ' ')
+    .split(' ').filter { it.isNotBlank() }
+    .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+
 private fun cleanupCategoryLabel(category: String): String = when (category) {
     "ads" -> "Реклама"
     "tracking" -> "Слежение и аналитика"
@@ -620,7 +732,8 @@ private fun cleanupCategoryLabel(category: String): String = when (category) {
 
 private fun findCleanupCandidates(
     packages: List<String>,
-    facts: Map<String, PackageFact>
+    facts: Map<String, PackageFact>,
+    profile: TvModelProfile? = null
 ): List<String> {
     val protected = setOf(
         "com.google.android.tvlauncher",
@@ -633,8 +746,9 @@ private fun findCleanupCandidates(
     val reviewedCategories = setOf("ads", "tracking", "demo", "preloads")
     val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
     return packages.filter { pkg ->
-        pkg !in protected && (
+        pkg !in protected && pkg !in (profile?.neverDisable ?: emptySet()) && (
             facts[pkg]?.category?.let { it in reviewedCategories } == true ||
+                profile?.packages?.get(pkg)?.category?.let { it in reviewedCategories } == true ||
                 markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
             )
     }.distinct().sorted()
@@ -682,6 +796,8 @@ fun TvInstallerApp() {
 
     val settings = remember { prefs(context) }
     val packageFacts = remember { loadPackageFacts(context) }
+    val tvModelProfiles = remember { loadTvModelProfiles(context) }
+    val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
 
     var ip by remember {
         mutableStateOf(settings.getString("ip", "") ?: "")
@@ -1538,6 +1654,13 @@ fun TvInstallerApp() {
                         Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
                         Text(tvDetails, color = Color.LightGray, fontSize = 13.sp)
                         Text("Профиль устройства: ${detectTvProfile(tvDetails)}", color = GoldLight, fontSize = 13.sp)
+                        if (matchedTvProfile != null) {
+                            val matched = matchedTvProfile.profile
+                            Text("Профиль Clean Your TV: ${tvProfileDisplayName(matched.id)}", color = GoldLight, fontSize = 13.sp)
+                            Text("Платформа: ${matched.platform} • ${matchedTvProfile.matchLabel}. Пакетов в профиле: ${matched.packages.size}; защищено от отключения: ${matched.neverDisable.size}.", color = TextMuted, fontSize = 11.sp)
+                        } else {
+                            Text("Точная модель в каталоге Clean Your TV не найдена. Используется общий справочник без модельных рекомендаций.", color = TextMuted, fontSize = 11.sp)
+                        }
                         OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim()
                             val p = port.toIntOrNull()
@@ -1690,13 +1813,16 @@ fun TvInstallerApp() {
                             )
                         }
 
-                        val cleanupCandidates = findCleanupCandidates(allPackages, packageFacts)
-                        val knownCandidates = cleanupCandidates.count { packageFacts.containsKey(it) }
+                        val activeProfile = matchedTvProfile?.profile
+                        val cleanupCandidates = findCleanupCandidates(allPackages, packageFacts, activeProfile)
+                        val knownCandidates = cleanupCandidates.count { packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true }
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
-                        Text("Справочник Clean Your TV: " + packageFacts.size + " известных пакетов. Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         cleanupCandidates.forEach { candidate ->
-                            val fact = packageFacts[candidate]
+                            val fact = packageFacts[candidate] ?: activeProfile?.packages?.get(candidate)?.let { profileFact ->
+                                PackageFact(candidate, candidate, "Рекомендация из профиля ${activeProfile.id}. Проверь назначение компонента перед действием.", profileFact.category)
+                            }
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("• " + candidate, color = GoldLight, fontSize = 12.sp)
                                 if (fact != null) {
