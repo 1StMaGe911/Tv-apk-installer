@@ -220,6 +220,12 @@ private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     return "Производитель: ${prop("ro.product.manufacturer")}\nМодель: ${prop("ro.product.model")}\nAndroid: ${prop("ro.build.version.release")}\nТип: ${prop("ro.build.characteristics")}"
 }
+private fun readAllPackages(adb: Dadb): List<String> =
+    shellText(adb, "pm list packages").lineSequence()
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+        .distinct().sorted().toList()
+
 private fun readUserPackages(adb: Dadb): List<String> =
     shellText(adb, "pm list packages -3").lineSequence()
         .map { it.removePrefix("package:").trim() }
@@ -298,6 +304,7 @@ fun TvInstallerApp() {
     var busy by remember { mutableStateOf(false) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
+    var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
     var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
@@ -646,12 +653,13 @@ fun TvInstallerApp() {
                         Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
                         Text(tvDetails, color = Color.LightGray, fontSize = 13.sp)
                         Text("Профиль устройства: ${detectTvProfile(tvDetails)}", color = GoldLight, fontSize = 13.sp)
-                        val cleanupCandidates = findCleanupCandidates(userPackages)
-                        Text("Проверка рекомендаций: найдено ${cleanupCandidates.size} возможных рекламных или диагностических пакетов", color = Color.LightGray, fontSize = 12.sp)
+                        val cleanupCandidates = findCleanupCandidates(allPackages)
+                        Text("Проверка всего списка: ${allPackages.size} пакетов. Возможных рекламных или диагностических совпадений: ${cleanupCandidates.size}", color = Color.LightGray, fontSize = 12.sp)
+                        if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         cleanupCandidates.forEach { candidate ->
                             Text("• $candidate", color = GoldLight, fontSize = 12.sp)
                         }
-                        if (cleanupCandidates.isNotEmpty()) Text("Это только кандидаты для ручной проверки. Ничего не отключается автоматически: сначала убедись, что пакет не нужен телевизору.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (cleanupCandidates.isNotEmpty()) Text("В список могут попасть системные компоненты. Это только поисковые совпадения: приложение не отключает и не удаляет их. Проверяй назначение каждого пакета отдельно.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
                             if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
@@ -659,8 +667,9 @@ fun TvInstallerApp() {
                                 connectWithRetry(context, host, p) { adb ->
                                     val details = readTvDetails(adb)
                                     val packages = readUserPackages(adb)
-                                    activity.runOnUiThread { tvDetails = details; userPackages = packages }
-                                    "Устройство определено. Найдено пользовательских приложений: ${packages.size}"
+                                    val installed = readAllPackages(adb)
+                                    activity.runOnUiThread { tvDetails = details; userPackages = packages; allPackages = installed }
+                                    "Устройство определено. Пользовательских приложений: ${packages.size}; всего пакетов: ${installed.size}"
                                 }
                             })
                         }) { Text("Определить устройство и найти приложения") }
