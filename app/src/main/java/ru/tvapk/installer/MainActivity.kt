@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.7"
+private const val APP_VERSION = "0.6.8"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -623,7 +623,10 @@ private data class TvModelProfile(
     val sdkMax: Int?,
     val fingerprintPrefix: String?,
     val neverDisable: Set<String>,
-    val packages: Map<String, TvProfilePackage>
+    val packages: Map<String, TvProfilePackage>,
+    val testedBy: String,
+    val testedFirmware: String,
+    val rebootTested: Boolean
 )
 
 private data class TvProfileMatch(
@@ -664,6 +667,7 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
                     packageInfo.optBoolean("ask", true)
                 )
             }
+            val tested = item.optJSONObject("tested") ?: JSONObject()
             result += TvModelProfile(
                 id = id,
                 platform = item.optString("platform", "Android TV"),
@@ -674,7 +678,10 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
                 sdkMax = nullableInt("sdkMax"),
                 fingerprintPrefix = match.optString("fingerprintPrefix").takeIf { it.isNotBlank() && it != "null" },
                 neverDisable = stringSet(item.optJSONArray("neverDisable")),
-                packages = packageMap
+                packages = packageMap,
+                testedBy = tested.optString("by", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указано",
+                testedFirmware = tested.optString("firmware", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указана",
+                rebootTested = tested.optBoolean("rebootTested", false)
             )
         }
         result
@@ -1196,6 +1203,12 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.8 • Профили и безопасность Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Показываются сведения о тестировании профиля и прошивке. Для пакетов с флагом ручной оценки добавлено отдельное предупреждение; защищённые компоненты исключены из кандидатов.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.6.7 • Профили моделей", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено распознавание 173 профилей устройств Clean Your TV и дополнительные списки пакетов с защитой neverDisable.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.6 • Справочник Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен локальный справочник из 1 113 описаний пакетов Clean Your TV. Раздел очистки показывает назначение и категорию известных совпадений. Подсказки информационные: ничего не отключается автоматически.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1657,7 +1670,8 @@ fun TvInstallerApp() {
                         if (matchedTvProfile != null) {
                             val matched = matchedTvProfile.profile
                             Text("Профиль Clean Your TV: ${tvProfileDisplayName(matched.id)}", color = GoldLight, fontSize = 13.sp)
-                            Text("Платформа: ${matched.platform} • ${matchedTvProfile.matchLabel}. Пакетов в профиле: ${matched.packages.size}; защищено от отключения: ${matched.neverDisable.size}.", color = TextMuted, fontSize = 11.sp)
+                            Text("Платформа: ${matched.platform} • ${matchedTvProfile.matchLabel}. Пакетов: ${matched.packages.size}; требуют ручной оценки: ${matched.packages.count { it.value.ask }}; защищено: ${matched.neverDisable.size}.", color = TextMuted, fontSize = 11.sp)
+                            Text("Данные профиля: ${matched.testedBy}; прошивка ${matched.testedFirmware}; проверка перезагрузки: ${if (matched.rebootTested) "да" else "нет"}.", color = TextMuted, fontSize = 10.sp)
                         } else {
                             Text("Точная модель в каталоге Clean Your TV не найдена. Используется общий справочник без модельных рекомендаций.", color = TextMuted, fontSize = 11.sp)
                         }
@@ -1820,13 +1834,15 @@ fun TvInstallerApp() {
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         cleanupCandidates.forEach { candidate ->
-                            val fact = packageFacts[candidate] ?: activeProfile?.packages?.get(candidate)?.let { profileFact ->
+                            val profileRule = activeProfile?.packages?.get(candidate)
+                            val fact = packageFacts[candidate] ?: profileRule?.let { profileFact ->
                                 PackageFact(candidate, candidate, "Рекомендация из профиля ${activeProfile.id}. Проверь назначение компонента перед действием.", profileFact.category)
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("• " + candidate, color = GoldLight, fontSize = 12.sp)
                                 if (fact != null) {
                                     Text(fact.name + " • " + cleanupCategoryLabel(fact.category), color = TextMain, fontSize = 11.sp)
+                                    if (profileRule?.ask == true) Text("В профиле Clean Your TV: требуется ручная оценка перед отключением.", color = Color(0xFFFFD98A), fontSize = 10.sp)
                                     Text(fact.description, color = Color.LightGray, fontSize = 10.sp)
                                 } else {
                                     Text("Совпадение по названию пакета; назначение не подтверждено справочником.", color = Color.LightGray, fontSize = 10.sp)
