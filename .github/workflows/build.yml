@@ -1,4 +1,3 @@
-
 name: Собрать APK
 
 on:
@@ -29,8 +28,18 @@ jobs:
         with:
           cache-disabled: false
 
+      - name: Подготовить ключ подписи
+        env:
+          KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEY_BASE64" | base64 --decode > signing.jks
+
       - name: Собрать APK с повторными попытками
         env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/signing.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          SIGNING_KEY_ALIAS: tvapk
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           GRADLE_OPTS: "-Dorg.gradle.internal.http.connectionTimeout=60000 -Dorg.gradle.internal.http.socketTimeout=120000"
         run: |
           for attempt in 1 2 3 4; do
@@ -53,4 +62,3 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-          
