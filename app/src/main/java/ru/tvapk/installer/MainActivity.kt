@@ -42,7 +42,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.1"
+private const val APP_VERSION = "0.5.2"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -310,6 +310,11 @@ private fun readUserPackages(adb: Dadb): List<String> =
 private fun changePackageState(adb: Dadb, packageName: String, enabled: Boolean): String {
     require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     return shellText(adb, if (enabled) "pm enable --user 0 $packageName" else "pm disable-user --user 0 $packageName")
+}
+
+private fun launchTvApp(adb: Dadb, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    return shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
 }
 
 
@@ -1027,6 +1032,13 @@ fun TvInstallerApp() {
                         userPackages.filter { it.contains(packageFilter, ignoreCase = true) }.forEach { pkg ->
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(pkg, fontSize = 12.sp, color = TextMain)
+                                OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                    val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                    runTask({ connectWithRetry(context, host, p) { adb ->
+                                        launchTvApp(adb, pkg)
+                                        "Запущено приложение: $pkg"
+                                    } })
+                                }) { Text("Запустить приложение") }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(enabled = !busy && pkg !in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
