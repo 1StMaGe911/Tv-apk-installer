@@ -391,10 +391,39 @@ fun TvInstallerApp() {
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                                                    OutlinedTextField(
+                                                                            if (!usbMode) {
+                            OutlinedTextField(
                                 value = tvName,
                                 onValueChange = { tvName = it },
                                 label = { Text("Название телевизора") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = Color(0xFF6B542B),
+                                    focusedLabelColor = Accent,
+                                    cursorColor = Accent
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = ip,
+                                onValueChange = { ip = it },
+                                label = { Text("IP телевизора") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = Color(0xFF6B542B),
+                                    focusedLabelColor = Accent,
+                                    cursorColor = Accent
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = port,
+                                onValueChange = { port = it },
+                                label = { Text("Порт ADB") },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
