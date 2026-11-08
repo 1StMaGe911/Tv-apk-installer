@@ -1,4 +1,3 @@
-
 package ru.tvapk.installer
 
 import android.content.Context
@@ -53,6 +52,13 @@ private fun getAdbKey(context: Context): AdbKeyPair {
     return AdbKeyPair.read(privateKey, publicKey)
 }
 
+private fun describeError(e: Throwable): String {
+    return generateSequence(e) { it.cause }
+        .joinToString(" → ") {
+            "${it.javaClass.simpleName}: ${it.message ?: "без сообщения"}"
+        }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvInstallerApp() {
@@ -82,7 +88,7 @@ fun TvInstallerApp() {
             val result = try {
                 action()
             } catch (e: Exception) {
-                "Ошибка: ${e.message ?: "неизвестная ошибка"}"
+                "Ошибка: ${describeError(e)}"
             }
 
             (context as ComponentActivity).runOnUiThread {
@@ -270,6 +276,115 @@ fun TvInstallerApp() {
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 "Установка APK",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+
+                        Text(selectedName, color = Color.LightGray)
+
+                        OutlinedButton(
+                            onClick = {
+                                picker.launch(
+                                    "application/vnd.android.package-archive"
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.FolderOpen, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Выбрать APK")
+                        }
+
+                        Button(
+                            enabled = !busy &&
+                                selectedUri != null &&
+                                mode == 0,
+                            onClick = {
+                                val uri = selectedUri!!
+
+                                runBackground {
+                                    val file = File(
+                                        context.cacheDir,
+                                        "selected_app.apk"
+                                    )
+
+                                    context.contentResolver
+                                        .openInputStream(uri).use { input ->
+                                            requireNotNull(input) {
+                                                "Не удалось открыть APK"
+                                            }.use { source ->
+                                                file.outputStream().use { output ->
+                                                    source.copyTo(output)
+                                                }
+                                            }
+                                        }
+
+                                    require(file.length() > 0) {
+                                        "APK-файл пустой"
+                                    }
+
+                                    val key = getAdbKey(context)
+
+                                    Dadb.create(
+                                        ip.trim(),
+                                        port.toInt(),
+                                        key
+                                    ).use { adb ->
+
+                                        when (val result = adb.install(file)) {
+                                            is InstallResult.Success ->
+                                                "APK успешно установлен!"
+
+                                            is InstallResult.Failure ->
+                                                "Ошибка установки: ${result.reason}"
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Установить на телевизор")
+                        }
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Состояние",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(status, color = Color.LightGray)
+
+                        if (busy) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
+
+                Text(
+                    "ADB поддерживается только совместимыми Android TV и приставками. VIDAA не поддерживает APK.",
+                    color = Color(0xFFFFC66D),
+                    fontSize = 12.sp
+                )
+
+                Text(
+                    "TV APK Installer • версия 0.2.0",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+} APK",
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
