@@ -42,7 +42,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.2"
+private const val APP_VERSION = "0.5.3"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -485,6 +485,7 @@ fun TvInstallerApp() {
     var usbMode by remember { mutableStateOf(false) }
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRebootConfirm by remember { mutableStateOf(false) }
+    var showChangelog by remember { mutableStateOf(false) }
 
     var versionStatus by remember {
         mutableStateOf("Проверка ещё не выполнялась")
@@ -1325,6 +1326,44 @@ fun TvInstallerApp() {
                             "Текущая версия: $APP_VERSION",
                             color = Color.LightGray
                         )
+
+                        OutlinedButton(
+                            onClick = { showChangelog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Что нового в обновлениях")
+                        }
+
+                        if (showChangelog) {
+                            AlertDialog(
+                                onDismissRequest = { showChangelog = false },
+                                title = { Text("История обновлений") },
+                                text = {
+                                    Column(
+                                        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Text("v0.5.3 • История обновлений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен этот раздел с описанием изменений версий прямо в приложении.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.2 • Запуск приложений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("В Clean Your TV добавлена кнопка запуска установленных пользовательских приложений через Wi-Fi ADB.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.1 • Управление телевизором", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены команды открытия главного экрана, настроек Android TV и перезагрузки телевизора с подтверждением.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.5.0 • Диагностика", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена диагностика оперативной памяти, хранилища, батареи и времени работы устройства.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.4.9 • Резервное копирование", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Улучшено создание ZIP-резервной копии: сведения об устройстве, список приложений и APK пользовательских приложений, включая split APK.", color = TextMain)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(onClick = { showChangelog = false }) { Text("Закрыть") }
+                                }
+                            )
+                        }
 
                         Text(
                             versionStatus,
