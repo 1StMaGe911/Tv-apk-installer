@@ -419,7 +419,7 @@ fun TvInstallerApp() {
                                             .putString("port", p.toString())
                                             .apply()
 
-                                        runTask {
+                                        runTask(action = {
                                             connectWithRetry(
                                                 context,
                                                 host,
