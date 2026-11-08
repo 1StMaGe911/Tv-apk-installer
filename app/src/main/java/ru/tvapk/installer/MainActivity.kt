@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dadb.AdbKeyPair
@@ -34,7 +35,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 private const val APP_VERSION = "0.3.0"
-private const val GITHUB_RELEASES =
+private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
 private val Bg = Color(0xFF10131B)
@@ -56,37 +57,59 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun getPrefs(context: Context) =
+private fun prefs(context: Context) =
     context.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
 
 private fun getAdbKey(context: Context): AdbKeyPair {
-    val directory = File(context.filesDir, "adb")
-    val privateKey = File(directory, "adbkey")
-    val publicKey = File(directory, "adbkey.pub")
+    val dir = File(context.filesDir, "adb")
+    val privateKey = File(dir, "adbkey")
+    val publicKey = File(dir, "adbkey.pub")
 
     if (!privateKey.exists()) {
-        directory.mkdirs()
+        dir.mkdirs()
         AdbKeyPair.generate(privateKey, publicKey)
     }
 
     return AdbKeyPair.read(privateKey, publicKey)
 }
 
-private fun describeError(e: Throwable): String {
-    return generateSequence(e) { it.cause }
+private fun errorText(error: Throwable): String {
+    return generateSequence(error) { it.cause }
         .joinToString(" → ") {
             "${it.javaClass.simpleName}: ${it.message ?: "без сообщения"}"
         }
 }
 
+private fun connectWithRetry(
+    context: Context,
+    host: String,
+    port: Int,
+    action: (Dadb) -> String
+): String {
+    var lastError: Throwable? = null
+
+    repeat(3) { attempt ->
+        try {
+            return Dadb.create(host, port, getAdbKey(context)).use {
+                action(it)
+            }
+        } catch (e: Exception) {
+            lastError = e
+            if (attempt < 2) Thread.sleep(1500)
+        }
+    }
+
+    throw Exception(
+        "Не удалось подключиться после 3 попыток: " +
+            errorText(lastError ?: Exception("Неизвестная ошибка"))
+    )
+}
+
 private fun loadDevices(context: Context): List<TvDevice> {
     return try {
-        val json = JSONArray(
-            getPrefs(context).getString("devices", "[]")
-        )
-
-        (0 until json.length()).map {
-            val item = json.getJSONObject(it)
+        val array = JSONArray(prefs(context).getString("devices", "[]"))
+        (0 until array.length()).map {
+            val item = array.getJSONObject(it)
             TvDevice(
                 item.getString("name"),
                 item.getString("ip"),
@@ -99,61 +122,29 @@ private fun loadDevices(context: Context): List<TvDevice> {
 }
 
 private fun saveDevices(context: Context, devices: List<TvDevice>) {
-    val json = JSONArray()
-
+    val array = JSONArray()
     devices.forEach {
-        json.put(
+        array.put(
             JSONObject()
                 .put("name", it.name)
                 .put("ip", it.ip)
                 .put("port", it.port)
         )
     }
-
-    getPrefs(context).edit()
-        .putString("devices", json.toString())
-        .apply()
+    prefs(context).edit().putString("devices", array.toString()).apply()
 }
 
 private fun loadHistory(context: Context): List<String> {
-    return getPrefs(context)
-        .getString("history", "")
+    return prefs(context).getString("history", "")
         .orEmpty()
         .lines()
         .filter { it.isNotBlank() }
 }
 
 private fun saveHistory(context: Context, history: List<String>) {
-    getPrefs(context).edit()
+    prefs(context).edit()
         .putString("history", history.take(30).joinToString("\n"))
         .apply()
-}
-
-private fun withAdbRetry(
-    context: Context,
-    host: String,
-    port: Int,
-    action: (Dadb) -> String
-): String {
-    var lastError: Throwable? = null
-
-    repeat(3) { attempt ->
-        try {
-            val key = getAdbKey(context)
-
-            return Dadb.create(host, port, key).use { adb ->
-                action(adb)
-            }
-        } catch (e: Exception) {
-            lastError = e
-            if (attempt < 2) Thread.sleep(1500)
-        }
-    }
-
-    throw Exception(
-        "Не удалось подключиться после 3 попыток: " +
-            describeError(lastError ?: Exception("Неизвестная ошибка"))
-    )
 }
 
 private fun compareVersions(first: String, second: String): Int {
@@ -169,24 +160,26 @@ private fun compareVersions(first: String, second: String): Int {
         val y = b.getOrElse(i) { 0 }
         if (x != y) return x.compareTo(y)
     }
-
     return 0
 }
 
 private fun checkLatestVersion(): Pair<String, String?> {
     val connection =
-        URL(GITHUB_RELEASES).openConnection() as HttpURLConnection
+        URL(RELEASES_URL).openConnection() as HttpURLConnection
 
     try {
         connection.requestMethod = "GET"
         connection.connectTimeout = 10000
         connection.readTimeout = 10000
         connection.setRequestProperty("User-Agent", "TV-APK-Installer")
-        connection.setRequestProperty("Accept", "application/vnd.github+json")
+        connection.setRequestProperty(
+            "Accept",
+            "application/vnd.github+json"
+        )
 
         if (connection.responseCode != 200) {
             return Pair(
-                "Не удалось проверить обновление. Код: ${connection.responseCode}",
+                "Ошибка проверки: HTTP ${connection.responseCode}",
                 null
             )
         }
@@ -197,14 +190,14 @@ private fun checkLatestVersion(): Pair<String, String?> {
 
         val json = JSONObject(response)
         val tag = json.optString("tag_name")
-        val releaseUrl = json.optString("html_url")
+        val url = json.optString("html_url")
 
         if (tag.isBlank()) {
-            return Pair("Не удалось определить версию релиза", null)
+            return Pair("Версия релиза не найдена", null)
         }
 
         return if (compareVersions(tag, APP_VERSION) > 0) {
-            Pair("Доступно обновление: $tag", releaseUrl)
+            Pair("Доступно обновление: $tag", url)
         } else {
             Pair("Установлена актуальная версия $APP_VERSION", null)
         }
@@ -213,33 +206,33 @@ private fun checkLatestVersion(): Pair<String, String?> {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
-    val prefs = remember { getPrefs(context) }
+    val activity = context as ComponentActivity
+    val uriHandler = LocalUriHandler.current
+
+    val settings = remember { prefs(context) }
 
     var ip by remember {
-        mutableStateOf(prefs.getString("ip", "") ?: "")
+        mutableStateOf(settings.getString("ip", "") ?: "")
     }
-
     var port by remember {
-        mutableStateOf(prefs.getString("port", "5555") ?: "5555")
+        mutableStateOf(settings.getString("port", "5555") ?: "5555")
     }
-
     var tvName by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Не подключено") }
 
+    var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedName by remember { mutableStateOf("APK не выбран") }
 
-    var mode by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
+    var usbMode by remember { mutableStateOf(false) }
 
-    var releaseUrl by remember { mutableStateOf<String?>(null) }
     var versionStatus by remember {
         mutableStateOf("Проверка ещё не выполнялась")
     }
+    var releaseUrl by remember { mutableStateOf<String?>(null) }
 
     val devices = remember {
         mutableStateListOf<TvDevice>().apply {
@@ -253,9 +246,6 @@ fun TvInstallerApp() {
         }
     }
 
-    val uriHandler =
-        androidx.compose.ui.platform.LocalUriHandler.current
-
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
@@ -263,26 +253,29 @@ fun TvInstallerApp() {
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
     }
 
-    fun runBackground(action: () -> String) {
+    fun runTask(
+        action: () -> String,
+        onFinished: (String) -> Unit = {}
+    ) {
         if (busy) return
-
         busy = true
 
         Thread {
             val result = try {
                 action()
             } catch (e: Exception) {
-                "Ошибка: ${describeError(e)}"
+                "Ошибка: ${errorText(e)}"
             }
 
-            (context as ComponentActivity).runOnUiThread {
+            activity.runOnUiThread {
                 status = result
                 busy = false
+                onFinished(result)
             }
         }.start()
     }
 
-    fun saveConnection() {
+    fun saveCurrentDevice() {
         val host = ip.trim()
         val p = port.toIntOrNull()
 
@@ -291,7 +284,7 @@ fun TvInstallerApp() {
             return
         }
 
-        prefs.edit()
+        settings.edit()
             .putString("ip", host)
             .putString("port", p.toString())
             .apply()
@@ -305,7 +298,6 @@ fun TvInstallerApp() {
         devices.removeAll {
             it.ip == host && it.port == p
         }
-
         devices.add(device)
         saveDevices(context, devices)
         status = "Телевизор сохранён"
@@ -321,7 +313,7 @@ fun TvInstallerApp() {
         Scaffold(containerColor = Bg) { padding ->
 
             Column(
-                Modifier
+                modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .verticalScroll(rememberScrollState())
@@ -332,13 +324,11 @@ fun TvInstallerApp() {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Tv,
-                        null,
+                        contentDescription = null,
                         tint = Accent,
                         modifier = Modifier.size(42.dp)
                     )
-
                     Spacer(Modifier.width(12.dp))
-
                     Column {
                         Text("TV APK Installer", fontSize = 24.sp)
                         Text(
@@ -348,21 +338,26 @@ fun TvInstallerApp() {
                     }
                 }
 
-                SingleChoiceSegmentedButtonRow(
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    SegmentedButton(
-                        selected = mode == 0,
-                        onClick = { mode = 0 },
-                        shape = SegmentedButtonDefaults.itemShape(0, 2)
+                    Button(
+                        onClick = { usbMode = false },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!usbMode) Accent else Panel
+                        )
                     ) {
                         Text("Wi-Fi ADB")
                     }
 
-                    SegmentedButton(
-                        selected = mode == 1,
-                        onClick = { mode = 1 },
-                        shape = SegmentedButtonDefaults.itemShape(1, 2)
+                    Button(
+                        onClick = { usbMode = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (usbMode) Accent else Panel
+                        )
                     ) {
                         Text("USB OTG")
                     }
@@ -383,7 +378,7 @@ fun TvInstallerApp() {
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        if (mode == 0) {
+                        if (!usbMode) {
                             OutlinedTextField(
                                 value = tvName,
                                 onValueChange = { tvName = it },
@@ -419,13 +414,17 @@ fun TvInstallerApp() {
                                     ) {
                                         status = "Проверь IP и порт"
                                     } else {
-                                        prefs.edit()
+                                        settings.edit()
                                             .putString("ip", host)
                                             .putString("port", p.toString())
                                             .apply()
 
-                                        runBackground {
-                                            withAdbRetry(context, host, p) {
+                                        runTask {
+                                            connectWithRetry(
+                                                context,
+                                                host,
+                                                p
+                                            ) {
                                                 "ADB подключён: $host:$p"
                                             }
                                         }
@@ -440,7 +439,7 @@ fun TvInstallerApp() {
 
                             OutlinedButton(
                                 enabled = !busy,
-                                onClick = { saveConnection() },
+                                onClick = { saveCurrentDevice() },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Сохранить телевизор")
@@ -511,7 +510,7 @@ fun TvInstallerApp() {
                                         tvName = device.name
                                         ip = device.ip
                                         port = device.port.toString()
-                                        mode = 0
+                                        usbMode = false
                                         status = "Выбран ${device.name}"
                                     }
                                 ) {
@@ -526,12 +525,10 @@ fun TvInstallerApp() {
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
-                                        "Удалить",
-                                        tint = Color.LightGray
+                                        contentDescription = "Удалить"
                                     )
                                 }
                             }
-
                             HorizontalDivider(color = Color.DarkGray)
                         }
                     }
@@ -549,7 +546,7 @@ fun TvInstallerApp() {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.Android,
-                                null,
+                                contentDescription = null,
                                 tint = Accent
                             )
                             Spacer(Modifier.width(8.dp))
@@ -559,7 +556,10 @@ fun TvInstallerApp() {
                             )
                         }
 
-                        Text(selectedName, color = Color.LightGray)
+                        Text(
+                            selectedName,
+                            color = Color.LightGray
+                        )
 
                         OutlinedButton(
                             onClick = {
@@ -585,4 +585,204 @@ fun TvInstallerApp() {
                                     host.isBlank() || p == null ||
                                     p !in 1..65535
                                 ) {
-                                    status = "Прове
+                                    status = "Проверь IP и порт телевизора"
+                                } else {
+                                    runTask(
+                                        action = {
+                                            val apkFile = File(
+                                                context.cacheDir,
+                                                "selected_app.apk"
+                                            )
+
+                                            context.contentResolver
+                                                .openInputStream(uri)
+                                                ?.use { input ->
+                                                    apkFile.outputStream().use {
+                                                        output ->
+                                                        input.copyTo(output)
+                                                    }
+                                                }
+                                                ?: throw Exception(
+                                                    "Не удалось прочитать APK"
+                                                )
+
+                                            connectWithRetry(
+                                                context,
+                                                host,
+                                                p
+                                            ) { adb ->
+                                                adb.install(apkFile)
+                                                "APK успешно установлен"
+                                            }
+                                        },
+                                        onFinished = { result ->
+                                            if (result == "APK успешно установлен") {
+                                                val entry =
+                                                    "$selectedName — $host:$p"
+
+                                                history.add(0, entry)
+                                                while (history.size > 30) {
+                                                    history.removeAt(
+                                                        history.lastIndex
+                                                    )
+                                                }
+                                                saveHistory(context, history)
+                                            }
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                if (busy) "Выполняется..." else "Установить APK"
+                            )
+                        }
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "История установок",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        if (history.isEmpty()) {
+                            Text(
+                                "История пока пуста",
+                                color = Color.LightGray
+                            )
+                        }
+
+                        history.forEach {
+                            Text(it, color = Color.LightGray, fontSize = 13.sp)
+                            HorizontalDivider(color = Color.DarkGray)
+                        }
+
+                        if (history.isNotEmpty()) {
+                            TextButton(
+                                onClick = {
+                                    history.clear()
+                                    saveHistory(context, history)
+                                }
+                            ) {
+                                Text("Очистить историю")
+                            }
+                        }
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Обновления приложения",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            "Текущая версия: $APP_VERSION",
+                            color = Color.LightGray
+                        )
+
+                        Text(
+                            versionStatus,
+                            color = Color.LightGray
+                        )
+
+                        Button(
+                            enabled = !busy,
+                            onClick = {
+                                busy = true
+
+                                Thread {
+                                    val result = try {
+                                        checkLatestVersion()
+                                    } catch (e: Exception) {
+                                        Pair(
+                                            "Ошибка: ${errorText(e)}",
+                                            null
+                                        )
+                                    }
+
+                                    activity.runOnUiThread {
+                                        versionStatus = result.first
+                                        releaseUrl = result.second
+                                        status = result.first
+                                        busy = false
+                                    }
+                                }.start()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Проверить обновления")
+                        }
+
+                        if (releaseUrl != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    releaseUrl?.let {
+                                        uriHandler.openUri(it)
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Открыть страницу обновления")
+                            }
+                        }
+                    }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Panel
+                    )
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            "Статус",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            status,
+                            color = if (status.startsWith("Ошибка")) {
+                                Color(0xFFFF7777)
+                            } else {
+                                Color.LightGray
+                            }
+                        )
+                    }
+                }
+
+                Text(
+                    "Важно: установка APK поддерживается на Android TV " +
+                        "и Android-приставках. Hisense VIDAA не является " +
+                        "Android TV и не поддерживает установку Android APK.",
+                    color = Color.LightGray,
+                    fontSize = 12.sp
+                )
+
+                Text(
+                    "TV APK Installer • $APP_VERSION",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+        }
+    }
+}
