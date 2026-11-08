@@ -38,12 +38,14 @@ import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
 import dadb.AdbKeyPair
 import dadb.Dadb
+import dadb.InstallResult
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -495,6 +497,50 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
     return archive
 }
 
+private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String {
+    val restoreDir = File(context.cacheDir, "tv-restore-\${System.currentTimeMillis()}")
+    if (restoreDir.exists()) restoreDir.deleteRecursively()
+    if (!restoreDir.mkdirs()) throw Exception("Не удалось создать временную папку восстановления")
+    val grouped = linkedMapOf<String, MutableList<File>>()
+    try {
+        ZipInputStream(archive.inputStream().buffered()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                val parts = entry.name.split("/")
+                if (!entry.isDirectory && parts.size == 3 && parts[0] == "apks" &&
+                    parts[2].endsWith(".apk", ignoreCase = true) &&
+                    parts[1].matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))
+                ) {
+                    val packageName = parts[1]
+                    val target = File(restoreDir, "\${packageName.replace('.', '_')}_\${grouped[packageName]?.size ?: 0}.apk")
+                    target.outputStream().use { output -> zip.copyTo(output) }
+                    if (target.length() > 0L) grouped.getOrPut(packageName) { mutableListOf() }.add(target)
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        if (grouped.isEmpty()) throw Exception("В архиве не найдены APK из резервной копии TV APK Installer")
+        var installed = 0
+        val failures = mutableListOf<String>()
+        grouped.forEach { (packageName, files) ->
+            try {
+                val result = if (files.size > 1) adb.installMultiple(files) else adb.install(files.first())
+                when (result) {
+                    is InstallResult.Success -> installed++
+                    is InstallResult.Failure -> failures.add("$packageName: \${result.reason}")
+                }
+            } catch (e: Exception) {
+                failures.add("$packageName: \${e.message ?: "ошибка установки"}")
+            }
+        }
+        return "Восстановлено приложений: $installed из \${grouped.size}. Ошибок: \${failures.size}" +
+            if (failures.isEmpty()) "" else "\n" + failures.take(10).joinToString("\n")
+    } finally {
+        restoreDir.deleteRecursively()
+    }
+}
+
 private fun isProtectedSystemPackage(packageName: String): Boolean {
     val protected = setOf(
         "android",
@@ -599,6 +645,7 @@ fun TvInstallerApp() {
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -707,6 +754,12 @@ fun TvInstallerApp() {
                 onFinished(result)
             }
         }.start()
+    }
+
+    val backupRestorePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) pendingRestoreUri = sourceUri
     }
 
     val backupSaver = rememberLauncherForActivityResult(
@@ -1573,6 +1626,12 @@ fun TvInstallerApp() {
                         ) {
                             Text(if (busy) "Создание копии..." else "Создать резервную копию APK")
                         }
+
+                        OutlinedButton(
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { backupRestorePicker.launch(arrayOf("application/zip", "application/octet-stream")) }
+                        ) { Text("Восстановить приложения из ZIP") }
                         Text(
                             "В ZIP сохраняются APK пользовательских приложений (в том числе split APK), список пакетов и сведения об устройстве. Данные внутри приложений и системные настройки без root не копируются.",
                             color = Color(0xFFFFD98A), fontSize = 11.sp
@@ -1623,6 +1682,45 @@ fun TvInstallerApp() {
                                 }
                             }
                             HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (pendingRestoreUri != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingRestoreUri = null },
+                                title = { Text("Восстановить приложения?") },
+                                text = { Text("Будут установлены APK из выбранной резервной копии. Приложения могут обновиться или заменить текущие версии. Данные приложений и системные настройки в архив не входят.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val uri = pendingRestoreUri ?: return@TextButton
+                                        pendingRestoreUri = null
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull()
+                                        if (host.isBlank() || p == null || p !in 1..65535) {
+                                            status = "Сначала укажи IP и порт ADB"
+                                        } else {
+                                            runTask({
+                                                val archive = File(context.cacheDir, "tv-backup-restore.zip")
+                                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                                    archive.outputStream().use { output -> input.copyTo(output) }
+                                                } ?: throw Exception("Не удалось прочитать ZIP-архив")
+                                                try {
+                                                    connectWithRetry(context, host, p) { adb -> restoreTvBackup(adb, context, archive) }
+                                                } finally {
+                                                    archive.delete()
+                                                }
+                                            }, { result ->
+                                                if (!result.startsWith("Ошибка")) {
+                                                    userPackages = emptyList()
+                                                    allPackages = emptyList()
+                                                    status = result + ". Повтори определение устройства для обновления списка."
+                                                }
+                                            })
+                                        }
+                                    }) { Text("Восстановить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingRestoreUri = null }) { Text("Отмена") }
+                                }
+                            )
                         }
                         if (pendingAppUninstall != null) {
                             AlertDialog(
