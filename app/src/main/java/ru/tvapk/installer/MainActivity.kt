@@ -39,7 +39,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.6"
+private const val APP_VERSION = "0.4.7"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -57,8 +57,18 @@ data class TvDevice(
 )
 
 class MainActivity : ComponentActivity() {
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        schedulePeriodicUpdateCheck(this)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             TvInstallerApp()
         }
