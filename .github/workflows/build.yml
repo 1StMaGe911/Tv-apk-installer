@@ -6,7 +6,7 @@ on:
     branches: ["main"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -16,6 +16,12 @@ jobs:
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
+
+      - name: Определить версию приложения
+        id: version
+        run: |
+          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Установить Java
         uses: actions/setup-java@v4
@@ -62,3 +68,16 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Опубликовать релиз для автообновления
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: TV APK Installer v${{ steps.version.outputs.name }}
+          target_commitish: main
+          body: |
+            Автоматическая сборка TV APK Installer v${{ steps.version.outputs.name }}.
+            Установочный APK прикреплён к этому релизу.
+          files: app/build/outputs/apk/debug/app-debug.apk
+          overwrite_files: true
+          make_latest: true
