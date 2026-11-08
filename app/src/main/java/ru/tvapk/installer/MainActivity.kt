@@ -1,14 +1,16 @@
+
 package ru.tvapk.installer
 
+import android.app.Activity
+import android.hardware.usb.UsbManager
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
@@ -19,8 +21,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dadb.Dadb
+import java.io.File
 
 private val Bg = Color(0xFF10131B)
 private val Panel = Color(0xFF1B2230)
@@ -36,68 +41,248 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TvInstallerApp() {
+    val context = LocalContext.current
     var ip by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("5555") }
     var status by remember { mutableStateOf("Не подключено") }
-    var selectedFile by remember { mutableStateOf("APK-файл не выбран") }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        selectedFile = if (uri == null) "APK-файл не выбран" else uri.lastPathSegment ?: "Файл выбран"
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedName by remember { mutableStateOf("APK не выбран") }
+    var mode by remember { mutableStateOf(0) }
+    var busy by remember { mutableStateOf(false) }
+
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        selectedUri = uri
+        selectedName = uri?.lastPathSegment ?: "APK не выбран"
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
-        background = Bg, surface = Panel, primary = Accent,
-        onBackground = Color.White, onSurface = Color.White
-    )) {
+    fun runBackground(action: () -> String) {
+        if (busy) return
+        busy = true
+        Thread {
+            val result = try {
+                action()
+            } catch (e: Exception) {
+                "Ошибка: ${e.message}"
+            }
+            (context as Activity).runOnUiThread {
+                status = result
+                busy = false
+            }
+        }.start()
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            background = Bg,
+            surface = Panel,
+            primary = Accent
+        )
+    ) {
         Scaffold(containerColor = Bg) { padding ->
             Column(
-                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Tv, null, tint = Accent, modifier = Modifier.size(38.dp))
+                    Icon(Icons.Default.Tv, null, tint = Accent)
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text("TV APK Installer", fontSize = 23.sp, color = Color.White)
-                        Text("Установка приложений на Android TV", color = Color.LightGray, fontSize = 12.sp)
+                        Text("TV APK Installer", fontSize = 23.sp)
+                        Text("Установка приложений на ТВ", color = Color.LightGray)
                     }
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Подключение по Wi-Fi ADB", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IP-адрес телевизора") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт ADB (обычно 5555)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        Text("Состояние: $status", color = Color.LightGray)
-                        Button(onClick = { status = "Экран подключения готов; ADB-протокол будет добавлен следующим этапом" }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Подключиться")
+
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    SegmentedButton(
+                        selected = mode == 0,
+                        onClick = { mode = 0 },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2)
+                    ) { Text("Wi-Fi") }
+
+                    SegmentedButton(
+                        selected = mode == 1,
+                        onClick = { mode = 1 },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2)
+                    ) { Text("USB OTG") }
+                }
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Panel)
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (mode == 0) {
+                            Text("Подключение по Wi-Fi ADB")
+
+                            OutlinedTextField(
+                                value = ip,
+                                onValueChange = { ip = it },
+                                label = { Text("IP телевизора") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = port,
+                                onValueChange = { port = it },
+                                label = { Text("Порт ADB") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            Button(
+                                enabled = !busy,
+                                onClick = {
+                                    val host = ip.trim()
+                                    val p = port.toIntOrNull()
+
+                                    if (host.isBlank() || p == null || p !in 1..65535) {
+                                        status = "Проверь IP и порт"
+                                    } else {
+                                        runBackground {
+                                            Dadb.create(host, p).use {
+                                                "ADB подключён: $host:$p"
+                                            }
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Проверить подключение")
+                            }
+                        } else {
+                            Text("USB OTG")
+
+                            Button(
+                                enabled = !busy,
+                                onClick = {
+                                    val manager = context.getSystemService(
+                                        android.content.Context.USB_SERVICE
+                                    ) as UsbManager
+
+                                    val devices = manager.deviceList.values
+
+                                    status = if (devices.isEmpty()) {
+                                        "USB-устройства не обнаружены"
+                                    } else {
+                                        "Найдены USB-устройства: " +
+                                            devices.joinToString { 
+                                                "${it.vendorId}:${it.productId}"
+                                            } +
+                                            ". ADB-транспорт ещё не реализован."
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Найти USB-устройства")
+                            }
+
+                            Text(
+                                "USB Host обнаруживает устройства. Для полноценной установки через USB ещё потребуется ADB-транспорт.",
+                                color = Color.LightGray,
+                                fontSize = 12.sp
+                            )
                         }
                     }
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Panel)
+                ) {
+                    Column(
+                        Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Android, null, tint = Accent)
                             Spacer(Modifier.width(8.dp))
-                            Text("Установка APK", style = MaterialTheme.typography.titleMedium)
+                            Text("Установка APK")
                         }
-                        Text(selectedFile, color = Color.LightGray)
-                        OutlinedButton(onClick = { picker.launch("application/vnd.android.package-archive") }, modifier = Modifier.fillMaxWidth()) {
+
+                        Text(selectedName, color = Color.LightGray)
+
+                        OutlinedButton(
+                            onClick = {
+                                picker.launch("application/vnd.android.package-archive")
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(Icons.Default.FolderOpen, null)
                             Spacer(Modifier.width(8.dp))
                             Text("Выбрать APK")
                         }
-                        Button(onClick = { status = "Сначала необходимо реализовать и проверить ADB-подключение" }, modifier = Modifier.fillMaxWidth()) {
+
+                        Button(
+                            enabled = !busy && selectedUri != null && mode == 0,
+                            onClick = {
+                                val uri = selectedUri!!
+
+                                runBackground {
+                                    val file = File(
+                                        context.cacheDir,
+                                        "selected_app.apk"
+                                    )
+
+                                    context.contentResolver.openInputStream(uri).use { input ->
+                                        requireNotNull(input) {
+                                            "Не удалось открыть APK"
+                                        }.use { source ->
+                                            file.outputStream().use { output ->
+                                                source.copyTo(output)
+                                            }
+                                        }
+                                    }
+
+                                    require(file.length() > 0) {
+                                        "Файл пустой"
+                                    }
+
+                                    Dadb.create(ip.trim(), port.toInt()).use { adb ->
+                                        val result = adb.install(file)
+                                        "Результат установки: $result"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text("Установить на телевизор")
                         }
                     }
                 }
-                Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("USB ADB", style = MaterialTheme.typography.titleMedium)
-                        Text("USB-режим появится в следующей версии. Нужны USB OTG/Host на телефоне, подходящий кабель и поддержка ADB со стороны телевизора.", color = Color.LightGray)
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Panel)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Состояние", style = MaterialTheme.typography.titleMedium)
+                        Text(status, color = Color.LightGray)
+                        if (busy) {
+                            CircularProgressIndicator()
+                        }
                     }
                 }
-                Text("Важно: VIDAA не поддерживает установку Android APK. Приложение предназначено для Android TV / Google TV и совместимых систем.", color = Color(0xFFFFC66D), fontSize = 12.sp)
-                Text("Версия 0.1.0 • демонстрационный интерфейс", color = Color.Gray, fontSize = 11.sp)
+
+                Text(
+                    "Важно: телевизор должен поддерживать ADB. VIDAA не поддерживает установку Android APK.",
+                    color = Color(0xFFFFC66D),
+                    fontSize = 12.sp
+                )
+
+                Text(
+                    "TV APK Installer • версия 0.2.0",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
             }
         }
     }
