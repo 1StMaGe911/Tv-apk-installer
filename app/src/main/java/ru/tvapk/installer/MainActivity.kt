@@ -237,6 +237,44 @@ private fun readDisabledUserPackages(adb: Dadb): Set<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
 
+private fun detectTvProfile(details: String): String {
+    val value = details.lowercase()
+    val brand = when {
+        "tcl" in value -> "TCL"
+        "hisense" in value -> "Hisense"
+        "xiaomi" in value || "redmi" in value -> "Xiaomi"
+        "sony" in value -> "Sony"
+        "philips" in value -> "Philips"
+        "amazon" in value || "fire" in value -> "Amazon Fire TV"
+        "samsung" in value -> "Samsung"
+        "lg" in value -> "LG"
+        else -> "Универсальный профиль"
+    }
+    val platform = when {
+        "fire" in value || "amazon" in value -> "Fire TV / Fire OS"
+        "google" in value -> "Google TV / Android TV"
+        "android" in value -> "Android TV / Android"
+        "vidaa" in value -> "VIDAA (не Android)"
+        else -> "Android-совместимое устройство"
+    }
+    return "$brand • $platform"
+}
+
+private fun findCleanupCandidates(packages: List<String>): List<String> {
+    val protected = setOf(
+        "com.google.android.tvlauncher",
+        "com.google.android.gms",
+        "com.google.android.gsf",
+        "com.android.tv.settings",
+        "com.android.systemui",
+        "com.android.providers.settings"
+    )
+    val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
+    return packages.filter { pkg ->
+        pkg !in protected && markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
+    }.distinct().sorted()
+}
+
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
@@ -607,6 +645,13 @@ fun TvInstallerApp() {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
                         Text(tvDetails, color = Color.LightGray, fontSize = 13.sp)
+                        Text("Профиль устройства: ${detectTvProfile(tvDetails)}", color = GoldLight, fontSize = 13.sp)
+                        val cleanupCandidates = findCleanupCandidates(userPackages)
+                        Text("Проверка рекомендаций: найдено ${cleanupCandidates.size} возможных рекламных или диагностических пакетов", color = Color.LightGray, fontSize = 12.sp)
+                        cleanupCandidates.forEach { candidate ->
+                            Text("• $candidate", color = GoldLight, fontSize = 12.sp)
+                        }
+                        if (cleanupCandidates.isNotEmpty()) Text("Это только кандидаты для ручной проверки. Ничего не отключается автоматически: сначала убедись, что пакет не нужен телевизору.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
                             if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
