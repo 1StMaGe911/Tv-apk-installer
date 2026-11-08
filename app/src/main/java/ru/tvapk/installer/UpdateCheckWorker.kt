@@ -63,13 +63,7 @@ class UpdateCheckWorker(
             }
 
             val latestTag = json.optString("tag_name").removePrefix("v")
-            val installedVersion = if (Build.VERSION.SDK_INT >= 28) {
-                applicationContext.packageManager
-                    .getPackageInfo(applicationContext.packageName, 0).longVersionCode
-                    .let { json.optString("installed_version").ifBlank { appVersionName() } }
-            } else {
-                appVersionName()
-            }
+            val installedVersion = appVersionName()
 
             if (latestTag.isNotBlank() && compareVersions(latestTag, installedVersion) > 0) {
                 val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
