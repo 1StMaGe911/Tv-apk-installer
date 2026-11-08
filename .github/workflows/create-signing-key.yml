@@ -12,12 +12,14 @@ jobs:
 
     steps:
       - name: Создать ключ
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           keytool -genkeypair \
             -v \
             -keystore signing.jks \
-            -storepass tvapk2026 \
-            -keypass tvapk2026 \
+            -storepass "$SIGNING_PASSWORD" \
+            -keypass "$SIGNING_PASSWORD" \
             -alias tvapk \
             -keyalg RSA \
             -keysize 2048 \
