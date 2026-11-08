@@ -42,7 +42,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.4.8"
+private const val APP_VERSION = "0.5.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -267,6 +267,31 @@ private fun shellText(adb: Dadb, command: String): String {
     if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
     return response.output.trim()
 }
+private fun readTvDiagnostics(adb: Dadb): String {
+    fun safe(command: String): String = try {
+        shellText(adb, command).ifBlank { "Недоступно" }
+    } catch (_: Exception) { "Недоступно" }
+
+    val memory = safe("cat /proc/meminfo | head -n 3")
+    val storage = safe("df -h /data")
+    val uptime = safe("cat /proc/uptime")
+    val battery = safe("dumpsys battery | grep -E 'level|temperature|status'")
+
+    return buildString {
+        appendLine("ОПЕРАТИВНАЯ ПАМЯТЬ")
+        appendLine(memory)
+        appendLine()
+        appendLine("ХРАНИЛИЩЕ /DATA")
+        appendLine(storage)
+        appendLine()
+        appendLine("БАТАРЕЯ (если доступна)")
+        appendLine(battery)
+        appendLine()
+        appendLine("ВРЕМЯ РАБОТЫ")
+        appendLine(uptime.substringBefore(" ").plus(" секунд"))
+    }
+}
+
 private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     return "Производитель: ${prop("ro.product.manufacturer")}\nМодель: ${prop("ro.product.model")}\nAndroid: ${prop("ro.build.version.release")}\nТип: ${prop("ro.build.characteristics")}"
@@ -440,6 +465,7 @@ fun TvInstallerApp() {
 
     var busy by remember { mutableStateOf(false) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
+    var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -848,6 +874,21 @@ fun TvInstallerApp() {
                         Text("Clean Your TV — управление устройством", style = MaterialTheme.typography.titleMedium)
                         Text(tvDetails, color = Color.LightGray, fontSize = 13.sp)
                         Text("Профиль устройства: ${detectTvProfile(tvDetails)}", color = GoldLight, fontSize = 13.sp)
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val host = ip.trim()
+                            val p = port.toIntOrNull()
+                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                status = "Сначала подключись к телевизору по Wi-Fi ADB"
+                            } else runTask({
+                                connectWithRetry(context, host, p) { adb ->
+                                    val report = readTvDiagnostics(adb)
+                                    activity.runOnUiThread { diagnostics = report }
+                                    "Диагностика завершена"
+                                }
+                            })
+                        }) { Text("Диагностика: память, хранилище, батарея") }
+                        Text(diagnostics, color = Color.LightGray, fontSize = 11.sp)
+
                         val cleanupCandidates = findCleanupCandidates(allPackages)
                         Text("Проверка всего списка: ${allPackages.size} пакетов. Возможных рекламных или диагностических совпадений: ${cleanupCandidates.size}", color = Color.LightGray, fontSize = 12.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
