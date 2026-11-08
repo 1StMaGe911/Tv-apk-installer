@@ -392,12 +392,18 @@ fun TvInstallerApp() {
                         )
 
                         if (!usbMode) {
-                            OutlinedTextField(
+                                                        OutlinedTextField(
                                 value = tvName,
                                 onValueChange = { tvName = it },
                                 label = { Text("Название телевизора") },
                                 modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = Color(0xFF6B542B),
+                                    focusedLabelColor = Accent,
+                                    cursorColor = Accent
+                                )
                             )
 
                             OutlinedTextField(
