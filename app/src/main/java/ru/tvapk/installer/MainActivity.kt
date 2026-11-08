@@ -797,7 +797,6 @@ fun TvInstallerApp() {
     val settings = remember { prefs(context) }
     val packageFacts = remember { loadPackageFacts(context) }
     val tvModelProfiles = remember { loadTvModelProfiles(context) }
-    val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
 
     var ip by remember {
         mutableStateOf(settings.getString("ip", "") ?: "")
@@ -813,6 +812,7 @@ fun TvInstallerApp() {
 
     var busy by remember { mutableStateOf(false) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
+    val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
