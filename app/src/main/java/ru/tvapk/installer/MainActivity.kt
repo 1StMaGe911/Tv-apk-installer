@@ -47,7 +47,7 @@ import java.util.zip.ZipOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.5.6"
+private const val APP_VERSION = "0.6.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -325,6 +325,8 @@ private fun readTvDiagnostics(adb: Dadb): String {
     val storage = safe("df -h /data")
     val uptime = safe("cat /proc/uptime")
     val battery = safe("dumpsys battery | grep -E 'level|temperature|status'")
+    val appStorage = safe("du -sh /data/app")
+    val userStorage = safe("du -sh /data/user/0")
 
     return buildString {
         appendLine("ОПЕРАТИВНАЯ ПАМЯТЬ")
@@ -332,6 +334,8 @@ private fun readTvDiagnostics(adb: Dadb): String {
         appendLine()
         appendLine("ХРАНИЛИЩЕ /DATA")
         appendLine(storage)
+        appendLine("Папка установленных приложений: ${appStorage}")
+        appendLine("Пользовательские данные приложений: ${userStorage}")
         appendLine()
         appendLine("БАТАРЕЯ (если доступна)")
         appendLine(battery)
@@ -343,8 +347,38 @@ private fun readTvDiagnostics(adb: Dadb): String {
 
 private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
-    return "Производитель: ${prop("ro.product.manufacturer")}\nМодель: ${prop("ro.product.model")}\nAndroid: ${prop("ro.build.version.release")}\nТип: ${prop("ro.build.characteristics")}"
+    fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
+    return buildString {
+        appendLine("Производитель: \${prop("ro.product.manufacturer")}")
+        appendLine("Модель: \${prop("ro.product.model")}")
+        appendLine("Устройство: \${prop("ro.product.device")}")
+        appendLine("Android: \${prop("ro.build.version.release")} (SDK \${prop("ro.build.version.sdk")})")
+        appendLine("Тип: \${prop("ro.build.characteristics")}")
+        appendLine("Сборка: \${prop("ro.build.display.id")}")
+        appendLine("Патч безопасности: \${prop("ro.build.version.security_patch")}")
+        appendLine("Разрешение: \${safe("wm size")}")
+        appendLine("Плотность: \${safe("wm density")}")
+        appendLine("Сеть: \${safe("ip route | head -n 2")}")
+        appendLine("Отпечаток: \${prop("ro.build.fingerprint")}")
+    }.trim()
 }
+
+private fun sendTvKey(adb: Dadb, keyCode: Int): String {
+    require(keyCode in 0..300) { "Недопустимый код клавиши" }
+    return shellText(adb, "input keyevent $keyCode")
+}
+
+private fun openTvAppInfo(adb: Dadb, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    return shellText(adb, "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$packageName")
+}
+
+private fun uninstallUserApp(adb: Dadb, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    require(packageName in readUserPackages(adb)) { "Разрешено удалять только пользовательские приложения" }
+    return shellText(adb, "pm uninstall --user 0 $packageName")
+}
+
 private fun readAllPackages(adb: Dadb): List<String> =
     shellText(adb, "pm list packages").lineSequence()
         .map { it.removePrefix("package:").trim() }
@@ -563,6 +597,8 @@ fun TvInstallerApp() {
 
     var usbMode by remember { mutableStateOf(false) }
     var showCleanYourTv by remember { mutableStateOf(false) }
+    var showRemoteControl by remember { mutableStateOf(false) }
+    var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -837,6 +873,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.0 • Центр управления и пульт", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены расширенный паспорт телевизора, анализ хранилища, управление пользовательскими приложениями (информация и удаление с подтверждением), а также экранный ADB-пульт с навигацией, громкостью, меню и системными клавишами.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.5.6 • Управление автозапуском", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен поиск компонентов автозапуска пользовательских приложений и их включение/отключение через ADB с подтверждением.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1058,6 +1097,17 @@ fun TvInstallerApp() {
                     Text(if (showCleanYourTv) "Скрыть Clean Your TV" else "Clean Your TV")
                 }
 
+                Button(
+                    onClick = { showRemoteControl = !showRemoteControl },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (showRemoteControl) Accent else Panel,
+                        contentColor = if (showRemoteControl) Color(0xFF171006) else GoldLight
+                    )
+                ) {
+                    Text(if (showRemoteControl) "Скрыть пульт управления" else "Пульт управления TV")
+                }
+
                 Card(
     shape = RoundedCornerShape(22.dp),
     colors = CardDefaults.cardColors(
@@ -1181,6 +1231,45 @@ fun TvInstallerApp() {
                             ) {
                                 Text("Найти USB-устройства")
                             }
+                        }
+                    }
+                }
+
+                if (showRemoteControl) {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("ПУЛЬТ УПРАВЛЕНИЯ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Команды отправляются через Wi-Fi ADB на выбранный IP и порт. Сначала включи отладку и подключи телевизор.", color = TextMuted, fontSize = 11.sp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                Spacer(Modifier.weight(1f))
+                                OutlinedButton(enabled = !busy, onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 19); "Пульт: вверх" } }) }) { Text("▲") }
+                                Spacer(Modifier.weight(1f))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 21); "Пульт: влево" } }) }) { Text("◀") }
+                                Button(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 23); "Пульт: OK" } }) }) { Text("OK") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 22); "Пульт: вправо" } }) }) { Text("▶") }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                Spacer(Modifier.weight(1f))
+                                OutlinedButton(enabled = !busy, onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 20); "Пульт: вниз" } }) }) { Text("▼") }
+                                Spacer(Modifier.weight(1f))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 4); "Пульт: назад" } }) }) { Text("Назад") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 3); "Пульт: домой" } }) }) { Text("Домой") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 82); "Пульт: меню" } }) }) { Text("Меню") }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 25); "Громкость уменьшена" } }) }) { Text("Громкость −") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 24); "Громкость увеличена" } }) }) { Text("Громкость +") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 164); "Звук переключён" } }) }) { Text("Mute") }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 223); "Команда сна отправлена (если поддерживается)" } }) }) { Text("Сон") }
+                                OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { runTask({ connectWithRetry(context, ip.trim(), port.toIntOrNull() ?: 5555) { adb -> sendTvKey(adb, 26); "Команда питания отправлена (если поддерживается)" } }) }) { Text("Питание") }
+                            }
+                            Text("Поддержка клавиш зависит от прошивки. Команды «Сон» и «Питание» могут быть заблокированы производителем.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         }
                     }
                 }
@@ -1501,6 +1590,18 @@ fun TvInstallerApp() {
                                     } })
                                 }) { Text("Запустить приложение") }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                                        val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                        runTask({ connectWithRetry(context, host, p) { adb ->
+                                            openTvAppInfo(adb, pkg)
+                                            "Открыта информация о приложении: $pkg"
+                                        } })
+                                    }) { Text("Информация") }
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                                        pendingAppUninstall = pkg
+                                    }) { Text("Удалить") }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(enabled = !busy && pkg !in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
                                         runTask({ connectWithRetry(context, host, p) { adb -> changePackageState(adb, pkg, false) } }, { result ->
@@ -1523,6 +1624,36 @@ fun TvInstallerApp() {
                             }
                             HorizontalDivider(color = Color.DarkGray)
                         }
+                        if (pendingAppUninstall != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingAppUninstall = null },
+                                title = { Text("Удалить приложение?") },
+                                text = { Text("Будет удалено пользовательское приложение: $pendingAppUninstall. Системные приложения этим действием не затрагиваются. Продолжить?") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val pkg = pendingAppUninstall ?: return@TextButton
+                                        pendingAppUninstall = null
+                                        val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
+                                        runTask({ connectWithRetry(context, host, p) { adb ->
+                                            uninstallUserApp(adb, pkg)
+                                            "Приложение удалено: $pkg"
+                                        } }, { result ->
+                                            if (!result.startsWith("Ошибка")) {
+                                                userPackages = userPackages - pkg
+                                                allPackages = allPackages - pkg
+                                                disabledPackages = disabledPackages - pkg
+                                                settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
+                                            }
+                                        })
+                                    }) { Text("Удалить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingAppUninstall = null }) { Text("Отмена") }
+                                }
+                            )
+                        }
+                        Text("ЦЕНТР УПРАВЛЕНИЯ ПРИЛОЖЕНИЯМИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                        Text("Найдено пользовательских приложений: \${userPackages.size}. Доступны запуск, информация, отключение, восстановление и удаление с подтверждением.", color = TextMuted, fontSize = 11.sp)
                         Text("Системные приложения: ${(allPackages - userPackages.toSet()).size}", color = GoldLight)
                         Text("Осторожно: отключение системных компонентов может нарушить запуск телевизора, звук, сеть или обновления. Защищённые компоненты отключить нельзя.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         OutlinedTextField(
