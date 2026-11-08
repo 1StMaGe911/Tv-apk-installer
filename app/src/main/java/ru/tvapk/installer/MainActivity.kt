@@ -370,24 +370,7 @@ fun TvInstallerApp() {
                     }
                 }
 
-                Text(
-                    "ADB поддерживается только совместимыми Android TV и приставками. VIDAA не поддерживает APK.",
-                    color = Color(0xFFFFC66D),
-                    fontSize = 12.sp
-                )
-
-                Text(
-                    "TV APK Installer • версия 0.2.0",
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-            }
-        }
-    }
-}
-                // Дополнительная информация о приложении
-                Spacer(Modifier.height(8.dp))
-
+                // Новая информационная карточка
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = Color(0xFF252F40)
@@ -415,3 +398,19 @@ fun TvInstallerApp() {
                         )
                     }
                 }
+
+                Text(
+                    "ADB поддерживается только совместимыми Android TV и приставками. VIDAA не поддерживает APK.",
+                    color = Color(0xFFFFC66D),
+                    fontSize = 12.sp
+                )
+
+                Text(
+                    "TV APK Installer • версия 0.2.0",
+                    color = Color.Gray,
+                    fontSize = 11.sp
+                )
+            }
+        }
+    }
+}
