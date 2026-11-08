@@ -50,7 +50,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.8"
+private const val APP_VERSION = "0.6.9"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -840,6 +840,7 @@ fun TvInstallerApp() {
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
+    var pendingModuleRemoval by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1203,6 +1204,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.6.9 • Управление модулями Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено безопасное удаление модулей Launcher и Curtain с подтверждением, проверкой установленных пакетов и отчётом об остатках.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.8 • Профили и безопасность Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Показываются сведения о тестировании профиля и прошивке. Для пакетов с флагом ручной оценки добавлено отдельное предупреждение; защищённые компоненты исключены из кандидатов.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1490,8 +1494,45 @@ fun TvInstallerApp() {
                                 } })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Выбор домашнего экрана телевизора") }
                             Text("Безопасность: новый Launcher не назначается автоматически, а штатный экран не отключается. На части моделей замена домашнего экрана нарушает работу кнопок пульта, трансляции или запуск после перезагрузки. Для возврата выбери штатный Launcher в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = { pendingModuleRemoval = true }, modifier = Modifier.fillMaxWidth()) { Text("Удалить модули Clean Your TV") }
+                            Text("Удаление затронет только пакеты Clean Your TV для пользователя телевизора. Перед удалением выбери штатный домашний экран в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("Curtain устанавливается как компонент Launcher. Полный откат настроек, профили и каталог модулей оригинала требуют отдельной проверки совместимости и пока не считаются перенесёнными.", color = TextMuted, fontSize = 11.sp)
                         }
+                    }
+                    if (pendingModuleRemoval) {
+                        AlertDialog(
+                            onDismissRequest = { pendingModuleRemoval = false },
+                            title = { Text("Удалить модули Clean Your TV?") },
+                            text = { Text("Будут удалены только пакеты com.gathin.tvhome и tv.cleanyour.curtain для пользователя телевизора. TV APK Installer и другие приложения не затрагиваются. Сначала выбери штатный домашний экран в системных настройках. Продолжить?") },
+                            confirmButton = {
+                                TextButton(enabled = !busy, onClick = {
+                                    pendingModuleRemoval = false
+                                    val host = ip.trim()
+                                    val p = port.toIntOrNull()
+                                    if (host.isBlank() || p == null || p !in 1..65535) {
+                                        status = "Сначала укажи IP и порт ADB"
+                                    } else runTask({ connectWithRetry(context, host, p) { adb ->
+                                        val removed = mutableListOf<String>()
+                                        val errors = mutableListOf<String>()
+                                        listOf("tv.cleanyour.curtain", "com.gathin.tvhome").forEach { pkg ->
+                                            val installed = try { shellText(adb, "pm path $pkg").contains("package:") } catch (_: Exception) { false }
+                                            if (installed) {
+                                                try {
+                                                    val result = shellText(adb, "pm uninstall --user 0 $pkg")
+                                                    if (result.contains("Success", ignoreCase = true)) removed.add(pkg) else errors.add("$pkg: $result")
+                                                } catch (e: Exception) { errors.add("$pkg: ${e.message}") }
+                                            }
+                                        }
+                                        val left = listOf("com.gathin.tvhome", "tv.cleanyour.curtain").filter { pkg ->
+                                            try { shellText(adb, "pm path $pkg").contains("package:") } catch (_: Exception) { false }
+                                        }
+                                        "Удалено модулей: ${removed.size}. Осталось установлено: ${left.size}." +
+                                            if (errors.isEmpty() && left.isEmpty()) " Clean Your TV удалён." else "\nПроблемы: ${(errors + left.map { "$it всё ещё установлен" }).joinToString("; ")}"
+                                    } })
+                                }) { Text("Удалить") }
+                            },
+                            dismissButton = { TextButton(onClick = { pendingModuleRemoval = false }) { Text("Отмена") } }
+                        )
                     }
                 }
                 if (section != "usb" && devices.isNotEmpty()) {
