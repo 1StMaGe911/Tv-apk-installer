@@ -1142,7 +1142,10 @@ fun TvInstallerApp() {
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(if (section == "usb") "USB OTG" else "ПОДКЛЮЧЕНИЕ К ТЕЛЕВИЗОРУ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                        if (section == "usb") {
+                        if (section == "apk") {
+                            Text("Выбери APK-файл на телефоне. После выбора откроется основной экран установки.", color = TextMuted)
+                            Button(onClick = { activeSection = null; picker.launch("application/vnd.android.package-archive") }, modifier = Modifier.fillMaxWidth()) { Text("Выбрать APK-файл") }
+                        } else if (section == "usb") {
                             Text("Доступно обнаружение USB-устройств. USB ADB пока не реализован.", color = TextMuted)
                             Button(onClick = {
                                 val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
