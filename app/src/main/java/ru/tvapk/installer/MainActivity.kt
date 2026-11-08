@@ -349,17 +349,17 @@ private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
     return buildString {
-        appendLine("Производитель: \${prop("ro.product.manufacturer")}")
-        appendLine("Модель: \${prop("ro.product.model")}")
-        appendLine("Устройство: \${prop("ro.product.device")}")
-        appendLine("Android: \${prop("ro.build.version.release")} (SDK \${prop("ro.build.version.sdk")})")
-        appendLine("Тип: \${prop("ro.build.characteristics")}")
-        appendLine("Сборка: \${prop("ro.build.display.id")}")
-        appendLine("Патч безопасности: \${prop("ro.build.version.security_patch")}")
-        appendLine("Разрешение: \${safe("wm size")}")
-        appendLine("Плотность: \${safe("wm density")}")
-        appendLine("Сеть: \${safe("ip route | head -n 2")}")
-        appendLine("Отпечаток: \${prop("ro.build.fingerprint")}")
+        appendLine("Производитель: ${prop("ro.product.manufacturer")}")
+        appendLine("Модель: ${prop("ro.product.model")}")
+        appendLine("Устройство: ${prop("ro.product.device")}")
+        appendLine("Android: ${prop("ro.build.version.release")} (SDK ${prop("ro.build.version.sdk")})")
+        appendLine("Тип: ${prop("ro.build.characteristics")}")
+        appendLine("Сборка: ${prop("ro.build.display.id")}")
+        appendLine("Патч безопасности: ${prop("ro.build.version.security_patch")}")
+        appendLine("Разрешение: ${safe("wm size")}")
+        appendLine("Плотность: ${safe("wm density")}")
+        appendLine("Сеть: ${safe("ip route | head -n 2")}")
+        appendLine("Отпечаток: ${prop("ro.build.fingerprint")}")
     }.trim()
 }
 
@@ -369,12 +369,12 @@ private fun sendTvKey(adb: Dadb, keyCode: Int): String {
 }
 
 private fun openTvAppInfo(adb: Dadb, packageName: String): String {
-    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     return shellText(adb, "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$packageName")
 }
 
 private fun uninstallUserApp(adb: Dadb, packageName: String): String {
-    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     require(packageName in readUserPackages(adb)) { "Разрешено удалять только пользовательские приложения" }
     return shellText(adb, "pm uninstall --user 0 $packageName")
 }
@@ -1653,7 +1653,7 @@ fun TvInstallerApp() {
                             )
                         }
                         Text("ЦЕНТР УПРАВЛЕНИЯ ПРИЛОЖЕНИЯМИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                        Text("Найдено пользовательских приложений: \${userPackages.size}. Доступны запуск, информация, отключение, восстановление и удаление с подтверждением.", color = TextMuted, fontSize = 11.sp)
+                        Text("Найдено пользовательских приложений: ${userPackages.size}. Доступны запуск, информация, отключение, восстановление и удаление с подтверждением.", color = TextMuted, fontSize = 11.sp)
                         Text("Системные приложения: ${(allPackages - userPackages.toSet()).size}", color = GoldLight)
                         Text("Осторожно: отключение системных компонентов может нарушить запуск телевизора, звук, сеть или обновления. Защищённые компоненты отключить нельзя.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         OutlinedTextField(
