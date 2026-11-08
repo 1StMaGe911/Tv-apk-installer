@@ -1044,6 +1044,9 @@ fun TvInstallerApp() {
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         Text("v0.6.5 • Модули Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен импорт исходного APK Clean Your TV 0.4.8: извлечение и установка Launcher и Curtain, проверка пакетов, запуск Launcher и переход к системному выбору домашнего экрана. Штатный Launcher не отключается автоматически.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.6.4 • Навигация и USB OTG", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Кнопка в заголовке каждого раздела открывает левое меню. Во вкладке USB OTG убраны IP, порт, подключение по ADB и список сохранённых телевизоров.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.3 • Левое меню разделов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
