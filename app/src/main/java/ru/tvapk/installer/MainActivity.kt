@@ -634,7 +634,7 @@ private fun findCleanupCandidates(
     val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
     return packages.filter { pkg ->
         pkg !in protected && (
-            facts[pkg]?.category in reviewedCategories ||
+            facts[pkg]?.category?.let { it in reviewedCategories } == true ||
                 markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
             )
     }.distinct().sorted()
