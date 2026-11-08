@@ -379,47 +379,4 @@ fun TvInstallerApp() {
         }
     }
 }
-require(file.length() > 0) {
-                                        "Файл пустой"
-                                    }
 
-                                    Dadb.create(ip.trim(), port.toInt()).use { adb ->
-                                        val result = adb.install(file)
-                                        "Результат установки: $result"
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Установить на телевизор")
-                        }
-                    }
-                }
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Panel)
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Состояние", style = MaterialTheme.typography.titleMedium)
-                        Text(status, color = Color.LightGray)
-                        if (busy) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                }
-
-                Text(
-                    "Важно: телевизор должен поддерживать ADB. VIDAA не поддерживает установку Android APK.",
-                    color = Color(0xFFFFC66D),
-                    fontSize = 12.sp
-                )
-
-                Text(
-                    "TV APK Installer • версия 0.2.0",
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-            }
-        }
-    }
-}
