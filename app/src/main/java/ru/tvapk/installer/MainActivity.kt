@@ -471,7 +471,7 @@ private fun pushLauncherTheme(
     // dock, hidden apps, key mappings, clock preferences, or wallpaper rotation.
     val configToInstall = if (preservePersonalSettings) {
         val themed = JSONObject(configFile.readText(Charsets.UTF_8))
-        val current = try { readCurrentLauncherConfig(adb) } catch (_: Exception) { JSONObject() }
+        val current = readCurrentLauncherConfig(adb)
         listOf(
             "dock_apps", "hidden_apps", "app_keys", "key_filter",
             "wallpaper_rotation_minutes", "wallpaper_order",
