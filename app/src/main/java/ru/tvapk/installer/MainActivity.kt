@@ -1528,7 +1528,7 @@ private fun applyLauncherHomeKeySettings(adb: Dadb, longPressHome: Boolean): Str
     return "Перехват долгого нажатия Home ${if (longPressHome) "включён" else "выключен"}. Для работы требуется HomeKeyService. $restart"
 }
 
-private fun enableHomeKeyService(adb: Dadb): String {
+private fun enableHomeKeyService(context: Context, adb: Dadb): String {
     val packageName = "com.gathin.tvhome"
     val component = "$packageName/.HomeKeyService"
     val fullComponent = "$packageName/$packageName.HomeKeyService"
@@ -1545,6 +1545,9 @@ private fun enableHomeKeyService(adb: Dadb): String {
     // Never turn Accessibility on if that would also start unrelated services.
     val rawResult = shellText(adb, "settings get secure enabled_accessibility_services").trim()
     val raw = rawResult.takeUnless { it.isBlank() || it == "null" }.orEmpty()
+    val settingIdentity = readTvIdentity(adb)
+    val originalServicesValue = readTrackedSystemSetting(adb, "enabled_accessibility_services")
+    val originalAccessibilityValue = readTrackedSystemSetting(adb, "accessibility_enabled")
     val validEntry = Regex("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+")
     val services = if (raw.isEmpty()) emptyList() else raw.split(":")
     require(services.size <= 50 && services.all { validEntry.matches(it) }) {
@@ -1567,12 +1570,14 @@ private fun enableHomeKeyService(adb: Dadb): String {
         } else {
             "[ \"\$current\" = '" + raw + "' ]"
         }
+        recordTrackedSystemSettingChange(context, settingIdentity, "enabled_accessibility_services", originalServicesValue, next)
         val command = "current=\$(settings get secure enabled_accessibility_services); " +
             "if $expectedCondition; then settings put secure enabled_accessibility_services '$next'; " +
             "else echo 'ACCESSIBILITY_LIST_CHANGED' >&2; exit 3; fi"
         shellText(adb, command)
     }
     if (!accessibilityOn) {
+        recordTrackedSystemSettingChange(context, settingIdentity, "accessibility_enabled", originalAccessibilityValue, "1")
         shellText(adb, "settings put secure accessibility_enabled 1")
     }
 
@@ -4746,7 +4751,7 @@ fun TvInstallerApp() {
                                             } else {
                                                 pendingHomeKeyServiceEnable = false
                                                 runTask({
-                                                    connectWithRetry(context, host, p) { adb -> enableHomeKeyService(adb) }
+                                                    connectWithRetry(context, host, p) { adb -> enableHomeKeyService(context, adb) }
                                                 })
                                             }
                                         }) { Text("Включить") }
