@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.26"
+private const val APP_VERSION = "0.9.27"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -372,7 +372,7 @@ private fun checkLatestVersion(): UpdateInfo {
             return UpdateInfo("Ошибка проверки: HTTP ${connection.responseCode}", null, null, 0L)
         }
 
-        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val json = JSONObject(readBoundedUtf8(connection.inputStream, 1024 * 1024))
         val tag = json.optString("tag_name")
         val releaseUrl = json.optString("html_url").takeIf { it.isNotBlank() }
         if (tag.isBlank()) return UpdateInfo("Версия релиза не найдена", releaseUrl, null, 0L)
