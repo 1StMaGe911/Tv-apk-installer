@@ -4256,7 +4256,9 @@ fun TvInstallerApp() {
                                                                     .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
                                                             }
                                                             if (remaining.isEmpty()) {
+                                                                appendCleanupHistory(context, journal, "Восстановлено", restored)
                                                                 clearCleanupJournal(context)
+                                                                activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
                                                                 "Откат завершён: восстановлено ${restored.size} пакетов."
                                                             } else {
                                                                 "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}"
@@ -4271,6 +4273,31 @@ fun TvInstallerApp() {
                                 }
                             }
                         }
+                        if (cleanupHistory.isNotEmpty()) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("ИСТОРИЯ ОЧИСТКИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                    cleanupHistory.take(10).forEach { entry ->
+                                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text(
+                                                "${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.outcome}",
+                                                color = TextMain, fontSize = 12.sp
+                                            )
+                                            Text(
+                                                "Изменено: ${entry.changedPackages.size} из ${entry.plannedCount}; до операции отключено: ${entry.baselineDisabledCount}",
+                                                color = TextMuted, fontSize = 10.sp
+                                            )
+                                            if (entry.changedPackages.isNotEmpty()) {
+                                                Text(entry.changedPackages.joinToString(), color = TextMuted, fontSize = 10.sp)
+                                            }
+                                            Divider(color = Color.DarkGray)
+                                        }
+                                    }
+                                    Text("Хранится до 30 последних завершённых операций на этом устройстве.", color = TextMuted, fontSize = 10.sp)
+                                }
+                            }
+                        }
+
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
@@ -4414,8 +4441,12 @@ fun TvInstallerApp() {
                                                     }
                                                 }
                                                 if (failures.isEmpty()) {
+                                                    appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
                                                     clearCleanupJournal(context)
-                                                    activity.runOnUiThread { cleanupJournal = null }
+                                                    activity.runOnUiThread {
+                                                        cleanupJournal = null
+                                                        cleanupHistory = loadCleanupHistory(context)
+                                                    }
                                                 } else {
                                                     activity.runOnUiThread { cleanupJournal = journal }
                                                 }
