@@ -1359,6 +1359,21 @@ private fun buildRestorePointBackupJson(
         .toString(2)
 }
 
+private fun readBoundedUtf8(input: java.io.InputStream, maxBytes: Int): String {
+    require(maxBytes > 0) { "Некорректный лимит чтения" }
+    val output = ByteArrayOutputStream()
+    input.use { stream ->
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            require(output.size() + count <= maxBytes) { "Файл превышает допустимый размер ${maxBytes / 1024} КБ" }
+            output.write(buffer, 0, count)
+        }
+    }
+    return output.toByteArray().toString(Charsets.UTF_8)
+}
+
 private fun parseRestorePointBackup(jsonText: String): PortableRestorePoint {
     require(jsonText.length <= 2_000_000) { "Файл точки восстановления слишком большой" }
     val root = JSONObject(jsonText)
@@ -2478,7 +2493,7 @@ fun TvInstallerApp() {
     ) { sourceUri ->
         if (sourceUri != null) {
             try {
-                val json = context.contentResolver.openInputStream(sourceUri)?.bufferedReader()?.use { it.readText() }
+                val json = context.contentResolver.openInputStream(sourceUri)?.let { readBoundedUtf8(it, 4 * 1024 * 1024) }
                     ?: throw Exception("Не удалось прочитать файл")
                 importAppSettings(context, json)
                 status = "Настройки восстановлены. Перезапускаю приложение..."
@@ -2540,7 +2555,7 @@ fun TvInstallerApp() {
     ) { sourceUri ->
         if (sourceUri != null) {
             try {
-                val json = context.contentResolver.openInputStream(sourceUri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                val json = context.contentResolver.openInputStream(sourceUri)?.let { readBoundedUtf8(it, 2 * 1024 * 1024) }
                     ?: throw Exception("Не удалось прочитать файл")
                 val point = parseRestorePointBackup(json)
                 restorePoint = point.userDisabled
