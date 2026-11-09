@@ -699,7 +699,7 @@ private data class MaintenanceRunHistoryEntry(
 )
 
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
-    val raw = prefs(context).getString("maintenance_run_history", null) ?: return emptyList()
+    val raw = prefs(context).getString("maintenance_run_history", null) ?: "[]"
     val array = JSONArray(raw)
     (0 until array.length()).mapNotNull { index ->
         val item = array.optJSONObject(index) ?: return@mapNotNull null
