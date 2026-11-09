@@ -1766,10 +1766,67 @@ private fun openTvAppInfo(adb: Dadb, packageName: String): String {
     return shellText(adb, "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$packageName")
 }
 
-private fun uninstallUserApp(adb: Dadb, packageName: String): String {
+private fun uninstallUserApp(adb: Dadb, packageName: String, context: Context): String {
     require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     require(packageName in readUserPackages(adb)) { "Разрешено удалять только пользовательские приложения" }
-    return shellText(adb, "pm uninstall --user 0 $packageName")
+
+    // Preserve every split APK before uninstall. If backup cannot be completed,
+    // abort deletion so the user is not left without a reinstall source.
+    val backupDir = File(context.filesDir, "backups")
+    if (!backupDir.exists() && !backupDir.mkdirs()) {
+        throw Exception("Не удалось создать папку резервных копий. Удаление отменено.")
+    }
+    val tempDir = File(context.cacheDir, "undo-" + packageName.replace('.', '_') + "-" + System.currentTimeMillis())
+    if (!tempDir.mkdirs()) throw Exception("Не удалось создать временную папку. Удаление отменено.")
+    val archive = File(backupDir, "undo-" + packageName + "-" + System.currentTimeMillis() + ".zip")
+    try {
+        val remotePaths = shellText(adb, "pm path $packageName").lineSequence()
+            .map { it.removePrefix("package:").trim() }
+            .filter { it.startsWith("/") && !it.contains("..") }
+            .distinct()
+            .toList()
+        require(remotePaths.isNotEmpty() && remotePaths.size <= 32) {
+            "Не удалось получить полный список APK приложения. Удаление отменено."
+        }
+        val localFiles = remotePaths.mapIndexed { index, remote ->
+            val file = File(tempDir, "split-" + index + ".apk")
+            when (val result = adb.pull(file, remote)) {
+                is dadb.SyncResult.Success -> Unit
+                is dadb.SyncResult.Failure -> throw Exception("Не удалось сохранить APK: " + result)
+            }
+            require(file.isFile && file.length() in 1..(256L * 1024L * 1024L)) {
+                "Резервная копия APK неполная или слишком большая. Удаление отменено."
+            }
+            file
+        }
+        require(localFiles.sumOf { it.length() } <= 512L * 1024L * 1024L) {
+            "Размер резервной копии превышает 512 МБ. Удаление отменено."
+        }
+        ZipOutputStream(FileOutputStream(archive)).use { zip ->
+            zip.putNextEntry(ZipEntry("applications.txt"))
+            zip.write(packageName.toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            localFiles.forEachIndexed { index, file ->
+                val entryName = if (index == 0) "base.apk" else "split-" + index + ".apk"
+                zip.putNextEntry(ZipEntry("apks/" + packageName + "/" + entryName))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        require(archive.isFile && archive.length() > 0L) {
+            "Не удалось проверить резервную копию. Удаление отменено."
+        }
+        val result = shellText(adb, "pm uninstall --user 0 $packageName")
+        require(result.contains("Success", ignoreCase = true) && packageName !in readUserPackages(adb)) {
+            "Android не подтвердил удаление. Резервная копия сохранена: " + archive.name + ". Ответ: " + result
+        }
+        return "Приложение удалено: " + packageName + ". Резервная копия APK сохранена: " + archive.name
+    } catch (e: Exception) {
+        if (archive.exists() && archive.length() == 0L) archive.delete()
+        throw e
+    } finally {
+        tempDir.deleteRecursively()
+    }
 }
 
 private fun readAllPackages(adb: Dadb): List<String> =
@@ -5409,7 +5466,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                         pendingAppUninstall = null
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
                                         runTask({ connectWithRetry(context, host, p) { adb ->
-                                            uninstallUserApp(adb, pkg)
+                                            uninstallUserApp(adb, pkg, context)
                                             "Приложение удалено: $pkg"
                                         } }, { result ->
                                             if (!result.startsWith("Ошибка")) {
