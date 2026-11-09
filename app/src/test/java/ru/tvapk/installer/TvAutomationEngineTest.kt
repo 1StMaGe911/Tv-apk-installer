@@ -1,6 +1,7 @@
 package ru.tvapk.installer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,6 +55,25 @@ class TvAutomationEngineTest {
         assertNull(TvAutomationEngine.parseDataStorageSnapshot("not mounted"))
         assertNull(TvAutomationEngine.parseDataStorageSnapshot("/dev/block/dm-1 0 0 0 0% /data"))
         assertNull(TvAutomationEngine.parseDataStorageSnapshot("/dev/block/dm-1 100 101 0 101% /data"))
+    }
+
+    @Test
+    fun rejectsStorageSnapshotsWhoseUsedAndAvailableSpaceExceedTotal() {
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot(
+            "/dev/block/dm-1 100 70 40 70% /data"
+        ))
+    }
+
+    @Test
+    fun ignoresImpossibleMemoryCountersInsteadOfReportingHealthyValues() {
+        val diagnostics = """
+            MemTotal: 1000 kB
+            MemAvailable: 1200 kB
+        """.trimIndent()
+
+        val result = TvAutomationEngine.assessHealth(diagnostics)
+        assertNull(result.memoryAvailablePercent)
+        assertTrue(result.summary.contains("Недостаточно данных"))
     }
 
     @Test
