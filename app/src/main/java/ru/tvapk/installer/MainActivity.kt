@@ -1120,24 +1120,39 @@ private fun enableHomeKeyService(adb: Dadb): String {
     require(declared.contains("HomeKeyService")) {
         "В установленной версии Launcher нет HomeKeyService. Обнови модуль Clean Your TV."
     }
-    try { shellText(adb, "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS") } catch (_: Exception) { }
-    try {
-        shellText(adb, "cmd appops set $packageName AUTO_START allow 2>/dev/null || true; cmd appops set $packageName APP_AUTO_START allow 2>/dev/null || true; appops write-settings 2>/dev/null || true")
-    } catch (_: Exception) { }
-    val current = try { shellText(adb, "settings get secure enabled_accessibility_services").trim() } catch (_: Exception) { "" }
-    val services = current.split(":")
-        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
-        .distinct()
-    val wasEnabled = component in services
-    val base = services.filterNot { it == component }
-    val next = (base + component).distinct().joinToString(":")
-    val command = if (wasEnabled) {
-        "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; sleep 1; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
-    } else {
-        "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+
+    // Never turn Accessibility on if that would also start unrelated services.
+    val raw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+        .takeUnless { it.isBlank() || it == "null" }.orEmpty()
+    val validEntry = Regex("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+")
+    val services = if (raw.isEmpty()) emptyList() else raw.split(":")
+    require(services.size <= 50 && services.all { validEntry.matches(it) }) {
+        "Список специальных возможностей имеет неизвестный формат. Ничего не изменено."
     }
-    shellText(adb, command)
-    return "HomeKeyService включён. Он нужен только пультам, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home."
+    val others = services.filterNot { it == component }.distinct()
+    val accessibilityOn = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
+    if (!accessibilityOn && others.isNotEmpty()) {
+        throw IllegalStateException(
+            "Специальные возможности телевизора выключены, но в списке есть другие службы. " +
+                "Чтобы не включать их без разрешения, сначала включи HomeKeyService вручную в настройках телевизора."
+        )
+    }
+
+    val next = (others + component).distinct().joinToString(":")
+    if (raw != next) {
+        shellText(adb, "settings put secure enabled_accessibility_services '$next'")
+    }
+    if (!accessibilityOn) {
+        shellText(adb, "settings put secure accessibility_enabled 1")
+    }
+
+    val verifiedList = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+    val verifiedEnabled = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
+    require(component in verifiedList.split(":") && verifiedEnabled) {
+        "Телевизор не подтвердил включение HomeKeyService. Проверь настройки специальных возможностей."
+    }
+    return "HomeKeyService включён и проверен. Другие службы специальных возможностей не включались. " +
+        "Служба нужна только пультам, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home."
 }
 
 private fun copyLauncherWallpaperUris(context: Context, uris: List<Uri>): List<File> {
