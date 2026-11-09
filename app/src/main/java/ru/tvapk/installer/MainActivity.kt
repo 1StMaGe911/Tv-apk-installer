@@ -4228,40 +4228,119 @@ fun TvInstallerApp() {
                             incompatible.joinToString { "${it.packageName} требует Android SDK ${it.minSdk}, на ТВ SDK $deviceSdk" }
                     }
 
-                    val installedBefore = modules.mapNotNull { module ->
-                        val pathResult = shellText(adb, "pm path ${module.packageName}")
-                        if (!pathResult.contains("package:")) null
-                        else {
-                            val details = shellText(adb, "dumpsys package ${module.packageName}")
-                            val currentCode = Regex("versionCode=(\\d+)").find(details)
-                                ?.groupValues?.get(1)?.toLongOrNull()
-                                ?: throw Exception("Не удалось безопасно определить установленную версию ${module.packageName}. Установка остановлена.")
-                            if (currentCode > module.versionCode) {
-                                throw Exception(
-                                    "${module.packageName} на телевизоре новее встроенного модуля " +
-                                        "(установлен код $currentCode, встроен ${module.versionCode}). " +
-                                        "Чтобы не выполнить откат версии, установка остановлена."
-                                )
+                    data class PreviousModuleState(
+                        val module: VerifiedCleanModule,
+                        val backupApk: File?
+                    )
+
+                    // Сохраняем прежние APK до установки. Для этих модулей ожидается один APK
+                    // на пакет; если устройство сообщает split-набор, не начинаем обновление,
+                    // потому что не сможем гарантировать точный откат.
+                    val rollbackDir = File(context.cacheDir, "cleanyourtv-rollback-${System.currentTimeMillis()}")
+                    require(rollbackDir.mkdirs()) { "Не удалось подготовить резервную папку. Установка отменена." }
+                    try {
+                        val previousStates = modules.map { module ->
+                            val pathResult = shellText(adb, "pm path ${module.packageName}")
+                            val remotePaths = pathResult.lineSequence()
+                                .map { it.removePrefix("package:").trim() }
+                                .filter { it.startsWith("/") && !it.contains("..") }
+                                .distinct()
+                                .toList()
+                            if (remotePaths.isEmpty()) {
+                                PreviousModuleState(module, null)
+                            } else {
+                                require(remotePaths.size == 1) {
+                                    "У ${module.packageName} найдено несколько APK/split-файлов. " +
+                                        "Безопасное резервирование такого набора не поддерживается; установка отменена."
+                                }
+                                val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                val currentCode = Regex("versionCode=(\\d+)").find(details)
+                                    ?.groupValues?.get(1)?.toLongOrNull()
+                                    ?: throw Exception("Не удалось безопасно определить установленную версию ${module.packageName}. Установка остановлена.")
+                                if (currentCode > module.versionCode) {
+                                    throw Exception(
+                                        "${module.packageName} на телевизоре новее встроенного модуля " +
+                                            "(установлен код $currentCode, встроен ${module.versionCode}). " +
+                                            "Чтобы не выполнить откат версии, установка остановлена."
+                                    )
+                                }
+                                val backup = File(rollbackDir, "${module.packageName.substringAfterLast('.')}.apk")
+                                when (val pulled = adb.pull(backup, remotePaths.single())) {
+                                    is dadb.SyncResult.Success -> Unit
+                                    is dadb.SyncResult.Failure -> throw Exception(
+                                        "Не удалось сохранить прежний ${module.packageName}; установка отменена: $pulled"
+                                    )
+                                }
+                                require(backup.isFile && backup.length() in 1..(64L * 1024L * 1024L)) {
+                                    "Резервная копия ${module.packageName} неполная или слишком большая."
+                                }
+                                PreviousModuleState(module, backup)
                             }
-                            module.packageName
                         }
-                    }
 
-                    // К этому моменту оба APK прошли криптографические и SDK-проверки.
-                    modules.forEach { module -> adb.install(module.file) }
+                        try {
+                            // Оба APK уже прошли проверки SHA-256, подписи и совместимости.
+                            // InstallResult обязателен: нельзя считать неудачную установку успешной.
+                            modules.forEach { module ->
+                                when (val result = adb.install(module.file)) {
+                                    is InstallResult.Success -> Unit
+                                    is InstallResult.Failure -> throw Exception(
+                                        "Установка ${module.packageName} не выполнена: ${result.reason}"
+                                    )
+                                }
+                            }
 
-                    val verification = modules.map { module ->
-                        val pathResult = shellText(adb, "pm path ${module.packageName}")
-                        require(pathResult.contains("package:")) {
-                            "После установки пакет ${module.packageName} не найден: $pathResult"
+                            val verification = modules.map { module ->
+                                val pathResult = shellText(adb, "pm path ${module.packageName}")
+                                require(pathResult.contains("package:")) {
+                                    "После установки пакет ${module.packageName} не найден: $pathResult"
+                                }
+                                val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                val installedCode = Regex("versionCode=(\\d+)").find(details)
+                                    ?.groupValues?.get(1)?.toLongOrNull()
+                                require(installedCode == module.versionCode) {
+                                    "Версия ${module.packageName} после установки не совпадает с проверенным APK."
+                                }
+                                "${module.packageName}: ${module.versionName} (код ${module.versionCode})"
+                            }
+                            val installedBefore = previousStates.count { it.backupApk != null }
+                            "Оба модуля Clean Your TV проверены и установлены. " +
+                                verification.joinToString("; ") +
+                                ". Android TV SDK: $deviceSdk. " +
+                                if (installedBefore == 2) "Обе прежние версии сохранены до успешной проверки." else
+                                    "Отсутствующие модули установлены, существующие обновлены."
+                        } catch (installError: Exception) {
+                            val rollbackErrors = mutableListOf<String>()
+                            // Возвращаем оба пакета в исходное состояние, даже если ошибка
+                            // возникла при проверке после успешной установки.
+                            previousStates.asReversed().forEach { previous ->
+                                try {
+                                    val backup = previous.backupApk
+                                    if (backup == null) {
+                                        val result = shellText(adb, "pm uninstall ${previous.module.packageName}")
+                                        require(result.contains("Success", ignoreCase = true) ||
+                                            result.contains("not installed", ignoreCase = true)) {
+                                            "Ответ удаления нового пакета: $result"
+                                        }
+                                    } else {
+                                        when (val result = adb.install(backup)) {
+                                            is InstallResult.Success -> Unit
+                                            is InstallResult.Failure -> throw Exception(result.reason)
+                                        }
+                                    }
+                                } catch (rollbackError: Exception) {
+                                    rollbackErrors += "${previous.module.packageName}: ${errorText(rollbackError)}"
+                                }
+                            }
+                            throw Exception(
+                                "Установка Clean Your TV не завершилась; выполнен откат к прежнему состоянию. " +
+                                    "Причина: ${errorText(installError)}" +
+                                    if (rollbackErrors.isEmpty()) " Откат проверен по ответам ADB." else
+                                        " Ошибки отката: ${rollbackErrors.joinToString("; ")}"
+                            )
                         }
-                        val details = shellText(adb, "dumpsys package ${module.packageName}")
-                        val installedCode = Regex("versionCode=(\\d+)").find(details)
-                            ?.groupValues?.get(1)?.toLongOrNull()
-                        require(installedCode == module.versionCode) {
-                            "Версия ${module.packageName} после установки не совпадает с проверенным APK."
-                        }
-                        "${module.packageName}: ${module.versionName} (код ${module.versionCode})"
+                    } finally {
+                        rollbackDir.deleteRecursively()
                     }
 
                     val repaired = installedBefore.size
