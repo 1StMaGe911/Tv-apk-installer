@@ -83,7 +83,8 @@ private data class CleanupJournal(
     val createdAt: Long,
     val inFlightPackage: String? = null,
     val baselineDisabledPackages: List<String> = emptyList(),
-    val schemaVersion: Int = 2
+    val schemaVersion: Int = 2,
+    val restoredPackages: List<String> = emptyList()
 )
 
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
@@ -103,7 +104,10 @@ private fun loadCleanupJournal(context: Context): CleanupJournal? {
             baselineDisabledPackages = (json.optJSONArray("baselineDisabled") ?: JSONArray()).let { values ->
                 (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
             },
-            schemaVersion = json.optInt("schemaVersion", 1)
+            schemaVersion = json.optInt("schemaVersion", 1),
+            restoredPackages = (json.optJSONArray("restored") ?: JSONArray()).let { values ->
+                (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+            }
         ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
     } catch (_: Exception) { null }
 }
@@ -119,6 +123,7 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
         .put("inFlightPackage", journal.inFlightPackage)
         .put("baselineDisabled", JSONArray(journal.baselineDisabledPackages))
         .put("schemaVersion", journal.schemaVersion)
+        .put("restored", JSONArray(journal.restoredPackages))
     prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
@@ -4272,14 +4277,19 @@ fun TvInstallerApp() {
                                                                 val stillPending = rollbackPackages - restored.toSet()
                                                                 val nextJournal = journal.copy(
                                                                     completedPackages = stillPending,
-                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending }
+                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending },
+                                                                    restoredPackages = (journal.restoredPackages + restored).distinct()
                                                                 )
                                                                 saveCleanupJournal(context, nextJournal)
                                                             }
                                                             val remaining = rollbackPackages - restored.toSet()
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
-                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(completedPackages = remaining, inFlightPackage = journal.inFlightPackage?.takeIf { it in remaining })
+                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(
+                                                                    completedPackages = remaining,
+                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in remaining },
+                                                                    restoredPackages = (journal.restoredPackages + restored).distinct()
+                                                                )
                                                                 disabledOnDevice = actualDisabledAfterRestore
                                                                 disabledPackages = disabledPackages - restored.toSet()
                                                                 managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
@@ -4287,7 +4297,7 @@ fun TvInstallerApp() {
                                                                     .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
                                                             }
                                                             if (remaining.isEmpty()) {
-                                                                appendCleanupHistory(context, journal, "Восстановлено", restored)
+                                                                appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + restored).distinct())
                                                                 clearCleanupJournal(context)
                                                                 activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
                                                                 "Откат завершён: восстановлено ${restored.size} пакетов."
