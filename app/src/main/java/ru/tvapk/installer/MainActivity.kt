@@ -555,7 +555,7 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
         } catch (_: Exception) {
             shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
         }
-        "Список приложений обновлён. В доке: ${dock.size}, скрыто с главного экрана: ${hidden.size}. Приложения не удалялись и не отключались. $restart"
+        return "Список приложений обновлён. В доке: ${dock.size}, скрыто с главного экрана: ${hidden.size}. Приложения не удалялись и не отключались. $restart"
     } finally {
         safeFile.delete()
     }
