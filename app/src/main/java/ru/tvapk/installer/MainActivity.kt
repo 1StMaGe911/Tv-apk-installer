@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.2"
+private const val APP_VERSION = "0.9.3"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1370,9 +1370,25 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         .putBoolean("launcher_handover_active", false)
         .apply()
 
-    val start = shellText(adb, "am start -W -n $CLEAN_TV_LAUNCHER_COMPONENT")
-    require(start.contains("Status: ok", ignoreCase = true) && !start.contains("Error:", ignoreCase = true)) {
-        "Новый Launcher не прошёл проверку запуска. Штатный экран не отключался. Ответ: $start"
+    // A failed launch happens before any TV state is changed. Clear the
+    // provisional recovery record so the UI cannot offer a misleading rollback.
+    val start = try {
+        shellText(adb, "am start -W -n $CLEAN_TV_LAUNCHER_COMPONENT")
+    } catch (launchError: Exception) {
+        prefs(context).edit()
+            .remove("launcher_handover_stock_package")
+            .remove("launcher_handover_stock_component")
+            .remove("launcher_handover_active")
+            .apply()
+        throw Exception("Не удалось запустить Clean Your TV Launcher. Штатный экран не изменён: ${errorText(launchError)}", launchError)
+    }
+    if (!start.contains("Status: ok", ignoreCase = true) || start.contains("Error:", ignoreCase = true)) {
+        prefs(context).edit()
+            .remove("launcher_handover_stock_package")
+            .remove("launcher_handover_stock_component")
+            .remove("launcher_handover_active")
+            .apply()
+        throw Exception("Новый Launcher не прошёл проверку запуска. Штатный экран не отключался. Ответ: $start")
     }
 
     try {
