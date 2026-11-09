@@ -7552,6 +7552,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                 runTask({
                                     connectWithRetry(context, host, adbPort) { adb ->
                                         val details = readTvDetails(adb)
+                                        // Collect read-only health diagnostics as part of the same automation pass.
+                                        val diagnosticsSnapshot = readTvDiagnostics(adb)
                                         val compatibility = readTvCompatibilityReport(adb)
                                         val disableSupported = readPackageDisableCapability(adb)
                                         val users = readUserPackages(adb)
@@ -7578,6 +7580,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
                                             appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
                                             appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
+                                            appendLine()
+                                            appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
+                                            appendLine(diagnosticsSnapshot)
                                             appendLine("Уже отключено: ${disabled.size}")
                                             appendLine("Кандидатов по справочнику: ${plan.detectedCount}")
                                             appendLine("Безопасно разрешено точным профилем: ${plan.approvedCount}")
@@ -7589,6 +7594,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         }
                                         activity.runOnUiThread {
                                             tvDetails = details
+                                            diagnostics = diagnosticsSnapshot
                                             tvCompatibilityReport = compatibility
                                             packageDisableSupported = disableSupported
                                             userPackages = users
