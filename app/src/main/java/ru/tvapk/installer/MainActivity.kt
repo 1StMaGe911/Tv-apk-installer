@@ -8,6 +8,7 @@ import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.net.Uri as AndroidUri
 import android.provider.Settings
+import android.provider.OpenableColumns
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -824,6 +825,119 @@ private fun enableHomeKeyService(adb: Dadb): String {
     }
     shellText(adb, command)
     return "HomeKeyService включён. Он нужен только пультам, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home."
+}
+
+private fun copyLauncherWallpaperUris(context: Context, uris: List<Uri>): List<File> {
+    require(uris.isNotEmpty()) { "Не выбраны изображения" }
+    require(uris.size <= 100) { "Можно выбрать не более 100 обоев" }
+    val staging = File(context.cacheDir, "launcher-wallpapers-stage")
+    if (staging.exists()) staging.deleteRecursively()
+    require(staging.mkdirs()) { "Не удалось создать временную папку обоев" }
+    var totalBytes = 0L
+    try {
+        uris.forEachIndexed { index, uri ->
+            val displayName = try {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            } catch (_: Exception) { null }
+            val mime = context.contentResolver.getType(uri)?.lowercase()
+            val extension = when (mime) {
+                "image/jpeg", "image/jpg" -> "jpg"
+                "image/png" -> "png"
+                "image/webp" -> "webp"
+                else -> displayName?.substringAfterLast('.', "")?.lowercase()
+                    ?.takeIf { it in setOf("jpg", "jpeg", "png", "webp") } ?: "jpg"
+            }
+            val target = File(staging, "wallpaper-${(index + 1).toString().padStart(3, '0')}.$extension")
+            val input = context.contentResolver.openInputStream(uri) ?: throw Exception("Не удалось открыть изображение №${index + 1}")
+            var fileBytes = 0
+            input.use { source ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        fileBytes += count
+                        totalBytes += count
+                        require(fileBytes <= 10 * 1024 * 1024) { "Изображение №${index + 1} больше 10 МБ" }
+                        require(totalBytes <= 50L * 1024 * 1024) { "Общий размер коллекции больше 50 МБ" }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+            require(fileBytes >= 64) { "Изображение №${index + 1} пустое" }
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(target.absolutePath, bounds)
+            require(bounds.outWidth in 1..12000 && bounds.outHeight in 1..12000) {
+                "Файл №${index + 1} не является поддерживаемым изображением или имеет слишком большое разрешение"
+            }
+        }
+        val destination = File(context.filesDir, "launcher_wallpapers")
+        if (destination.exists()) require(destination.deleteRecursively()) { "Не удалось заменить старую коллекцию обоев" }
+        if (!staging.renameTo(destination)) {
+            require(destination.mkdirs()) { "Не удалось создать папку коллекции обоев" }
+            staging.listFiles()?.forEach { file -> file.copyTo(File(destination, file.name), overwrite = true) }
+            staging.deleteRecursively()
+        }
+        return destination.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+    } catch (e: Exception) {
+        staging.deleteRecursively()
+        throw e
+    }
+}
+
+private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int, order: String): String {
+    require(files.isNotEmpty()) { "Сначала выбери изображения для ротации" }
+    require(files.size <= 100) { "В коллекции не может быть больше 100 файлов" }
+    require(order in setOf("sequential", "shuffle")) { "Неверный порядок обоев" }
+    val packageName = "com.gathin.tvhome"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен."
+    }
+    val allowed = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
+    files.forEach { file ->
+        require(file.isFile && file.length() in 64..(10 * 1024 * 1024).toLong() && allowed.matches(file.name)) {
+            "Недопустимый файл обоев: ${file.name}"
+        }
+    }
+    val remoteFiles = files.map { file -> file to "/data/local/tmp/cyt-${file.name}" }
+    remoteFiles.forEach { (file, remote) ->
+        when (val result = adb.push(file, remote)) {
+            is dadb.SyncResult.Success -> Unit
+            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать ${file.name}: $result")
+        }
+    }
+    val directory = "/sdcard/Android/data/$packageName/files"
+    try {
+        shellText(adb, "content delete --uri content://$packageName.theme/wallpapers")
+    } catch (_: Exception) {
+        shellText(adb, "rm -rf $directory/wallpapers 2>/dev/null; mkdir -p $directory/wallpapers")
+    }
+    remoteFiles.forEach { (file, remote) ->
+        val command =
+            "o=\$(content write --uri content://$packageName.theme/wallpapers/${file.name} < $remote 2>&1); rc=\$?; " +
+            "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
+            "if [ \"\$rc\" -ne 0 ]; then mkdir -p $directory/wallpapers 2>/dev/null && cp $remote $directory/wallpapers/${file.name} || exit 1; fi; " +
+            "rm -f $remote"
+        shellText(adb, command)
+    }
+    val config = readCurrentLauncherConfig(adb)
+        .put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
+        .put("wallpaper_order", order)
+        .put("wallpaper", true)
+    val restart = writeLauncherConfig(adb, config)
+    return "Загружено обоев: ${files.size}. Ротация: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}, порядок: ${if (order == "shuffle") "случайный" else "по порядку"}. $restart"
+}
+
+private fun applyWallpaperRotationSettings(adb: Dadb, minutes: Int, order: String): String {
+    require(order in setOf("sequential", "shuffle")) { "Неверный порядок обоев" }
+    val config = readCurrentLauncherConfig(adb)
+        .put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
+        .put("wallpaper_order", order)
+    if (minutes > 0) config.put("wallpaper", true)
+    val restart = writeLauncherConfig(adb, config)
+    return "Ротация обоев: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}. $restart"
 }
 
 private fun readTvDiagnostics(adb: Dadb): String {
