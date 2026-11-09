@@ -4126,10 +4126,11 @@ fun TvInstallerApp() {
                                                     } catch (_: Exception) { failures.add(component) }
                                                     else failures.add("$component (неверный идентификатор)")
                                                 }
+                                                val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                 activity.runOnUiThread {
                                                     managedSystemDisabledPackages = managedSystemDisabledPackages - restoredSystems
                                                     disabledAutoStart = disabledAutoStart - restoredComponents
-                                                    disabledOnDevice = readDisabledPackages(adb)
+                                                    disabledOnDevice = actualDisabledAfterRestore
                                                     settings.edit()
                                                         .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
                                                         .putStringSet("disabled_autostart_components", disabledAutoStart)
