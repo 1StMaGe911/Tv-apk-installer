@@ -1229,11 +1229,18 @@ private fun writeLauncherConfig(adb: Dadb, config: JSONObject): String {
             is dadb.SyncResult.Failure -> throw Exception("Не удалось передать конфигурацию: $result")
         }
         val directory = "/sdcard/Android/data/$packageName/files"
+        // Never delete the currently active config before the replacement has been written.
         val command =
-            "rm -f $directory/config.json 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
-            "r=\$?; rm -f $remote; exit \$r"
+            "mkdir -p $directory 2>/dev/null; " +
+            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1); rc=\$?; " +
+            "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
+            "if [ \"\$rc\" -ne 0 ]; then cp $remote $directory/config.json || exit 1; fi; " +
+            "rm -f $remote"
         shellText(adb, command)
+        val actual = readCurrentLauncherConfig(adb)
+        require(actual.toString() == config.toString()) {
+            "Launcher не подтвердил запись конфигурации. Существующий файл не удалялся; проверь состояние телевизора."
+        }
         shellText(adb, "am force-stop --user 0 $packageName")
         return try {
             shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
@@ -1244,7 +1251,6 @@ private fun writeLauncherConfig(adb: Dadb, config: JSONObject): String {
         safeFile.delete()
     }
 }
-
 private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<String>, fillDock: Boolean): String {
     require(dock.none { it in hidden }) {
         "Одно приложение нельзя одновременно закрепить в доке и скрыть с главного экрана."
