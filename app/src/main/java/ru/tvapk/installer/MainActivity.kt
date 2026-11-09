@@ -2174,6 +2174,33 @@ private fun readTvDiagnostics(adb: Dadb): String {
     }
 }
 
+
+private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSnapshot {
+    val output = shellText(adb, "df -k /data")
+    return TvAutomationEngine.parseDataStorageSnapshot(output)
+        ?: throw Exception("Не удалось надёжно прочитать размер и свободное место раздела /data")
+}
+
+private fun trimTvApplicationCaches(adb: Dadb): String {
+    val before = readDataStorageSnapshot(adb)
+    require(before.usedPercent >= 90) {
+        "Очистка кэша не требуется: занято только ${before.usedPercent}% хранилища."
+    }
+    val commandOutput = shellText(adb, "pm trim-caches 512M")
+    require(!commandOutput.contains("unknown command", true) &&
+        !commandOutput.contains("error:", true) &&
+        !commandOutput.contains("exception", true)
+    ) { "Android не подтвердил выполнение безопасной очистки кэша: ${commandOutput.take(300)}" }
+    val after = readDataStorageSnapshot(adb)
+    val freedBytes = (after.availableBytes - before.availableBytes).coerceAtLeast(0L)
+    val freedMb = freedBytes / (1024L * 1024L)
+    return if (freedBytes > 0L) {
+        "Системная очистка кэша завершена. Освобождено примерно $freedMb МБ. Занято /data: ${before.usedPercent}% → ${after.usedPercent}%."
+    } else {
+        "Команда очистки кэша выполнена, но свободное место не увеличилось. Занято /data: ${after.usedPercent}%."
+    }
+}
+
 private fun readTvIdentity(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").trim().ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     val manufacturer = prop("ro.product.manufacturer")
@@ -3996,6 +4023,8 @@ fun TvInstallerApp() {
     val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles, packageFacts) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var automationReport by remember { mutableStateOf("") }
+    var dataStorageUsedPercent by remember { mutableStateOf<Int?>(null) }
+    var pendingCacheTrim by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -4287,6 +4316,7 @@ fun TvInstallerApp() {
                 activity.runOnUiThread {
                     tvDetails = details
                     diagnostics = diagnosticsSnapshot
+                    dataStorageUsedPercent = healthAssessment.dataUsedPercent
                     tvCompatibilityReport = compatibility
                     packageDisableSupported = disableSupported
                     userPackages = users
@@ -6771,8 +6801,54 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                         Button(enabled = !busy, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
                             Text("⚡ Проверить и оптимизировать ТВ")
                         }
+                        if ((dataStorageUsedPercent ?: 0) >= 90) {
+                            Text("Хранилище заполнено на ${dataStorageUsedPercent}%. Можно безопасно попросить Android освободить только кэш приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            OutlinedButton(
+                                enabled = !busy,
+                                onClick = { pendingCacheTrim = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Очистить кэш приложений") }
+                        }
                         Text("Выбранное устройство: ${if (ip.isBlank()) "не выбрано" else "$tvName • $ip:$port"}", color = TextMuted, fontSize = 11.sp)
                     }
+                }
+
+                if (pendingCacheTrim) {
+                    AlertDialog(
+                        onDismissRequest = { pendingCacheTrim = false },
+                        title = { Text("Очистить только кэш приложений?") },
+                        text = {
+                            Text("Android выполнит штатную команду Package Manager и попробует обеспечить не менее 512 МБ свободного места. Приложения не удаляются, личные данные и настройки не очищаются. Временные файлы кэша могут быть созданы приложениями заново. Продолжить?")
+                        },
+                        confirmButton = {
+                            TextButton(enabled = !busy, onClick = {
+                                pendingCacheTrim = false
+                                val host = ip.trim()
+                                val adbPort = port.toIntOrNull()
+                                if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
+                                    status = "Сначала выбери телевизор и проверь IP/порт ADB"
+                                } else runTask({
+                                    connectWithRetry(context, host, adbPort) { adb ->
+                                        val result = trimTvApplicationCaches(adb)
+                                        val diagnosticsSnapshot = readTvDiagnostics(adb)
+                                        val healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                                        activity.runOnUiThread {
+                                            diagnostics = diagnosticsSnapshot
+                                            dataStorageUsedPercent = healthAssessment.dataUsedPercent
+                                        }
+                                        result + if (healthAssessment.warnings.isEmpty()) {
+                                            "\nПовторная оценка ресурсов: ${healthAssessment.summary}."
+                                        } else {
+                                            "\n" + healthAssessment.warnings.joinToString("\n")
+                                        }
+                                    }
+                                })
+                            }) { Text("Очистить кэш") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { pendingCacheTrim = false }) { Text("Отмена") }
+                        }
+                    )
                 }
 
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {

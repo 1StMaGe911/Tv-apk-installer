@@ -12,8 +12,8 @@ android {
         applicationId = "ru.tvapk.installer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 149
-        versionName = "0.9.98"
+        versionCode = 150
+        versionName = "0.9.99"
     }
 
     signingConfigs {

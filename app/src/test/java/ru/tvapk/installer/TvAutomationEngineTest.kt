@@ -26,6 +26,25 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun parsesMachineReadableDataStorageSnapshot() {
+        val result = TvAutomationEngine.parseDataStorageSnapshot(
+            "Filesystem 1K-blocks Used Available Use% Mounted on\n/dev/block/dm-1 16777216 15728640 1048576 94% /data"
+        )
+
+        assertEquals(16777216L * 1024L, result?.totalBytes)
+        assertEquals(15728640L * 1024L, result?.usedBytes)
+        assertEquals(1048576L * 1024L, result?.availableBytes)
+        assertEquals(94, result?.usedPercent)
+    }
+
+    @Test
+    fun rejectsMalformedOrUnsafeDataStorageSnapshots() {
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot("not mounted"))
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot("/dev/block/dm-1 0 0 0 0% /data"))
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot("/dev/block/dm-1 100 101 0 101% /data"))
+    }
+
+    @Test
     fun healthAssessmentReportsMemoryStorageAndUptime() {
         val diagnostics = """
             ОПЕРАТИВНАЯ ПАМЯТЬ
