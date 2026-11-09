@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.55"
+private const val APP_VERSION = "0.9.56"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2963,9 +2963,95 @@ private data class PackageFact(
     val category: String
 )
 
+private fun refreshCleanYourTvProfileCatalog(context: Context): String {
+    val url = URL("https://raw.githubusercontent.com/1StMaGe911/Tv-apk-installer/main/app/src/main/assets/cleanyourtv/profile-meta.json")
+    val connection = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 15000
+        readTimeout = 25000
+        instanceFollowRedirects = false
+        setRequestProperty("User-Agent", "TV-APK-Installer")
+        setRequestProperty("Accept", "application/json")
+    }
+    val bytes = try {
+        require(connection.url.protocol == "https") { "Каталог разрешено загружать только по HTTPS" }
+        require(connection.responseCode == HttpURLConnection.HTTP_OK) {
+            "GitHub вернул HTTP ${connection.responseCode}"
+        }
+        connection.inputStream.use { input ->
+            val output = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= 8 * 1024 * 1024) { "Каталог профилей превышает 8 МБ" }
+                output.write(buffer, 0, count)
+            }
+            output.toByteArray()
+        }
+    } finally {
+        connection.disconnect()
+    }
+    val json = String(bytes, Charsets.UTF_8)
+    val root = JSONObject(json)
+    val profiles = root.optJSONObject("profiles")
+        ?: throw Exception("В каталоге отсутствует раздел profiles")
+    require(profiles.length() in 10..500) { "Некорректное число профилей: ${profiles.length()}" }
+    val parsed = parseTvModelProfileCount(root)
+    require(parsed >= 10) { "Не удалось проверить структуру профилей" }
+
+    val directory = File(context.filesDir, "cleanyourtv-catalog")
+    if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку каталога")
+    val temporary = File(directory, "profile-meta.json.tmp")
+    val destination = File(directory, "profile-meta.json")
+    temporary.writeBytes(bytes)
+    require(temporary.length() == bytes.size.toLong()) { "Не удалось проверить запись каталога" }
+    if (destination.exists() && !destination.delete()) {
+        temporary.delete()
+        throw Exception("Не удалось заменить старый каталог")
+    }
+    if (!temporary.renameTo(destination)) {
+        temporary.delete()
+        throw Exception("Не удалось сохранить новый каталог")
+    }
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+        .joinToString("") { "%02x".format(it) }
+    prefs(context).edit()
+        .putString("cleanyourtv_profile_catalog_sha256", digest)
+        .putLong("cleanyourtv_profile_catalog_updated_at", System.currentTimeMillis())
+        .commit()
+    return "Каталог профилей обновлён: $parsed профилей. SHA-256: $digest. Справочник описаний пакетов остаётся встроенным."
+}
+
+private fun parseTvModelProfileCount(root: JSONObject): Int {
+    val profiles = root.optJSONObject("profiles") ?: return 0
+    var valid = 0
+    val keys = profiles.keys()
+    while (keys.hasNext()) {
+        val id = keys.next()
+        val item = profiles.optJSONObject(id) ?: continue
+        if (id.isNotBlank() && item.optJSONObject("match") != null &&
+            item.optJSONObject("packages") != null) valid++
+    }
+    return valid
+}
+
+private fun buildHelpAddTvReport(tvDetails: String): String {
+    val base = buildSupportReport(tvDetails, "Отчёт для добавления модели телевизора в каталог Clean Your TV.")
+    return base + "\n\nЗАПРОС НА ДОБАВЛЕНИЕ МОДЕЛИ\n" +
+        "Пожалуйста, проверьте сведения выше и удалите любые данные, которыми не хотите делиться, перед отправкой. " +
+        "Список установленных пакетов, IP-адрес, серийный номер и полный отпечаток прошивки не включаются автоматически."
+}
+
 private fun loadPackageFacts(context: Context): Map<String, PackageFact> {
     return try {
-        context.assets.open("cleanyourtv/facts.tsv").bufferedReader().useLines { lines ->
+        val cached = File(context.filesDir, "cleanyourtv-catalog/facts.tsv")
+        val input = if (cached.isFile && cached.length() in 1..(2L * 1024 * 1024)) {
+            cached.inputStream()
+        } else context.assets.open("cleanyourtv/facts.tsv")
+        input.bufferedReader().useLines { lines ->
             lines.drop(1).mapNotNull { line ->
                 val columns = line.split('\t', limit = 4)
                 if (columns.size < 4 || columns[0].isBlank()) null
@@ -3003,7 +3089,11 @@ private data class TvProfileMatch(
 
 private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
     return try {
-        val root = JSONObject(context.assets.open("cleanyourtv/profile-meta.json").bufferedReader().use { it.readText() })
+        val cached = File(context.filesDir, "cleanyourtv-catalog/profile-meta.json")
+        val source = if (cached.isFile && cached.length() in 1..(8L * 1024 * 1024)) {
+            cached.readText(Charsets.UTF_8)
+        } else context.assets.open("cleanyourtv/profile-meta.json").bufferedReader().use { it.readText() }
+        val root = JSONObject(source)
         val profiles = root.optJSONObject("profiles") ?: return emptyList()
         val result = mutableListOf<TvModelProfile>()
         val keys = profiles.keys()
@@ -3331,7 +3421,7 @@ fun TvInstallerApp() {
 
     val settings = remember { prefs(context) }
     val packageFacts = remember { loadPackageFacts(context) }
-    val tvModelProfiles = remember { loadTvModelProfiles(context) }
+    var tvModelProfiles by remember { mutableStateOf(loadTvModelProfiles(context)) }
 
     var ip by remember {
         mutableStateOf(settings.getString("ip", "") ?: "")
@@ -5482,6 +5572,21 @@ fun TvInstallerApp() {
                             Text("Точная модель в каталоге Clean Your TV не найдена. Используется общий справочник без модельных рекомендаций.", color = TextMuted, fontSize = 11.sp)
                         }
                         OutlinedButton(
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                runTask({ refreshCleanYourTvProfileCatalog(context) }) { result ->
+                                    if (result.startsWith("Каталог профилей обновлён")) {
+                                        tvModelProfiles = loadTvModelProfiles(context)
+                                    }
+                                }
+                            }
+                        ) { Text("Проверить обновления каталога профилей") }
+                        Text(
+                            "Обновление загружает только JSON-каталог по HTTPS, проверяет структуру и число профилей, затем сохраняет его локально. Если обновление недоступно, встроенный каталог продолжает работать.",
+                            color = TextMuted, fontSize = 10.sp
+                        )
+                        OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { profileCatalogExpanded = !profileCatalogExpanded }
                         ) {
@@ -5529,6 +5634,16 @@ fun TvInstallerApp() {
                             runCatching { activity.startActivity(Intent.createChooser(share, "Поделиться отчётом")) }
                                 .onFailure { status = "Не удалось открыть меню отправки отчёта: ${it.message ?: "ошибка"}" }
                         }) { Text("Сформировать и поделиться отчётом") }
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val report = buildHelpAddTvReport(tvDetails)
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Clean Your TV — помощь с добавлением модели ТВ")
+                                putExtra(Intent.EXTRA_TEXT, report)
+                            }
+                            runCatching { activity.startActivity(Intent.createChooser(share, "Поделиться данными модели")) }
+                                .onFailure { status = "Не удалось открыть меню отправки: ${it.message ?: "ошибка"}" }
+                        }) { Text("Помочь добавить эту модель ТВ") }
 
                         HorizontalDivider(color = Color.DarkGray)
                         Text("АВТОЗАПУСК ПРИ ВКЛЮЧЕНИИ TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
