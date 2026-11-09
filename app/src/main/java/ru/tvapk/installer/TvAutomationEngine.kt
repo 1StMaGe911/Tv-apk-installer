@@ -54,7 +54,7 @@ internal object TvAutomationEngine {
         val usedKb = match.groupValues[2].toLongOrNull() ?: return null
         val availableKb = match.groupValues[3].toLongOrNull() ?: return null
         val usedPercent = match.groupValues[4].toIntOrNull() ?: return null
-        if (totalKb <= 0 || usedKb < 0 || availableKb < 0 || usedPercent !in 0..100) return null
+        if (totalKb <= 0 || totalKb > Long.MAX_VALUE / 1024L || usedKb < 0 || availableKb < 0 || usedPercent !in 0..100) return null
         if (usedKb > totalKb || availableKb > totalKb) return null
         return DataStorageSnapshot(totalKb * 1024L, usedKb * 1024L, availableKb * 1024L, usedPercent)
     }
