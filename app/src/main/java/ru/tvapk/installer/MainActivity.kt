@@ -6837,9 +6837,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             dataStorageUsedPercent = healthAssessment.dataUsedPercent
                                         }
                                         result + if (healthAssessment.warnings.isEmpty()) {
-                                            "\\nПовторная оценка ресурсов: ${healthAssessment.summary}."
+                                            "\nПовторная оценка ресурсов: ${healthAssessment.summary}."
                                         } else {
-                                            "\\n" + healthAssessment.warnings.joinToString("\\n")
+                                            "\n" + healthAssessment.warnings.joinToString("\n")
                                         }
                                     }
                                 })
