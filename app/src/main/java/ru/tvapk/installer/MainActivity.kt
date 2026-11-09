@@ -5889,8 +5889,8 @@ val actualAfterRestore = readDisabledPackages(adb)
                             }
                         }
                         Text("Журнал ручных изменений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                        Text("Журнал хранит исходные и текущие состояния пакетов, автозапуска, системной заставки и InputKeyService. Перед откатом сравнивается фактическое значение; изменения пользователя не перезаписываются.", color = TextMuted, fontSize = 11.sp)
-                        Text("Пакеты: ${trackedPackageChanges.size} • автозапуск: ${trackedAutoStartChanges.size} • системные настройки: ${trackedSystemSettingChanges.size}", color = TextMain, fontSize = 12.sp)
+                        Text("Журнал хранит исходные и текущие состояния пакетов, автозапуска, системной заставки, служб специальных возможностей и передачу главного экрана. Перед откатом сверяется фактическое состояние; чужие изменения не перезаписываются.", color = TextMuted, fontSize = 11.sp)
+                        Text("Пакеты: ${trackedPackageChanges.size} • автозапуск: ${trackedAutoStartChanges.size} • настройки: ${trackedSystemSettingChanges.size} • возврат Home: ${if (hasLauncherHandover) "ожидает" else "нет"}", color = TextMain, fontSize = 12.sp)
                         trackedPackageChanges.take(8).forEach { entry ->
                             Text(
                                 "${entry.packageName}: ${if (entry.wasDisabled) "изначально отключён" else "изначально включён"} → ${if (entry.isDisabled) "сейчас отключён" else "сейчас включён"}",
@@ -5908,14 +5908,16 @@ val actualAfterRestore = readDisabledPackages(adb)
                         }
                         if (trackedAutoStartChanges.size > 8) Text("И ещё ${trackedAutoStartChanges.size - 8} записей автозапуска", color = TextMuted, fontSize = 11.sp)
                         trackedSystemSettingChanges.take(8).forEach { entry -> Text("secure/${entry.key}: ${entry.wasValue ?: "отсутствовало"} → ${entry.isValue}", color = TextMuted, fontSize = 11.sp) }
+                        if (hasLauncherHandover) Text("Главный экран: вернуть ${settings.getString("launcher_handover_stock_component", "штатный компонент")}", color = TextMuted, fontSize = 11.sp)
                         if (trackedSystemSettingChanges.size > 8) Text("И ещё ${trackedSystemSettingChanges.size - 8} записей системных настроек", color = TextMuted, fontSize = 11.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(enabled = !busy, onClick = {
                                 trackedPackageChanges = loadTrackedPackageChanges(context)
                                 trackedAutoStartChanges = loadTrackedAutoStartChanges(context)
                                 trackedSystemSettingChanges = loadTrackedSystemSettingChanges(context)
+                                hasLauncherHandover = settings.getString("launcher_handover_stock_package", null) != null
                             }) { Text("Обновить журнал") }
-                            OutlinedButton(enabled = !busy && (trackedPackageChanges.isNotEmpty() || trackedAutoStartChanges.isNotEmpty() || trackedSystemSettingChanges.isNotEmpty()), onClick = {
+                            OutlinedButton(enabled = !busy && (trackedPackageChanges.isNotEmpty() || trackedAutoStartChanges.isNotEmpty() || trackedSystemSettingChanges.isNotEmpty() || hasLauncherHandover), onClick = {
                                 pendingTrackedPackageRollback = true
                             }) { Text("Предпросмотр отката") }
                         }
@@ -5925,7 +5927,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 title = { Text("Откат ручных изменений") },
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text("Перед откатом приложение сверит модель и отпечаток прошивки телевизора, установку каждого пакета и его фактическое состояние.")
+                                        Text("Перед откатом приложение сверит модель и отпечаток прошивки телевизора, установку каждого пакета и его фактическое состояние. Если Clean Your TV Launcher назначен главным экраном, будет восстановлен сохранённый штатный Home.")
                                         Text("Будут изменены только пакеты, состояние которых совпадает с последним записанным состоянием. Конфликты и отсутствующие пакеты останутся в журнале.")
                                         trackedPackageChanges.take(20).forEach { entry ->
                                             Text("${entry.packageName}: вернуть в состояние «${if (entry.wasDisabled) "отключён" else "включён"}»", fontSize = 11.sp)
@@ -5937,6 +5939,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                          if (trackedAutoStartChanges.size > 20) Text("Показаны первые 20 из ${trackedAutoStartChanges.size} записей автозапуска.", fontSize = 11.sp)
                                           trackedSystemSettingChanges.take(20).forEach { entry -> Text("secure/${entry.key}: вернуть «${entry.wasValue ?: "отсутствовало"}»", fontSize = 11.sp) }
                                           if (trackedSystemSettingChanges.size > 20) Text("Показаны первые 20 из ${trackedSystemSettingChanges.size} системных настроек.", fontSize = 11.sp)
+                                          if (hasLauncherHandover) Text("Вернуть штатный Home: ${settings.getString("launcher_handover_stock_component", "сохранённый компонент")}", fontSize = 11.sp)
                                     }
                                 },
                                 confirmButton = {
@@ -5948,14 +5951,18 @@ val actualAfterRestore = readDisabledPackages(adb)
                                             status = "Сначала укажи IP и порт ADB"
                                         } else runTask({
                                             connectWithRetry(context, host, p) { adb ->
+                                                val homeResult = if (settings.getString("launcher_handover_stock_package", null) != null) {
+                                                    try { restoreStockHomeAfterHandover(context, adb) }
+                                                    catch (e: Exception) { "Откат главного экрана не выполнен: ${errorText(e)}. Запись сохранена." }
+                                                } else "Главный экран: отдельная передача не выполнялась."
                                                 val packagesResult = rollbackTrackedPackageChanges(context, adb)
                                                 val autoStartResult = rollbackTrackedAutoStartChanges(context, adb)
                                                 val systemSettingsResult = rollbackTrackedSystemSettingChanges(context, adb)
-                                                "$packagesResult\n$autoStartResult\n$systemSettingsResult"
+                                                "$homeResult\n$packagesResult\n$autoStartResult\n$systemSettingsResult"
                                             }
                                         }, {
                                             runCatching { loadTrackedPackageChanges(context) }
-                                                .onSuccess { trackedPackageChanges = it; trackedAutoStartChanges = loadTrackedAutoStartChanges(context); trackedSystemSettingChanges = loadTrackedSystemSettingChanges(context) }
+                                                .onSuccess { trackedPackageChanges = it; trackedAutoStartChanges = loadTrackedAutoStartChanges(context); trackedSystemSettingChanges = loadTrackedSystemSettingChanges(context); hasLauncherHandover = settings.getString("launcher_handover_stock_package", null) != null }
                                                 .onFailure { status = "Журнал не прочитан: ${errorText(it)}" }
                                         })
                                     }) { Text("Проверить и откатить") }
