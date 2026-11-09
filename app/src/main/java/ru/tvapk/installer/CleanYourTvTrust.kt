@@ -51,7 +51,8 @@ internal object CleanYourTvTrust {
         val minSdk: Int,
         val abis: Set<String>,
         val permissions: List<Pair<String, String>>,
-        val networkStatement: String
+        val networkStatement: String,
+        val revoked: Boolean
     )
 
     data class VerifiedCatalog(
@@ -76,7 +77,8 @@ internal object CleanYourTvTrust {
         prefs.edit()
             .putLong("accepted_index_sequence", verified.sequence)
             .putLong("accepted_keys_sequence", JSONObject(String(keys, Charsets.UTF_8)).getLong("sequence"))
-            .apply()
+            .commit()
+            .also { persisted -> require(persisted) { "Не удалось сохранить защиту от отката каталога" } }
         verified
     }
 
@@ -184,6 +186,7 @@ internal object CleanYourTvTrust {
                 val signerSha = apk.getString("signer_sha256")
                 require(hex64.matches(sha) && hex64.matches(signerSha)) { "Некорректная контрольная сумма APK" }
                 if (signerSha in revoked) signerRevoked = true
+                val artifactRevoked = sha in revoked
                 val abisJson = v.getJSONArray("abis")
                 require(abisJson.length() <= 4) { "Слишком много ABI" }
                 val abis = linkedSetOf<String>()
@@ -205,7 +208,7 @@ internal object CleanYourTvTrust {
                 }
                 versions += CatalogVersion(
                     code, v.getString("version_name"), url, size, sha, signerSha,
-                    v.getInt("min_sdk"), abis, perms, v.getString("network").take(300)
+                    v.getInt("min_sdk"), abis, perms, v.getString("network").take(300), artifactRevoked || signerSha in revoked
                 )
             }
             val tier = if (signerRevoked) "revoked" else m.getString("tier")
