@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.36"
+private const val APP_VERSION = "0.9.37"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -5974,7 +5974,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                     if (pkg !in installed) failures.add("$pkg (не установлен)")
                                                     else if (isProtectedSystemPackage(pkg)) failures.add("$pkg (защищённый компонент)")
                                                     else try {
-                                                        changePackageStateVerified(adb, pkg, true)
+                                                        changePackageStateTracked(context, adb, pkg, true)
                                                         restoredSystems.add(pkg)
                                                     } catch (_: Exception) { failures.add(pkg) }
                                                 }
@@ -6014,7 +6014,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
                                         val failed = mutableListOf<String>()
-                                        restoreList.forEach { pkg -> try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failed.add(pkg) } }
+                                        restoreList.forEach { pkg -> try { changePackageStateTracked(context, adb, pkg, true) } catch (_: Exception) { failed.add(pkg) } }
                                         if (failed.isEmpty()) "Все приложения восстановлены" else "Не удалось восстановить: ${failed.joinToString()}"
                                     }
                                 }, { result ->
