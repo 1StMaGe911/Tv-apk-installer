@@ -2491,6 +2491,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.6 • Сезонная тема Diwali", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена праздничная тема Diwali из актуального каталога Clean Your TV. Она показывается только до даты окончания, указанной в исходной конфигурации темы.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.5 • Полная тема Quiet", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена недостающая официальная тема Quiet — чистый чёрный фон без обоев и с настройками для спокойной работы Launcher. Исправлена загрузка темы, которая в исходном проекте намеренно не содержит wallpaper.jpg.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
