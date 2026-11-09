@@ -1685,6 +1685,27 @@ fun TvInstallerApp() {
         }
     }
 
+    val wallpaperCollectionPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents()
+    ) { selectedUris ->
+        if (selectedUris.isNotEmpty()) {
+            val host = ip.trim()
+            val p = port.toIntOrNull()
+            if (host.isBlank() || p == null || p !in 1..65535) {
+                status = "Проверь IP и порт ADB"
+            } else runTask({
+                val files = copyLauncherWallpaperUris(context, selectedUris)
+                settings.edit()
+                    .putInt("launcher_wallpaper_rotation_minutes", launcherWallpaperRotationMinutes)
+                    .putString("launcher_wallpaper_order", launcherWallpaperOrder)
+                    .apply()
+                connectWithRetry(context, host, p) { adb ->
+                    uploadWallpaperCollection(adb, files, launcherWallpaperRotationMinutes, launcherWallpaperOrder)
+                }
+            })
+        }
+    }
+
     val customWallpaperPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { sourceUri ->
@@ -1957,6 +1978,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.9 • Коллекция и ротация обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен выбор и загрузка до 100 изображений в wallpapers Launcher, локальное хранение коллекции на телефоне, интервал ротации и случайный/последовательный порядок. Повторная загрузка заменяет коллекцию на телевизоре.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.8 • Поддержка Home / All Apps", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена отдельная опциональная активация HomeKeyService для пультов, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home. Включение требует подтверждения и не меняет остальные службы специальных возможностей.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2552,6 +2576,56 @@ fun TvInstallerApp() {
                                 }
                             }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Применение..." else "Применить док и список приложений") }
                             Text("Список сохраняется в текущей конфигурации Launcher. Очистка поля дока возвращает док из темы; чтобы вернуть конкретную плитку, удали её package name из поля скрытых приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("РОТАЦИЯ ОБОЕВ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Выбери несколько изображений — они сохранятся в приложении на телефоне и загрузятся в папку wallpapers Launcher. Поддерживаются JPEG, PNG и WebP: до 100 файлов, 10 МБ каждый, 50 МБ суммарно.", color = TextMuted, fontSize = 11.sp)
+                            Text("Менять обои каждые: ${if (launcherWallpaperRotationMinutes <= 0) "выключено" else "$launcherWallpaperRotationMinutes мин."}", color = TextMain)
+                            Slider(
+                                value = launcherWallpaperRotationMinutes.toFloat(),
+                                onValueChange = { launcherWallpaperRotationMinutes = ((it / 5f).toInt() * 5).coerceIn(0, 120) },
+                                valueRange = 0f..120f,
+                                steps = 23
+                            )
+                            Text("Порядок показа", color = TextMain)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(onClick = { launcherWallpaperOrder = "shuffle" }, modifier = Modifier.weight(1f)) {
+                                    Text(if (launcherWallpaperOrder == "shuffle") "✓ Случайный" else "Случайный")
+                                }
+                                OutlinedButton(onClick = { launcherWallpaperOrder = "sequential" }, modifier = Modifier.weight(1f)) {
+                                    Text(if (launcherWallpaperOrder == "sequential") "✓ По порядку" else "По порядку")
+                                }
+                            }
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else {
+                                    settings.edit()
+                                        .putInt("launcher_wallpaper_rotation_minutes", launcherWallpaperRotationMinutes)
+                                        .putString("launcher_wallpaper_order", launcherWallpaperOrder)
+                                        .apply()
+                                    runTask({
+                                        connectWithRetry(context, host, p) { adb ->
+                                            applyWallpaperRotationSettings(adb, launcherWallpaperRotationMinutes, launcherWallpaperOrder)
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Применить интервал и порядок обоев") }
+                            OutlinedButton(enabled = !busy, onClick = { wallpaperCollectionPicker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Выбрать и загрузить изображения")
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    val directory = File(context.filesDir, "launcher_wallpapers")
+                                    val files = directory.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+                                    connectWithRetry(context, host, p) { adb ->
+                                        uploadWallpaperCollection(adb, files, launcherWallpaperRotationMinutes, launcherWallpaperOrder)
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Повторно загрузить сохранённую коллекцию") }
+                            Text("Для ротации требуется коллекция изображений и интервал больше нуля. При повторной загрузке коллекция на телевизоре заменяется выбранной на телефоне.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ЧАСЫ И ЗАСТАВКА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Настрой часы на главном экране и системную заставку Clean Your TV. Авточасы появляются после бездействия, а системная заставка запускается по таймеру Android TV.", color = TextMuted, fontSize = 11.sp)
                             Text("Показывать часы после бездействия: ${if (launcherIdleClockMinutes <= 0) "выключено" else "через $launcherIdleClockMinutes мин."}", color = TextMain)
