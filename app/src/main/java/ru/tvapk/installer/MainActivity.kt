@@ -5051,6 +5051,12 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.82 • Проверка подписи после установки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("После установки дополнения, отката и восстановления аварийной копии приложение повторно проверяет сертификат уже установленного пакета. Успешный ответ ADB и совпадение версии больше не считаются достаточным подтверждением.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.9.81 • Проверка экспорта аварийных APK", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("После сохранения аварийной копии приложение повторно читает документ и сверяет его размер и SHA-256 с исходным APK.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.80 • Экспорт аварийных APK", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Аварийную копию модуля теперь можно сохранить в выбранное место. Перед экспортом повторно проверяются путь, размер и SHA-256; повреждённый или изменённый файл не экспортируется.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
