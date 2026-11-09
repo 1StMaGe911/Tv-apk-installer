@@ -2311,6 +2311,7 @@ fun TvInstallerApp() {
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
+    var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
     var profileCatalogExpanded by remember { mutableStateOf(false) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
@@ -4704,6 +4705,77 @@ fun TvInstallerApp() {
                                             )
                                             if (entry.changedPackages.isNotEmpty()) {
                                                 Text(entry.changedPackages.joinToString(), color = TextMuted, fontSize = 10.sp)
+                                                if (entry.outcome.contains("Очистка", ignoreCase = true)) {
+                                                    OutlinedButton(
+                                                        enabled = !busy,
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        onClick = { pendingCleanupHistoryUndo = entry }
+                                                    ) { Text("Отменить эту очистку") }
+                                                }
+                                            }
+                                            if (pendingCleanupHistoryUndo?.createdAt == entry.createdAt) {
+                                                val undoEntry = entry
+                                                AlertDialog(
+                                                    onDismissRequest = { pendingCleanupHistoryUndo = null },
+                                                    title = { Text("Отменить выбранную очистку?") },
+                                                    text = {
+                                                        Column(
+                                                            modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Text("Будут включены только пакеты, которые эта операция отключила и которые сейчас всё ещё отключены.", color = TextMain)
+                                                            Text("Перед изменениями приложение проверит, что подключён тот же телевизор.", color = TextMuted, fontSize = 11.sp)
+                                                            undoEntry.changedPackages.forEach { Text("• $it", color = TextMuted, fontSize = 11.sp) }
+                                                        }
+                                                    },
+                                                    confirmButton = {
+                                                        TextButton(enabled = !busy, onClick = {
+                                                            pendingCleanupHistoryUndo = null
+                                                            val host = ip.trim()
+                                                            val p = port.toIntOrNull()
+                                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                                status = "Проверь IP и порт ADB"
+                                                            } else {
+                                                                runTask({
+                                                                    connectWithRetry(context, host, p) { adb ->
+                                                                        require(readTvIdentity(adb) == undoEntry.deviceIdentity) {
+                                                                            "История относится к другому телевизору или другой прошивке. Ничего не изменено."
+                                                                        }
+                                                                        val installedNow = readAllPackages(adb).toSet()
+                                                                        val disabledNow = readDisabledPackages(adb)
+                                                                        val missing = undoEntry.changedPackages.filter { it !in installedNow }
+                                                                        val candidates = undoEntry.changedPackages.filter { it in installedNow && it in disabledNow }
+                                                                        val failures = mutableListOf<String>()
+                                                                        candidates.forEach { pkg ->
+                                                                            try {
+                                                                                changePackageStateVerified(adb, pkg, true)
+                                                                            } catch (e: Exception) {
+                                                                                failures.add("$pkg (${errorText(e)})")
+                                                                            }
+                                                                        }
+                                                                        val verified = readDisabledPackages(adb)
+                                                                        val restored = candidates.filter { it !in verified }
+                                                                        val stillDisabled = candidates - restored.toSet()
+                                                                        activity.runOnUiThread {
+                                                                            disabledOnDevice = verified
+                                                                            disabledPackages = disabledPackages - restored.toSet()
+                                                                            managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
+                                                                            settings.edit()
+                                                                                .putStringSet("disabled_packages", disabledPackages)
+                                                                                .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
+                                                                                .apply()
+                                                                        }
+                                                                        "Отмена очистки: включено ${restored.size} пакетов. Уже включены: ${undoEntry.changedPackages.size - candidates.size}. Не установлены: ${missing.size}. Остались отключёнными: ${stillDisabled.size}. Ошибки: ${failures.size}" +
+                                                                            if (failures.isNotEmpty()) "\\n" + failures.joinToString("\\n") else ""
+                                                                    }
+                                                                })
+                                                            }
+                                                        }) { Text("Подтвердить отмену") }
+                                                    },
+                                                    dismissButton = {
+                                                        TextButton(onClick = { pendingCleanupHistoryUndo = null }) { Text("Назад") }
+                                                    }
+                                                )
                                             }
                                             Divider(color = Color.DarkGray)
                                         }
