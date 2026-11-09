@@ -1175,6 +1175,18 @@ private fun readTvDiagnostics(adb: Dadb): String {
     }
 }
 
+private fun readTvIdentity(adb: Dadb): String {
+    fun prop(name: String) = try { shellText(adb, "getprop $name").trim().ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
+    val manufacturer = prop("ro.product.manufacturer")
+    val model = prop("ro.product.model")
+    val device = prop("ro.product.device")
+    val fingerprint = prop("ro.build.fingerprint")
+    require(listOf(manufacturer, model, device, fingerprint).none { it == "неизвестно" }) {
+        "Не удалось надёжно определить телевизор. Точка не создана, чтобы не привязать её к неизвестному устройству."
+    }
+    return listOf(manufacturer, model, device, fingerprint).joinToString("|")
+}
+
 private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
@@ -1663,6 +1675,7 @@ fun TvInstallerApp() {
     var packageFilter by remember { mutableStateOf("") }
     var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
     var restorePointExists by remember { mutableStateOf(settings.getBoolean("restore_point_exists", false)) }
+    var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
 
 
     var usbMode by remember { mutableStateOf(false) }
@@ -3727,10 +3740,13 @@ fun TvInstallerApp() {
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
                                         val snapshot = readDisabledUserPackages(adb)
+                                        val deviceFingerprint = readTvIdentity(adb)
                                         activity.runOnUiThread {
                                             restorePoint = snapshot
                                             restorePointExists = true
+                                            restorePointDeviceFingerprint = deviceFingerprint
                                             settings.edit().putStringSet("restore_point_user_disabled", snapshot)
+                                                .putString("restore_point_device_fingerprint", deviceFingerprint)
                                                 .putBoolean("restore_point_exists", true).apply()
                                         }
                                         "Точка восстановления создана. Отключённых пользовательских приложений: ${snapshot.size}"
@@ -3742,6 +3758,12 @@ fun TvInstallerApp() {
                                 val snapshot = restorePoint
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
+                                        val savedFingerprint = restorePointDeviceFingerprint
+                                            ?: throw Exception("Эта старая точка не привязана к конкретному телевизору. Создай новую точку перед восстановлением.")
+                                        val currentFingerprint = readTvIdentity(adb)
+                                        require(currentFingerprint == savedFingerprint) {
+                                            "Точка создана для другого телевизора или другой сборки прошивки. Восстановление остановлено; создай новую точку на этом устройстве."
+                                        }
                                         val current = readDisabledUserPackages(adb)
                                         val toEnable = current - snapshot
                                         val toDisable = snapshot - current
