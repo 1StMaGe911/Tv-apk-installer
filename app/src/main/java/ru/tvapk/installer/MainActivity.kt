@@ -1325,6 +1325,110 @@ private fun launchTvApp(adb: Dadb, packageName: String): String {
     return shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
 }
 
+private const val CLEAN_TV_LAUNCHER_PACKAGE = "com.gathin.tvhome"
+private const val CLEAN_TV_LAUNCHER_COMPONENT = "com.gathin.tvhome/.MainActivity"
+private val KNOWN_STOCK_HOME_PACKAGES = setOf(
+    "com.google.android.tvlauncher",
+    "com.google.android.apps.tv.launcherx",
+    "com.google.android.leanbacklauncher",
+    "com.mitv.tvhome"
+)
+
+private fun resolveHomeComponent(adb: Dadb, packageFilter: String? = null): String? {
+    val base = "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME"
+    val output = try {
+        shellText(adb, if (packageFilter == null) base else "$base $packageFilter")
+    } catch (_: Exception) {
+        return null
+    }
+    return output.lineSequence().map { it.trim() }.lastOrNull {
+        it.matches(Regex("[A-Za-z_][A-Za-z0-9_.]*/[A-Za-z0-9_.$]+"))
+    }
+}
+
+private fun savedStockHomePackage(context: Context): String? =
+    prefs(context).getString("launcher_handover_stock_package", null)
+
+private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
+    val currentHome = resolveHomeComponent(adb)
+        ?: throw Exception("Не удалось определить текущий домашний экран. Ничего не изменено.")
+    val currentPackage = currentHome.substringBefore("/")
+    if (currentPackage == CLEAN_TV_LAUNCHER_PACKAGE) {
+        return "Clean Your TV Launcher уже назначен домашним экраном."
+    }
+    require(currentPackage in KNOWN_STOCK_HOME_PACKAGES) {
+        "Текущий Home — $currentHome. Автоматическое переключение разрешено только для проверенных штатных пакетов Android TV. Выбери Launcher вручную в системных настройках."
+    }
+    val stockComponent = resolveHomeComponent(adb, currentPackage)
+        ?: throw Exception("Не удалось получить компонент штатного Home $currentPackage. Штатный экран оставлен без изменений.")
+    require(stockComponent.startsWith("$currentPackage/")) {
+        "Телевизор вернул неожиданный компонент для штатного Home: $stockComponent. Переключение отменено."
+    }
+
+    // Save recovery data before the first state-changing command. If ADB drops mid-handover,
+    // the user can reconnect and use the rollback button without guessing the original Home.
+    prefs(context).edit()
+        .putString("launcher_handover_stock_package", currentPackage)
+        .putString("launcher_handover_stock_component", stockComponent)
+        .putBoolean("launcher_handover_active", false)
+        .apply()
+
+    val start = shellText(adb, "am start -W -n $CLEAN_TV_LAUNCHER_COMPONENT")
+    require(start.contains("Status: ok", ignoreCase = true) && !start.contains("Error:", ignoreCase = true)) {
+        "Новый Launcher не прошёл проверку запуска. Штатный экран не отключался. Ответ: $start"
+    }
+
+    try {
+        changePackageState(adb, currentPackage, false)
+        shellText(adb, "cmd package set-home-activity --user 0 $CLEAN_TV_LAUNCHER_COMPONENT")
+        val after = resolveHomeComponent(adb)
+        require(after?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
+            "Android не подтвердил новый Home (получено: ${after ?: "нет ответа"})."
+        }
+        prefs(context).edit().putBoolean("launcher_handover_active", true).apply()
+        return "Clean Your TV Launcher назначен главным экраном. Штатный пакет $currentPackage сохранён в записи отката."
+    } catch (handoverError: Exception) {
+        val rollbackResult = try {
+            changePackageState(adb, currentPackage, true)
+            shellText(adb, "cmd package set-home-activity --user 0 $stockComponent")
+            val restored = resolveHomeComponent(adb)
+            require(restored?.startsWith("$currentPackage/") == true) {
+                "Android вернул неожиданный Home: ${restored ?: "нет ответа"}"
+            }
+            "Штатный Home восстановлен автоматически."
+        } catch (rollbackError: Exception) {
+            "Автоматический откат не подтверждён: ${errorText(rollbackError)}. Запись восстановления сохранена — повтори откат после подключения к телевизору."
+        }
+        throw Exception("${errorText(handoverError)}\n$rollbackResult", handoverError)
+    }
+}
+
+private fun restoreStockHomeAfterHandover(context: Context, adb: Dadb): String {
+    val store = prefs(context)
+    val stockPackage = store.getString("launcher_handover_stock_package", null)
+        ?: throw Exception("Нет сохранённой записи переключения Home.")
+    val stockComponent = store.getString("launcher_handover_stock_component", null)
+        ?: throw Exception("В записи отката отсутствует компонент штатного Home.")
+    require(stockPackage in KNOWN_STOCK_HOME_PACKAGES && stockComponent.startsWith("$stockPackage/")) {
+        "Запись отката не прошла проверку безопасности. Ничего не изменено."
+    }
+    require(shellText(adb, "pm path $stockPackage").contains("package:")) {
+        "Штатный Launcher $stockPackage больше не установлен. Установи его средствами производителя или выбери другой Home."
+    }
+    changePackageState(adb, stockPackage, true)
+    shellText(adb, "cmd package set-home-activity --user 0 $stockComponent")
+    val restored = resolveHomeComponent(adb)
+    require(restored?.startsWith("$stockPackage/") == true) {
+        "Не удалось подтвердить возврат штатного Home. Получено: ${restored ?: "нет ответа"}. Запись отката сохранена."
+    }
+    store.edit()
+        .remove("launcher_handover_stock_package")
+        .remove("launcher_handover_stock_component")
+        .remove("launcher_handover_active")
+        .apply()
+    return "Штатный домашний экран восстановлен: $restored. Clean Your TV Launcher не удалялся."
+}
+
 
 private data class AutoStartReceiver(val component: String, val packageName: String)
 
@@ -1800,6 +1904,8 @@ fun TvInstallerApp() {
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
     var pendingModuleRemoval by remember { mutableStateOf(false) }
+    var pendingLauncherHandover by remember { mutableStateOf(false) }
+    var hasLauncherHandover by remember { mutableStateOf(settings.getString("launcher_handover_stock_package", null) != null) }
     var launcherColumns by remember { mutableStateOf(settings.getInt("launcher_columns", 6)) }
     var launcherRowsBelowDock by remember { mutableStateOf(settings.getInt("launcher_rows_below_dock", 1)) }
     var launcherDockTitle by remember { mutableStateOf(settings.getBoolean("launcher_dock_title", true)) }
@@ -2769,14 +2875,50 @@ fun TvInstallerApp() {
                                     "Запрос запуска Clean Your TV Launcher отправлен на телевизор."
                                 } })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Открыть Launcher") }
+                            Button(enabled = !busy, onClick = { pendingLauncherHandover = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Безопасно назначить Clean Your TV Launcher главным")
+                            }
                             OutlinedButton(enabled = !busy, onClick = {
                                 val host = ip.trim(); val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
                                 else runTask({ connectWithRetry(context, host, p) { adb ->
                                     shellText(adb, "am start -a android.settings.HOME_SETTINGS")
-                                    "Открыты системные настройки выбора домашнего экрана. Не отключай штатный Launcher."
+                                    "Открыты системные настройки выбора домашнего экрана. Штатный Launcher не отключён."
                                 } })
-                            }, modifier = Modifier.fillMaxWidth()) { Text("Выбор домашнего экрана телевизора") }
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Выбор домашнего экрана вручную") }
+                            if (hasLauncherHandover) {
+                                OutlinedButton(enabled = !busy, onClick = {
+                                    val host = ip.trim(); val p = port.toIntOrNull()
+                                    if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
+                                    else runTask({ connectWithRetry(context, host, p) { adb ->
+                                        restoreStockHomeAfterHandover(context, adb)
+                                    } }, { result ->
+                                        if (result.startsWith("Штатный домашний экран восстановлен")) hasLauncherHandover = false
+                                    })
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Аварийно вернуть штатный домашний экран") }
+                            }
+                            if (pendingLauncherHandover) {
+                                AlertDialog(
+                                    onDismissRequest = { pendingLauncherHandover = false },
+                                    title = { Text("Переключить главный экран?") },
+                                    text = { Text("Сначала приложение проверит запуск Clean Your TV Launcher. Затем сохранит компонент штатного Home, отключит только распознанный пакет штатного Launcher и проверит, что Android действительно назначил новый экран. При ошибке будет предпринята попытка автоматического отката. Продолжить?") },
+                                    confirmButton = {
+                                        TextButton(enabled = !busy, onClick = {
+                                            pendingLauncherHandover = false
+                                            val host = ip.trim(); val p = port.toIntOrNull()
+                                            if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
+                                            else runTask({ connectWithRetry(context, host, p) { adb ->
+                                                handOverToCleanYourTvLauncher(context, adb)
+                                            } }, { result ->
+                                                hasLauncherHandover = settings.getString("launcher_handover_stock_package", null) != null
+                                            })
+                                        }) { Text("Проверить и переключить") }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { pendingLauncherHandover = false }) { Text("Отмена") }
+                                    }
+                                )
+                            }
                             Text("Безопасность: новый Launcher не назначается автоматически, а штатный экран не отключается. На части моделей замена домашнего экрана нарушает работу кнопок пульта, трансляции или запуск после перезагрузки. Для возврата выбери штатный Launcher в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = { pendingModuleRemoval = true }, modifier = Modifier.fillMaxWidth()) { Text("Удалить модули Clean Your TV") }
                             Text("Удаление затронет только пакеты Clean Your TV для пользователя телевизора. Перед удалением выбери штатный домашний экран в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
