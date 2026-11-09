@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.43"
+private const val APP_VERSION = "0.9.45"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -135,7 +135,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
         }
     }
 
-    val listeners = listOf("_adb._tcp.", "_adb-tls-connect._tcp.").map { serviceType ->
+    val listeners = listOf("_adb._tcp.").map { serviceType ->
         object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(type: String) = Unit
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
@@ -154,7 +154,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
 
     val started = mutableListOf<NsdManager.DiscoveryListener>()
     listeners.forEachIndexed { index, listener ->
-        val type = if (index == 0) "_adb._tcp." else "_adb-tls-connect._tcp."
+        val type = "_adb._tcp."
         runCatching { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
             .onSuccess { started += listener }
     }
