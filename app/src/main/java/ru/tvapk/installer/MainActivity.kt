@@ -11,6 +11,8 @@ import android.hardware.usb.UsbManager
 import android.hardware.usb.UsbDevice
 import android.app.PendingIntent
 import android.net.Uri as AndroidUri
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.provider.Settings
 import android.provider.OpenableColumns
 import android.net.Uri
@@ -57,6 +59,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
@@ -76,6 +80,94 @@ data class TvDevice(
     val ip: String,
     val port: Int
 )
+
+// Ищет только устройства, которые сами объявили ADB в локальной сети.
+// Никакого сканирования диапазона IP и отправки данных во внешнюю сеть.
+private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<TvDevice> {
+    val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
+        ?: return emptyList()
+    val found = java.util.concurrent.ConcurrentHashMap<String, TvDevice>()
+    val seenServices = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    val queue = java.util.concurrent.ConcurrentLinkedQueue<NsdServiceInfo>()
+    val resolving = java.util.concurrent.atomic.AtomicBoolean(false)
+    val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
+    val finished = java.util.concurrent.CountDownLatch(1)
+    val ownAddresses = runCatching {
+        NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .flatMap { it.inetAddresses.toList() }
+            .filterIsInstance<Inet4Address>()
+            .mapNotNull { it.hostAddress }
+            .toSet()
+    }.getOrDefault(emptySet())
+
+    fun resolveNext() {
+        if (stopped.get() || !resolving.compareAndSet(false, true)) return
+        val service = queue.poll()
+        if (service == null) {
+            resolving.set(false)
+            return
+        }
+        runCatching {
+            nsd.resolveService(service, object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                    resolving.set(false)
+                    resolveNext()
+                }
+
+                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                    val address = serviceInfo.host as? Inet4Address
+                    val host = address?.hostAddress
+                    val port = serviceInfo.port
+                    if (!stopped.get() && address != null && !address.isLoopbackAddress &&
+                        !address.isAnyLocalAddress && host != null && host !in ownAddresses &&
+                        port in 1..65535
+                    ) {
+                        val key = "$host:$port"
+                        found[key] = TvDevice(serviceInfo.serviceName.ifBlank { "Android TV" }, host, port)
+                    }
+                    resolving.set(false)
+                    resolveNext()
+                }
+            })
+        }.onFailure {
+            resolving.set(false)
+            resolveNext()
+        }
+    }
+
+    val listeners = listOf("_adb._tcp.", "_adb-tls-connect._tcp.").map { serviceType ->
+        object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(type: String) = Unit
+            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                val key = "${serviceInfo.serviceType}/${serviceInfo.serviceName}"
+                if (!stopped.get() && seenServices.add(key)) {
+                    queue.offer(serviceInfo)
+                    resolveNext()
+                }
+            }
+            override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
+            override fun onDiscoveryStopped(type: String) = Unit
+            override fun onStartDiscoveryFailed(type: String, errorCode: Int) { finished.countDown() }
+            override fun onStopDiscoveryFailed(type: String, errorCode: Int) = Unit
+        }
+    }
+
+    val started = mutableListOf<NsdManager.DiscoveryListener>()
+    listeners.forEachIndexed { index, listener ->
+        val type = if (index == 0) "_adb._tcp." else "_adb-tls-connect._tcp."
+        runCatching { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
+            .onSuccess { started += listener }
+    }
+    try {
+        finished.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+    } finally {
+        stopped.set(true)
+        started.forEach { listener -> runCatching { nsd.stopServiceDiscovery(listener) } }
+    }
+    return found.values.sortedWith(compareBy<TvDevice> { it.name.lowercase() }.thenBy { it.ip }.thenBy { it.port })
+}
 
 private data class CleanupJournal(
     val deviceIdentity: String,
@@ -2943,6 +3035,7 @@ fun TvInstallerApp() {
         mutableStateOf(settings.getString("port", "5555") ?: "5555")
     }
     var tvName by remember { mutableStateOf("") }
+    var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
 
     var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -4127,6 +4220,38 @@ fun TvInstallerApp() {
                             OutlinedTextField(value = tvName, onValueChange = { tvName = it }, label = { Text("Название телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             OutlinedTextField(value = ip, onValueChange = { ip = it }, label = { Text("IP телевизора") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                             OutlinedTextField(value = port, onValueChange = { port = it }, label = { Text("Порт ADB") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                discoveredDevices = emptyList()
+                                runTask(action = {
+                                    val found = discoverAdbDevices(context)
+                                    activity.runOnUiThread { discoveredDevices = found }
+                                    if (found.isEmpty()) {
+                                        "ADB-устройства не найдены. Включи отладку по сети и проверь, что телефон и ТВ находятся в одной локальной сети."
+                                    } else {
+                                        "Найдено ADB-устройств: ${found.size}. Выбери телевизор из списка ниже."
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Поиск устройств..." else "Найти телевизоры в локальной сети")
+                            }
+                            if (discoveredDevices.isNotEmpty()) {
+                                Text("НАЙДЕННЫЕ ADB-УСТРОЙСТВА", color = GoldLight, style = MaterialTheme.typography.labelLarge)
+                                discoveredDevices.forEach { device ->
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        onClick = {
+                                            tvName = device.name
+                                            ip = device.ip
+                                            port = device.port.toString()
+                                            discoveredDevices = emptyList()
+                                            status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("${device.name} — ${device.ip}:${device.port}")
+                                    }
+                                }
+                            }
                             Button(enabled = !busy, onClick = {
                                 val host = ip.trim()
                                 val p = port.toIntOrNull()
