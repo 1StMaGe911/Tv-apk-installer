@@ -8,6 +8,7 @@ import android.net.Uri as AndroidUri
 import android.provider.Settings
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,7 +51,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.6.9"
+private const val APP_VERSION = "0.7.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -318,6 +319,59 @@ private fun shellText(adb: Dadb, command: String): String {
     val response = adb.shell(command)
     if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
     return response.output.trim()
+}
+
+private fun applyLauncherAppearance(
+    adb: Dadb,
+    columns: Int,
+    rowsBelowDock: Int,
+    dockTitle: Boolean,
+    dockRow: Boolean,
+    animations: Boolean,
+    advancedEffects: Boolean,
+    appLibrary: Boolean,
+    iconOnlyButtons: Boolean
+): String {
+    val packageName = "com.gathin.tvhome"
+    val installed = try {
+        shellText(adb, "pm path $packageName").contains("package:")
+    } catch (_: Exception) {
+        false
+    }
+    require(installed) { "Clean Your TV Launcher не установлен. Сначала установи модуль в разделе «Модули Clean Your TV»." }
+
+    val config = JSONObject()
+        .put("background_color", "#080808")
+        .put("wallpaper", false)
+        .put("wallpaper_rotation_minutes", 0)
+        .put("columns", columns.coerceIn(4, 8))
+        .put("rows_below_dock", rowsBelowDock.coerceIn(0, 3))
+        .put("dock_title", dockTitle)
+        .put("dock_row", dockRow)
+        .put("animations", animations)
+        .put("advanced_effects", animations && advancedEffects)
+        .put("reduced_motion", !animations)
+        .put("app_library", appLibrary)
+        .put("icon_only_buttons", iconOnlyButtons)
+        .put("show_network_pill", true)
+        .put("show_inputs_pill", true)
+
+    val encoded = Base64.encodeToString(config.toString(2).toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    shellText(adb, "printf '%s' '$encoded' | base64 -d > /data/local/tmp/tvapk-launcher-config.json")
+    val directory = "/sdcard/Android/data/$packageName/files"
+    val writeCommand =
+        "rm -f $directory/config.json 2>/dev/null; " +
+        "o=\$(content write --uri content://$packageName.theme/config.json < /data/local/tmp/tvapk-launcher-config.json 2>&1); " +
+        "case \"\$o\" in *Unsupported*|*Error*) mkdir -p $directory 2>/dev/null; cp /data/local/tmp/tvapk-launcher-config.json $directory/config.json;; esac; " +
+        "rm -f /data/local/tmp/tvapk-launcher-config.json"
+    shellText(adb, writeCommand)
+    shellText(adb, "am force-stop --user 0 $packageName")
+    val restart = try {
+        shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
+    } catch (_: Exception) {
+        shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
+    }
+    return "Оформление Clean Your TV применено: $columns приложений в ряду, $rowsBelowDock ряд(а) под доком. Launcher перезапущен. $restart"
 }
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
@@ -841,6 +895,14 @@ fun TvInstallerApp() {
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
     var pendingModuleRemoval by remember { mutableStateOf(false) }
+    var launcherColumns by remember { mutableStateOf(settings.getInt("launcher_columns", 6)) }
+    var launcherRowsBelowDock by remember { mutableStateOf(settings.getInt("launcher_rows_below_dock", 1)) }
+    var launcherDockTitle by remember { mutableStateOf(settings.getBoolean("launcher_dock_title", true)) }
+    var launcherDockRow by remember { mutableStateOf(settings.getBoolean("launcher_dock_row", true)) }
+    var launcherAnimations by remember { mutableStateOf(settings.getBoolean("launcher_animations", true)) }
+    var launcherAdvancedEffects by remember { mutableStateOf(settings.getBoolean("launcher_advanced_effects", false)) }
+    var launcherAppLibrary by remember { mutableStateOf(settings.getBoolean("launcher_app_library", false)) }
+    var launcherIconOnlyButtons by remember { mutableStateOf(settings.getBoolean("launcher_icon_only_buttons", true)) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1107,6 +1169,9 @@ fun TvInstallerApp() {
                     NavigationDrawerItem(label = { Text("Модули Clean Your TV") }, selected = activeSection == "modules",
                         icon = { Text("🧩") },
                         onClick = { showSettings = false; activeSection = "modules"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Оформление Launcher") }, selected = activeSection == "appearance",
+                        icon = { Text("🎨") },
+                        onClick = { showSettings = false; activeSection = "appearance"; drawerScope.launch { drawerState.close() } })
                     NavigationDrawerItem(label = { Text("Пульт TV") }, selected = activeSection == "remote",
                         icon = { Text("🎮") },
                         onClick = { showSettings = false; activeSection = "remote"; drawerScope.launch { drawerState.close() } })
@@ -1204,6 +1269,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.0 • Настройка внешнего вида Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены настройки сетки, дока, анимаций, эффектов, компактной верхней панели и библиотеки приложений. Параметры записываются в config.json Launcher через ThemeProvider/ADB и применяются после перезапуска.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.6.9 • Управление модулями Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлено безопасное удаление модулей Launcher и Curtain с подтверждением, проверкой установленных пакетов и отчётом об остатках.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1395,6 +1463,7 @@ fun TvInstallerApp() {
                 "clean" -> "Clean Your TV"
                 "remote" -> "Пульт TV"
                 "modules" -> "Модули Clean Your TV"
+                "appearance" -> "Оформление Clean Your TV"
                 "apk" -> "Установка APK"
                 else -> "Раздел"
             }
@@ -1438,7 +1507,7 @@ fun TvInstallerApp() {
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
                                             if (section == "remote") showRemoteControl = true
-                                            if (section != "modules") activeSection = null
+                                            if (section != "modules" && section != "appearance") activeSection = null
                                         }
                                     })
                                 }
@@ -1533,6 +1602,97 @@ fun TvInstallerApp() {
                             },
                             dismissButton = { TextButton(onClick = { pendingModuleRemoval = false }) { Text("Отмена") } }
                         )
+                    }
+                }
+                if (section == "appearance") {
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("ВНЕШНИЙ ВИД CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Настройки записываются в config.json установленного Clean Your TV Launcher. После применения Launcher перезапустится. Если модуль ещё не установлен, сначала открой раздел «Модули Clean Your TV».", color = TextMuted, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Приложений в ряду: $launcherColumns", color = TextMain)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(onClick = { launcherColumns = (launcherColumns - 1).coerceAtLeast(4) }) { Text("−") }
+                                    OutlinedButton(onClick = { launcherColumns = (launcherColumns + 1).coerceAtMost(8) }) { Text("+") }
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                Text("Рядов под доком: $launcherRowsBelowDock", color = TextMain)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    OutlinedButton(onClick = { launcherRowsBelowDock = (launcherRowsBelowDock - 1).coerceAtLeast(0) }) { Text("−") }
+                                    OutlinedButton(onClick = { launcherRowsBelowDock = (launcherRowsBelowDock + 1).coerceAtMost(3) }) { Text("+") }
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Название выбранного приложения", color = TextMain)
+                                    Text("Показывать название над доком", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherDockTitle, onCheckedChange = { launcherDockTitle = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Отдельная полоса дока", color = TextMain)
+                                    Text("Отключи, чтобы приложения были одной сеткой", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherDockRow, onCheckedChange = { launcherDockRow = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Анимации", color = TextMain)
+                                    Text("Плавное перемещение фокуса", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherAnimations, onCheckedChange = { launcherAnimations = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Расширенные эффекты", color = TextMain)
+                                    Text("Увеличение и подсветка плиток", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherAdvancedEffects, onCheckedChange = { launcherAdvancedEffects = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Библиотека приложений", color = TextMain)
+                                    Text("Дополнительный список всех установленных приложений", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherAppLibrary, onCheckedChange = { launcherAppLibrary = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Компактные кнопки верхней панели", color = TextMain)
+                                    Text("Только значки вместо подписей", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherIconOnlyButtons, onCheckedChange = { launcherIconOnlyButtons = it })
+                            }
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) {
+                                    status = "Проверь IP и порт ADB"
+                                } else {
+                                    settings.edit()
+                                        .putInt("launcher_columns", launcherColumns)
+                                        .putInt("launcher_rows_below_dock", launcherRowsBelowDock)
+                                        .putBoolean("launcher_dock_title", launcherDockTitle)
+                                        .putBoolean("launcher_dock_row", launcherDockRow)
+                                        .putBoolean("launcher_animations", launcherAnimations)
+                                        .putBoolean("launcher_advanced_effects", launcherAdvancedEffects)
+                                        .putBoolean("launcher_app_library", launcherAppLibrary)
+                                        .putBoolean("launcher_icon_only_buttons", launcherIconOnlyButtons)
+                                        .apply()
+                                    runTask({
+                                        connectWithRetry(context, host, p) { adb ->
+                                            applyLauncherAppearance(adb, launcherColumns, launcherRowsBelowDock, launcherDockTitle, launcherDockRow,
+                                                launcherAnimations, launcherAdvancedEffects, launcherAppLibrary, launcherIconOnlyButtons)
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Применение..." else "Применить оформление на телевизоре")
+                            }
+                            Text("Для передачи настроек используется ThemeProvider Clean Your TV, а на старых прошивках — резервная запись через ADB. Обои пока не меняются: для них требуется отдельная передача файлов изображений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        }
                     }
                 }
                 if (section != "usb" && devices.isNotEmpty()) {
