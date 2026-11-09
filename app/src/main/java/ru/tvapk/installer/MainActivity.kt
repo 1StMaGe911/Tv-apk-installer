@@ -2540,6 +2540,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.9 • Проверка результата очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("После каждой команды отключения и восстановления приложение дополнительно проверяет фактическое состояние пакета через Android Package Manager. Успешный код ADB сам по себе больше не считается подтверждением изменения.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.8 • Журнал безопасной очистки и откат незавершённой операции", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Перед отключением создаётся локальный журнал с идентификатором телевизора и планом. Каждый успешно отключённый пакет записывается сразу; после аварийного закрытия приложение предлагает восстановить только эти компоненты и только на том же телевизоре.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
