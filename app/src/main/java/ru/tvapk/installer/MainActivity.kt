@@ -479,7 +479,8 @@ private fun saveTrackedSystemSettingChanges(context: Context, changes: List<Trac
 private fun recordTrackedSystemSettingChange(context: Context, id: String, key: String, before: String?, after: String) {
     require(id.isNotBlank() && key in trackedSystemSettingKeys && after.length <= 4096)
     val changes = loadTrackedSystemSettingChanges(context).toMutableList()
-    val old = changes.firstOrNull { it.deviceIdentity == id && it.key == key }?.wasValue ?: before
+    val existing = changes.firstOrNull { it.deviceIdentity == id && it.key == key }
+    val old = if (existing != null) existing.wasValue else before
     changes.removeAll { it.deviceIdentity == id && it.key == key }
     if (old != after) changes.add(TrackedSystemSettingChange(id, "secure", key, old, after, System.currentTimeMillis()))
     saveTrackedSystemSettingChanges(context, changes)
