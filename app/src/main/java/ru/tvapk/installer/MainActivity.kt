@@ -7561,22 +7561,36 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 } else {
                                                     activity.runOnUiThread { cleanupJournal = journal }
                                                 }
+                                                val finalDisabledState = runCatching { readDisabledPackages(adb) }.getOrNull()
+                                                val postCleanupDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
+                                                val postCleanupHealth = postCleanupDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
                                                 activity.runOnUiThread {
                                                     if (disabledNow.isNotEmpty()) {
                                                         val userDisabledNow = disabledNow.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = disabledNow.filter { it !in userPackages }.toSet()
                                                         disabledPackages = disabledPackages + userDisabledNow
                                                         managedSystemDisabledPackages = managedSystemDisabledPackages + systemDisabledNow
-                                                        disabledOnDevice = disabledOnDevice + disabledNow
                                                         selectedCleanupPackages = selectedCleanupPackages - disabledNow.toSet()
                                                         settings.edit()
                                                             .putStringSet("disabled_packages", disabledPackages)
                                                             .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
                                                             .apply()
                                                     }
+                                                    if (finalDisabledState != null) disabledOnDevice = finalDisabledState
+                                                    if (postCleanupDiagnostics != null) diagnostics = postCleanupDiagnostics
                                                 }
+                                                val verificationSummary = if (finalDisabledState != null) {
+                                                    "\nПовторная проверка на ТВ: ${safeSelected.count { it in finalDisabledState }} из ${safeSelected.size} пакетов действительно отключено."
+                                                } else {
+                                                    "\nПовторная проверка общего состояния недоступна; результаты каждой операции проверялись отдельно."
+                                                }
+                                                val healthSummary = postCleanupHealth?.let { health ->
+                                                    "\nСостояние после оптимизации: ${health.summary}" +
+                                                        if (health.warnings.isEmpty()) "" else "\n" + health.warnings.joinToString("\n")
+                                                }.orEmpty()
                                                 "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
-                                                    if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}"
+                                                    (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
+                                                    verificationSummary + healthSummary
                                             }
                                         })
                                     }) { Text("Отключить выбранные") }
