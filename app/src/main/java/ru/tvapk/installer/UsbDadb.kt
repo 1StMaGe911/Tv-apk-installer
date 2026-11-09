@@ -49,6 +49,9 @@ class UsbDadb private constructor(
 
     private var connectionFeatures: Set<String> = emptySet()
     private val features: Set<String>
+    private val inPacketBuffer = ByteArray(bulkIn.maxPacketSize.coerceAtLeast(64))
+    private var inPacketOffset = 0
+    private var inPacketLength = 0
     private var maxPayload = DEFAULT_MAX_PAYLOAD
     private var nextLocalId = 1
     @Volatile private var closed = false
@@ -139,8 +142,8 @@ class UsbDadb private constructor(
         var offset = 0
         val deadline = System.currentTimeMillis() + USB_TIMEOUT_MS
         while (offset < data.size) {
-            val remaining = data.size - offset
-            val moved = connection.bulkTransfer(bulkOut, data, offset, remaining, TRANSFER_TIMEOUT_MS)
+            val chunk = min(data.size - offset, 16 * 1024)
+            val moved = connection.bulkTransfer(bulkOut, data, offset, chunk, TRANSFER_TIMEOUT_MS)
             if (moved < 0) throw IOException("USB ADB: ошибка передачи данных")
             if (moved == 0) {
                 if (System.currentTimeMillis() >= deadline) throw IOException("USB ADB: превышено время передачи")
@@ -149,16 +152,31 @@ class UsbDadb private constructor(
         }
     }
 
+    /**
+     * Read whole USB packets into a staging buffer before exposing the byte stream.
+     * This preserves any payload bytes that arrive in the same USB packet as an ADB header.
+     */
     private fun readUsbFully(target: ByteArray) {
         var offset = 0
         val deadline = System.currentTimeMillis() + USB_TIMEOUT_MS
         while (offset < target.size) {
-            val moved = connection.bulkTransfer(bulkIn, target, offset, target.size - offset, TRANSFER_TIMEOUT_MS)
-            if (moved < 0) throw IOException("USB ADB: устройство отключено или чтение завершилось ошибкой")
-            if (moved == 0) {
-                if (System.currentTimeMillis() >= deadline) throw IOException("USB ADB: ожидание ответа телевизора истекло")
-                Thread.sleep(5)
-            } else offset += moved
+            if (inPacketOffset >= inPacketLength) {
+                val moved = connection.bulkTransfer(
+                    bulkIn, inPacketBuffer, 0, inPacketBuffer.size, TRANSFER_TIMEOUT_MS
+                )
+                if (moved < 0) throw IOException("USB ADB: устройство отключено или чтение завершилось ошибкой")
+                if (moved == 0) {
+                    if (System.currentTimeMillis() >= deadline) throw IOException("USB ADB: ожидание ответа телевизора истекло")
+                    Thread.sleep(5)
+                    continue
+                }
+                inPacketOffset = 0
+                inPacketLength = moved
+            }
+            val count = min(target.size - offset, inPacketLength - inPacketOffset)
+            System.arraycopy(inPacketBuffer, inPacketOffset, target, offset, count)
+            inPacketOffset += count
+            offset += count
         }
     }
 
