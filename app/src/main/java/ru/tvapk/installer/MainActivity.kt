@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.69"
+private const val APP_VERSION = "0.9.72"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -3582,6 +3582,7 @@ fun TvInstallerApp() {
     var selectedName by remember { mutableStateOf("APK не выбран") }
 
     var busy by remember { mutableStateOf(false) }
+    var verifiedCatalog by remember { mutableStateOf<CleanYourTvTrust.VerifiedCatalog?>(null) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var tvCompatibilityReport by remember { mutableStateOf("") }
     var packageDisableSupported by remember { mutableStateOf(false) }
