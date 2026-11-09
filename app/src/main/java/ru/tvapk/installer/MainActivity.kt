@@ -3534,7 +3534,7 @@ fun TvInstallerApp() {
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         if (selectedCleanupPackages.isNotEmpty()) {
                             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && (packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true) }
+                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && it !in disabledOnDevice && (packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true) }
                             }) { Text("Отключить выбранные (${selectedCleanupPackages.size})") }
                         }
                         cleanupCandidates.forEach { candidate ->
@@ -3550,13 +3550,14 @@ fun TvInstallerApp() {
                                             selectedCleanupPackages = if (checked) selectedCleanupPackages + candidate
                                             else selectedCleanupPackages - candidate
                                         },
-                                        enabled = !busy
+                                        enabled = !busy && candidate !in disabledOnDevice
                                     )
                                 } else {
                                     Spacer(Modifier.width(48.dp))
                                 }
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                                     Text(candidate, color = GoldLight, fontSize = 12.sp)
+                                    if (candidate in disabledOnDevice) Text("Уже отключено на телевизоре.", color = Color(0xFFFFD98A), fontSize = 10.sp)
                                     if (fact != null) {
                                         Text(fact.name + " • " + cleanupCategoryLabel(fact.category), color = TextMain, fontSize = 11.sp)
                                         if (profileRule?.ask == true) Text("В профиле Clean Your TV: требуется ручная оценка перед отключением.", color = Color(0xFFFFD98A), fontSize = 10.sp)
@@ -3589,8 +3590,9 @@ fun TvInstallerApp() {
                                                 val freshDetails = readTvDetails(adb)
                                                 val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
+                                                val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
-                                                    pkg in installed && pkg in freshCandidates &&
+                                                    pkg in installed && pkg !in alreadyDisabled && pkg in freshCandidates &&
                                                         (packageFacts.containsKey(pkg) || freshProfile?.packages?.containsKey(pkg) == true) &&
                                                         !isProtectedSystemPackage(pkg) && pkg !in (freshProfile?.neverDisable ?: emptySet())
                                                 }
