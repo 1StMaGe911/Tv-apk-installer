@@ -67,6 +67,21 @@ internal object CleanYourTvTrust {
     )
 
     fun loadBundled(context: Context): VerifiedCatalog {
+        val prefs = context.getSharedPreferences("cleanyourtv_catalog_trust", Context.MODE_PRIVATE)
+        val cached = listOf("cache_index", "cache_index_sig", "cache_keys", "cache_keys_sig")
+            .map { prefs.getString(it, null) }
+        if (cached.all { it != null }) {
+            val bundle = CatalogBundle(
+                Base64.getDecoder().decode(cached[0]),
+                Base64.getDecoder().decode(cached[1]),
+                Base64.getDecoder().decode(cached[2]),
+                Base64.getDecoder().decode(cached[3])
+            )
+            // A previously accepted network catalog remains usable offline, but is re-verified
+            // against the compiled root and persisted anti-rollback high-water marks every time.
+            return verify(context, bundle)
+        }
+        require(cached.all { it == null }) { "Локальный кэш каталога неполон; требуется сетевое обновление" }
         val bundle = CatalogBundle(
             readAsset(context, "cleanyourtv-catalog/index.json", MAX_INDEX_BYTES),
             readAsset(context, "cleanyourtv-catalog/index.json.minisig", MAX_SIGNATURE_BYTES),
@@ -108,11 +123,17 @@ internal object CleanYourTvTrust {
             lastIndex, System.currentTimeMillis(), lastKeys
         )
         val keysSequence = JSONObject(String(bundle.keys, Charsets.UTF_8)).getLong("sequence")
-        // High-water marks are committed together, only after both signatures and both documents verify.
+        // Cache bytes and anti-rollback counters are committed in one transaction only after
+        // the root-signed key set and active-key-signed index have both passed verification.
+        val encoder = Base64.getEncoder()
         require(prefs.edit()
+            .putString("cache_index", encoder.encodeToString(bundle.index))
+            .putString("cache_index_sig", encoder.encodeToString(bundle.indexSignature))
+            .putString("cache_keys", encoder.encodeToString(bundle.keys))
+            .putString("cache_keys_sig", encoder.encodeToString(bundle.keysSignature))
             .putLong("accepted_index_sequence", verified.sequence)
             .putLong("accepted_keys_sequence", keysSequence)
-            .commit()) { "Не удалось сохранить защиту от отката каталога" }
+            .commit()) { "Не удалось атомарно сохранить каталог и защиту от отката" }
         return verified
     }
 
