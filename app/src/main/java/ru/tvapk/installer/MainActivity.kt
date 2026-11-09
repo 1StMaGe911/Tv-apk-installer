@@ -1914,6 +1914,7 @@ fun TvInstallerApp() {
     var pendingRestoreManagedChanges by remember { mutableStateOf(false) }
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
+    var profileCatalogExpanded by remember { mutableStateOf(false) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var managedSystemDisabledPackages by remember { mutableStateOf(settings.getStringSet("managed_system_disabled_packages", emptySet())?.toSet() ?: emptySet()) }
@@ -3769,6 +3770,29 @@ fun TvInstallerApp() {
                             Text("Данные профиля: ${matched.testedBy}; прошивка ${matched.testedFirmware}; проверка перезагрузки: ${if (matched.rebootTested) "да" else "нет"}.", color = TextMuted, fontSize = 10.sp)
                         } else {
                             Text("Точная модель в каталоге Clean Your TV не найдена. Используется общий справочник без модельных рекомендаций.", color = TextMuted, fontSize = 11.sp)
+                        }
+                        OutlinedButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { profileCatalogExpanded = !profileCatalogExpanded }
+                        ) {
+                            Text(if (profileCatalogExpanded) "Скрыть каталог профилей (${tvModelProfiles.size})" else "Каталог профилей устройств (${tvModelProfiles.size})")
+                        }
+                        if (profileCatalogExpanded) {
+                            tvModelProfiles.sortedBy { it.id }.forEach { profile ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(tvProfileDisplayName(profile.id), color = GoldLight, fontSize = 12.sp)
+                                    Text(
+                                        "${profile.platform} • моделей: ${profile.models.size} • пакетов: ${profile.packages.size} • защищено: ${profile.neverDisable.size}",
+                                        color = TextMain, fontSize = 10.sp
+                                    )
+                                    Text(
+                                        "Бренд: ${profile.brand.ifBlank { "не указан" }} • SDK: ${profile.sdkMin?.toString() ?: "—"}–${profile.sdkMax?.toString() ?: "—"} • проверено: ${profile.testedBy} / ${profile.testedFirmware}",
+                                        color = TextMuted, fontSize = 10.sp
+                                    )
+                                }
+                                HorizontalDivider(color = Color.DarkGray)
+                            }
+                            Text("Профили показывают данные и правила из открытого каталога. Если устройство не совпадает с условиями профиля, его правила не применяются автоматически.", color = Color(0xFFFFD98A), fontSize = 10.sp)
                         }
                         OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim()
