@@ -142,7 +142,7 @@ private data class TrackedPackageChange(
     val changedAt: Long
 )
 
-private val trackedPackageNamePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+private val trackedPackageNamePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
 
 private fun loadTrackedPackageChanges(context: Context): List<TrackedPackageChange> {
     val raw = prefs(context).getString("manual_package_change_journal", null) ?: return emptyList()
@@ -2680,7 +2680,7 @@ fun TvInstallerApp() {
     var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
-    var trackedPackageChanges by remember { mutableStateOf(loadTrackedPackageChanges(context)) }
+    var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
     var pendingTrackedPackageRollback by remember { mutableStateOf(false) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
@@ -5683,7 +5683,9 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 rollbackTrackedPackageChanges(context, adb)
                                             }
                                         }, {
-                                            trackedPackageChanges = loadTrackedPackageChanges(context)
+                                            runCatching { loadTrackedPackageChanges(context) }
+                                                .onSuccess { trackedPackageChanges = it }
+                                                .onFailure { status = "Журнал не прочитан: ${errorText(it)}" }
                                         })
                                     }) { Text("Проверить и откатить") }
                                 },
