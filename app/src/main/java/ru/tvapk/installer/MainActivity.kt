@@ -1831,40 +1831,81 @@ private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int
         "Clean Your TV Launcher не установлен."
     }
     val config = readCurrentLauncherConfig(adb)
+    val originalConfig = JSONObject(config.toString())
     val allowed = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
     files.forEach { file ->
         require(file.isFile && file.length() in 64..(10 * 1024 * 1024).toLong() && allowed.matches(file.name)) {
             "Недопустимый файл обоев: ${file.name}"
         }
     }
-    val remoteFiles = files.map { file -> file to "/data/local/tmp/cyt-${file.name}" }
-    remoteFiles.forEach { (file, remote) ->
-        when (val result = adb.push(file, remote)) {
-            is dadb.SyncResult.Success -> Unit
-            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать ${file.name}: $result")
-        }
-    }
+    require(files.map { it.name }.toSet().size == files.size) { "В коллекции повторяются имена файлов" }
     val directory = "/sdcard/Android/data/$packageName/files"
+    val destination = "$directory/wallpapers"
+    val staging = "$directory/wallpapers.restore"
+    val previous = "$directory/wallpapers.previous"
+    require(!shellText(adb, "if [ -e $previous ]; then echo present; else echo absent; fi").trim().equals("present")) {
+        "На телевизоре осталась резервная папка предыдущего восстановления ($previous). Она сохранена; сначала проверь её."
+    }
+    shellText(adb, "rm -rf $staging && mkdir -p $staging || exit 1")
+    val remoteFiles = files.map { file -> file to "/data/local/tmp/cyt-${file.name}" }
+    var previousMoved = false
+    var newCollectionActive = false
     try {
-        shellText(adb, "content delete --uri content://$packageName.theme/wallpapers")
-    } catch (_: Exception) {
-        shellText(adb, "rm -rf $directory/wallpapers 2>/dev/null; mkdir -p $directory/wallpapers")
+        remoteFiles.forEach { (file, remote) ->
+            when (val result = adb.push(file, remote)) {
+                is dadb.SyncResult.Success -> Unit
+                is dadb.SyncResult.Failure -> throw Exception("Не удалось передать ${file.name}: $result")
+            }
+            val target = "$staging/${file.name}"
+            val size = file.length()
+            shellText(adb, "cp $remote $target && test \"\$(wc -c < $target)\" -eq $size || exit 1")
+        }
+        shellText(adb, "test \"\$(find $staging -type f | wc -l)\" -eq ${files.size} || exit 1")
+        val hadPrevious = shellText(adb, "if [ -d $destination ]; then echo yes; else echo no; fi").trim() == "yes"
+        if (hadPrevious) {
+            shellText(adb, "mv $destination $previous || exit 1")
+            previousMoved = true
+        }
+        try {
+            shellText(adb, "mv $staging $destination || exit 1")
+            newCollectionActive = true
+            config.put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
+                .put("wallpaper_order", order)
+                .put("wallpaper", true)
+            val restart = writeLauncherConfig(adb, config)
+            var cleanupNote = ""
+            if (previousMoved) {
+                try {
+                    shellText(adb, "rm -rf $previous")
+                    previousMoved = false
+                } catch (_: Exception) {
+                    cleanupNote = " Прежняя копия сохранена в $previous; проверь её перед следующей загрузкой."
+                }
+            }
+            return "Загружено обоев: ${files.size}. Ротация: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}, порядок: ${if (order == "shuffle") "случайный" else "по порядку"}. $restart$cleanupNote"
+        } catch (e: Exception) {
+            val rollbackErrors = mutableListOf<String>()
+            try {
+                if (newCollectionActive) shellText(adb, "rm -rf $destination")
+                if (previousMoved) shellText(adb, "mv $previous $destination || exit 1")
+            } catch (rollback: Exception) {
+                rollbackErrors += "Не удалось вернуть прежнюю коллекцию обоев: ${errorText(rollback)}. Резервная папка: $previous"
+            }
+            try {
+                writeLauncherConfig(adb, originalConfig)
+            } catch (rollback: Exception) {
+                rollbackErrors += "Не удалось восстановить прежнюю конфигурацию Launcher: ${errorText(rollback)}"
+            }
+            if (rollbackErrors.isNotEmpty()) {
+                throw Exception("Загрузка коллекции завершилась ошибкой: ${errorText(e)}. Откат неполный: ${rollbackErrors.joinToString(" ")}", e)
+            }
+            throw e
+        }
+    } finally {
+        remoteFiles.forEach { (_, remote) -> try { shellText(adb, "rm -f $remote") } catch (_: Exception) { } }
+        try { shellText(adb, "rm -rf $staging") } catch (_: Exception) { }
     }
-    remoteFiles.forEach { (file, remote) ->
-        val command =
-            "o=\$(content write --uri content://$packageName.theme/wallpapers/${file.name} < $remote 2>&1); rc=\$?; " +
-            "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
-            "if [ \"\$rc\" -ne 0 ]; then mkdir -p $directory/wallpapers 2>/dev/null && cp $remote $directory/wallpapers/${file.name} || exit 1; fi; " +
-            "rm -f $remote"
-        shellText(adb, command)
-    }
-    config.put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
-        .put("wallpaper_order", order)
-        .put("wallpaper", true)
-    val restart = writeLauncherConfig(adb, config)
-    return "Загружено обоев: ${files.size}. Ротация: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}, порядок: ${if (order == "shuffle") "случайный" else "по порядку"}. $restart"
 }
-
 private fun clearWallpaperCollectionOnTv(adb: Dadb): String {
     val packageName = "com.gathin.tvhome"
     require(shellText(adb, "pm path $packageName").contains("package:")) {
