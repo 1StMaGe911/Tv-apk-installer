@@ -455,11 +455,38 @@ private fun makeCustomWallpaperConfig(context: Context, baseConfig: File, dim: I
     }
 }
 
-private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wallpaperFile: File): String {
+private fun pushLauncherTheme(
+    adb: Dadb,
+    themeName: String,
+    configFile: File,
+    wallpaperFile: File,
+    preservePersonalSettings: Boolean = true
+): String {
     val packageName = "com.gathin.tvhome"
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен. Сначала установи модуль в разделе «Модули Clean Your TV»."
     }
+
+    // Themes control visual styling, but must not silently discard the user's
+    // dock, hidden apps, key mappings, clock preferences, or wallpaper rotation.
+    val configToInstall = if (preservePersonalSettings) {
+        val themed = JSONObject(configFile.readText(Charsets.UTF_8))
+        val current = try { readCurrentLauncherConfig(adb) } catch (_: Exception) { JSONObject() }
+        listOf(
+            "dock_apps", "hidden_apps", "app_keys", "key_filter",
+            "wallpaper_rotation_minutes", "wallpaper_order",
+            "clock_format", "clock_glow", "clock_wallpaper", "clock_wallpaper_dim",
+            "home_idle_clock_minutes", "back_opens_clock"
+        ).forEach { key ->
+            if (current.has(key)) themed.put(key, current.get(key))
+        }
+        File.createTempFile("cleanyourtv-theme-merged-", ".json").apply {
+            writeText(themed.toString(2), Charsets.UTF_8)
+        }
+    } else {
+        configFile
+    }
+
     val remoteConfig = "/data/local/tmp/theme-config.json"
     val remoteWallpaper = "/data/local/tmp/theme-wallpaper.jpg"
     fun pushFile(local: File, remote: String) {
@@ -468,7 +495,7 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
             is dadb.SyncResult.Failure -> throw Exception("Не удалось передать файл на телевизор: $result")
         }
     }
-    pushFile(configFile, remoteConfig)
+    pushFile(configToInstall, remoteConfig)
     pushFile(wallpaperFile, remoteWallpaper)
 
     val directory = "/sdcard/Android/data/$packageName/files"
@@ -483,7 +510,8 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
     writeFile("config.json", remoteConfig)
     shellText(adb, "am force-stop --user 0 $packageName")
     val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
-    return "Тема «$themeName» передана на телевизор. Конфигурация и обои установлены, Launcher перезапущен. $restart"
+    if (configToInstall !== configFile) configToInstall.delete()
+    return "Тема «$themeName» передана на телевизор. Визуальное оформление обновлено, персональные настройки сохранены, Launcher перезапущен. $restart"
 }
 
 private fun parseLauncherPackageList(raw: String): List<String> {
@@ -835,7 +863,7 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
         try {
             configFile.writeText(config.toString(2), Charsets.UTF_8)
             wallpaperFile.writeBytes(wallpaper)
-            pushLauncherTheme(adb, "backup", configFile, wallpaperFile)
+            pushLauncherTheme(adb, "backup", configFile, wallpaperFile, preservePersonalSettings = false)
         } finally {
             configFile.delete()
             wallpaperFile.delete()
@@ -3113,7 +3141,7 @@ fun TvInstallerApp() {
                                     })
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Применить тему: $label") }
                             }
-                            Text("Для установки темы передаются config.json и wallpaper.jpg. Тема обновляет параметры Launcher и сбрасывает предыдущие локальные настройки внешнего вида, чтобы новая конфигурация вступила в силу.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("Для установки темы передаются config.json и wallpaper.jpg. Тема меняет визуальное оформление, сохраняя закреплённые и скрытые приложения, назначения кнопок, настройки часов и параметры ротации обоев.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         }
                     }
                 }
