@@ -3008,14 +3008,19 @@ private fun refreshCleanYourTvProfileCatalog(context: Context): String {
     val destination = File(directory, "profile-meta.json")
     temporary.writeBytes(bytes)
     require(temporary.length() == bytes.size.toLong()) { "Не удалось проверить запись каталога" }
-    if (destination.exists() && !destination.delete()) {
+    val previous = File(directory, "profile-meta.json.previous")
+    if (previous.exists()) previous.delete()
+    val hadPrevious = destination.exists()
+    if (hadPrevious && !destination.renameTo(previous)) {
         temporary.delete()
-        throw Exception("Не удалось заменить старый каталог")
+        throw Exception("Не удалось сохранить предыдущую версию каталога")
     }
     if (!temporary.renameTo(destination)) {
         temporary.delete()
-        throw Exception("Не удалось сохранить новый каталог")
+        if (hadPrevious) previous.renameTo(destination)
+        throw Exception("Не удалось сохранить новый каталог; предыдущая версия восстановлена")
     }
+    if (previous.exists()) previous.delete()
     val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         .joinToString("") { "%02x".format(it) }
     prefs(context).edit()
