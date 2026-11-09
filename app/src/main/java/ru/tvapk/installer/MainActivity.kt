@@ -4116,17 +4116,41 @@ fun TvInstallerApp() {
             status = "Сначала укажи IP и порт ADB и подключись к телевизору"
         } else {
             runTask({
-                fun copyPinnedModule(
+                data class VerifiedCleanModule(
+                    val file: File,
+                    val packageName: String,
+                    val versionName: String,
+                    val versionCode: Long,
+                    val minSdk: Int
+                )
+
+                // Проверяем оба APK полностью до первого изменения на телевизоре.
+                // Assets поставляются CI из закреплённого upstream v0.4.8 и сверяются
+                // по размеру, SHA-256, package name и сертификату разработчика.
+                fun preparePinnedModule(
                     assetName: String,
                     outputName: String,
                     expectedSize: Long,
                     expectedSha256: String,
                     expectedPackage: String,
                     expectedSignerSha256: String
-                ): File {
+                ): VerifiedCleanModule {
                     val outputFile = File(context.cacheDir, outputName)
                     context.assets.open("cleanyourtv-modules/$assetName").use { input ->
-                        outputFile.outputStream().use { output -> input.copyTo(output) }
+                        outputFile.outputStream().use { output ->
+                            val buffer = ByteArray(32 * 1024)
+                            var total = 0L
+                            while (true) {
+                                val count = input.read(buffer)
+                                if (count < 0) break
+                                total += count
+                                require(total <= expectedSize) {
+                                    "Файл $assetName превышает доверенный размер. Установка отменена."
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                            output.flush()
+                        }
                     }
                     require(outputFile.length() == expectedSize) {
                         "Размер модуля $assetName не совпадает с доверенным значением"
@@ -4142,7 +4166,7 @@ fun TvInstallerApp() {
                         outputFile.absolutePath,
                         if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
                         else PackageManager.GET_SIGNATURES
-                    ) ?: throw Exception("Android не смог прочитать подпись $assetName")
+                    ) ?: throw Exception("Android не смог прочитать APK $assetName")
                     require(packageInfo.packageName == expectedPackage) {
                         "Неверный package name у $assetName: ${packageInfo.packageName}"
                     }
@@ -4160,34 +4184,91 @@ fun TvInstallerApp() {
                     require(signerDigests.any { it.equals(expectedSignerSha256, ignoreCase = true) }) {
                         "Подпись разработчика $assetName не совпадает с закреплённым сертификатом. Установка отменена."
                     }
-                    return outputFile
+                    val versionCode = if (Build.VERSION.SDK_INT >= 28) {
+                        packageInfo.longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageInfo.versionCode.toLong()
+                    }
+                    return VerifiedCleanModule(
+                        outputFile,
+                        expectedPackage,
+                        packageInfo.versionName ?: "неизвестна",
+                        versionCode,
+                        packageInfo.applicationInfo?.minSdkVersion ?: 1
+                    )
                 }
 
-                val launcherApk = copyPinnedModule(
-                    "cleanyourtv-launcher.apk",
-                    "cleanyourtv-launcher.apk",
-                    540541L,
-                    "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e",
-                    "com.gathin.tvhome",
-                    "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
+                val modules = listOf(
+                    preparePinnedModule(
+                        "cleanyourtv-launcher.apk",
+                        "cleanyourtv-launcher.apk",
+                        540541L,
+                        "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e",
+                        "com.gathin.tvhome",
+                        "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
+                    ),
+                    preparePinnedModule(
+                        "cleanyourtv-curtain.apk",
+                        "cleanyourtv-curtain.apk",
+                        65955L,
+                        "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e",
+                        "tv.cleanyour.curtain",
+                        "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
+                    )
                 )
-                val curtainApk = copyPinnedModule(
-                    "cleanyourtv-curtain.apk",
-                    "cleanyourtv-curtain.apk",
-                    65955L,
-                    "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e",
-                    "tv.cleanyour.curtain",
-                    "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
-                )
+
                 connectWithRetry(context, host, p) { adb ->
-                    adb.install(launcherApk)
-                    adb.install(curtainApk)
-                    val launcher = shellText(adb, "pm path com.gathin.tvhome")
-                    val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
-                    if (!launcher.contains("package:") || !curtain.contains("package:")) {
-                        throw Exception("Проверка установки не пройдена. Launcher: $launcher; Curtain: $curtain")
+                    val sdkText = shellText(adb, "getprop ro.build.version.sdk").trim()
+                    val deviceSdk = sdkText.toIntOrNull()
+                        ?: throw Exception("Не удалось определить версию Android TV (SDK: $sdkText)")
+                    val incompatible = modules.filter { deviceSdk < it.minSdk }
+                    require(incompatible.isEmpty()) {
+                        "Эта версия Android TV слишком старая для модулей: " +
+                            incompatible.joinToString { "${it.packageName} требует Android SDK ${it.minSdk}, на ТВ SDK $deviceSdk" }
                     }
-                    "Проверенные модули Clean Your TV установлены: Launcher и Curtain. SHA-256 обоих файлов подтверждён. Штатный экран телевизора не отключался."
+
+                    val installedBefore = modules.mapNotNull { module ->
+                        val pathResult = shellText(adb, "pm path ${module.packageName}")
+                        if (!pathResult.contains("package:")) null
+                        else {
+                            val details = shellText(adb, "dumpsys package ${module.packageName}")
+                            val currentCode = Regex("versionCode=(\\d+)").find(details)
+                                ?.groupValues?.get(1)?.toLongOrNull()
+                            if (currentCode != null && currentCode > module.versionCode) {
+                                throw Exception(
+                                    "${module.packageName} на телевизоре новее встроенного модуля " +
+                                        "(установлен код $currentCode, встроен ${module.versionCode}). " +
+                                        "Чтобы не выполнить откат версии, установка остановлена."
+                                )
+                            }
+                            module.packageName
+                        }
+                    }
+
+                    // К этому моменту оба APK прошли криптографические и SDK-проверки.
+                    modules.forEach { module -> adb.install(module.file) }
+
+                    val verification = modules.map { module ->
+                        val pathResult = shellText(adb, "pm path ${module.packageName}")
+                        require(pathResult.contains("package:")) {
+                            "После установки пакет ${module.packageName} не найден: $pathResult"
+                        }
+                        val details = shellText(adb, "dumpsys package ${module.packageName}")
+                        val installedCode = Regex("versionCode=(\\d+)").find(details)
+                            ?.groupValues?.get(1)?.toLongOrNull()
+                        require(installedCode == null || installedCode == module.versionCode) {
+                            "Версия ${module.packageName} после установки не совпадает с проверенным APK."
+                        }
+                        "${module.packageName}: ${module.versionName} (код ${module.versionCode})"
+                    }
+
+                    val repaired = installedBefore.size
+                    "Оба модуля Clean Your TV проверены и установлены. " +
+                        verification.joinToString("; ") +
+                        ". Android TV SDK: $deviceSdk. " +
+                        if (repaired == 2) "Выполнена переустановка для восстановления." else
+                            "Отсутствующие модули установлены, существующие обновлены/восстановлены."
                 }
             })
         }
