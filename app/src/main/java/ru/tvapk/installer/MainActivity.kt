@@ -6601,7 +6601,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                     "Этот пакет относится к критически важным компонентам Android/TV и не может быть отключён."
                                                 }
                                                 val freshDetails = readTvDetails(adb)
-                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles, packageFacts)?.profile
+                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
                                                 require(pkg !in (freshProfile?.neverDisable ?: emptySet())) {
                                                     "Профиль этой модели запрещает отключать $pkg. Команда отменена."
                                                 }
