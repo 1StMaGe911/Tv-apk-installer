@@ -2,6 +2,8 @@
 package ru.tvapk.installer
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.hardware.usb.UsbManager
 import android.net.Uri as AndroidUri
@@ -51,7 +53,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.7.1"
+private const val APP_VERSION = "0.7.2"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -413,14 +415,44 @@ private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<
     return config to wallpaper
 }
 
+private fun prepareCustomWallpaper(context: Context, uri: Uri): File {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        ?: throw Exception("Не удалось открыть изображение")
+    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Файл не является корректным изображением" }
+    require(bounds.outWidth <= 12000 && bounds.outHeight <= 12000) { "Изображение слишком большое по разрешению" }
+    val sample = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 3840)
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    val bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        ?: throw Exception("Не удалось декодировать изображение")
+    val target = File(context.cacheDir, "cleanyourtv-custom-wallpaper.jpg")
+    try {
+        target.outputStream().use { output ->
+            if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output)) throw Exception("Не удалось подготовить изображение")
+        }
+    } finally { bitmap.recycle() }
+    require(target.length() in 1024L..(12L * 1024L * 1024L)) { "Подготовленное изображение слишком большое или повреждено" }
+    return target
+}
+
+private fun makeCustomWallpaperConfig(context: Context, baseConfig: File, dim: Int): File {
+    val config = JSONObject(baseConfig.readText(Charsets.UTF_8))
+        .put("wallpaper", true)
+        .put("wallpaper_dim", dim.coerceIn(0, 80))
+        .put("wallpaper_rotation_minutes", 0)
+    return File(context.cacheDir, "cleanyourtv-custom-config.json").apply {
+        writeText(config.toString(2), Charsets.UTF_8)
+    }
+}
+
 private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wallpaperFile: File): String {
     val packageName = "com.gathin.tvhome"
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен. Сначала установи модуль в разделе «Модули Clean Your TV»."
     }
-    val remoteConfig = "/data/local/tmp/tvapk-$themeName-config.json"
-    val remoteWallpaper = "/data/local/tmp/tvapk-$themeName-wallpaper.jpg"
-    val remoteRevision = "/data/local/tmp/tvapk-$themeName-revision"
+    val remoteConfig = "/data/local/tmp/theme-config.json"
+    val remoteWallpaper = "/data/local/tmp/theme-wallpaper.jpg"
     fun pushFile(local: File, remote: String) {
         when (val result = adb.push(local, remote)) {
             is dadb.SyncResult.Success -> Unit
@@ -429,24 +461,17 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
     }
     pushFile(configFile, remoteConfig)
     pushFile(wallpaperFile, remoteWallpaper)
-    val revisionFile = File(configFile.parentFile, "cyt-theme-revision.txt").apply {
-        writeText(System.currentTimeMillis().toString(), Charsets.UTF_8)
-    }
-    pushFile(revisionFile, remoteRevision)
 
     val directory = "/sdcard/Android/data/$packageName/files"
     fun writeFile(fileName: String, remotePath: String) {
         val command =
             "rm -f $directory/$fileName 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1); rc=\$?; " +
-            "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
-            "if [ \"\$rc\" -ne 0 ]; then mkdir -p $directory 2>/dev/null && cp $remotePath $directory/$fileName || exit 1; fi; " +
-            "rm -f $remotePath"
+            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1) && [ -z \"\$o\" ] || cp $remotePath $directory/$fileName; " +
+            "r=\$?; rm -f $remotePath; exit \$r"
         shellText(adb, command)
     }
     writeFile("config.json", remoteConfig)
     writeFile("wallpaper.jpg", remoteWallpaper)
-    writeFile("theme_revision", remoteRevision)
     shellText(adb, "am force-stop --user 0 $packageName")
     val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
     return "Тема «$themeName» передана на телевизор. Конфигурация и обои установлены, Launcher перезапущен. $restart"
@@ -982,6 +1007,9 @@ fun TvInstallerApp() {
     var launcherAdvancedEffects by remember { mutableStateOf(settings.getBoolean("launcher_advanced_effects", false)) }
     var launcherAppLibrary by remember { mutableStateOf(settings.getBoolean("launcher_app_library", false)) }
     var launcherIconOnlyButtons by remember { mutableStateOf(settings.getBoolean("launcher_icon_only_buttons", true)) }
+    var customWallpaperFile by remember { mutableStateOf<File?>(null) }
+    var customWallpaperName by remember { mutableStateOf("Изображение не выбрано") }
+    var customWallpaperDim by remember { mutableStateOf(0f) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1037,6 +1065,24 @@ fun TvInstallerApp() {
     ) { uri ->
         selectedUri = uri
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
+    }
+
+    val customWallpaperPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            runTask({
+                val file = prepareCustomWallpaper(context, sourceUri)
+                val name = context.contentResolver.query(sourceUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "Собственные обои"
+                activity.runOnUiThread {
+                    customWallpaperFile = file
+                    customWallpaperName = name
+                }
+                "Изображение подготовлено: $name (${file.length() / 1024} КБ). Теперь можно применить его к Launcher."
+            })
+        }
     }
 
     val settingsBackupExporter = rememberLauncherForActivityResult(
@@ -1348,6 +1394,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.2 • Собственные обои и ThemeProvider", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен выбор изображения из галереи, подготовка обоев с ограничением разрешения и размера, настройка затемнения и применение через ThemeProvider Clean Your TV. Исправлена передача только поддерживаемых файлов config.json и wallpaper.jpg.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.1 • Готовые темы и обои", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена загрузка готовых тем Clean Your TV (Cinema, Arcade, Console, Horizon, Library, Mist, Quiet) с передачей конфигурации и обоев на телевизор через ADB и ThemeProvider. После применения Launcher перезапускается.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1773,6 +1822,30 @@ fun TvInstallerApp() {
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Применение..." else "Применить оформление на телевизоре")
                             }
+                            Text("СВОИ ОБОИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Выбери фотографию или изображение из галереи. Оно будет уменьшено до разумного разрешения и передано в Clean Your TV Launcher как wallpaper.jpg.", color = TextMuted, fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = { customWallpaperPicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Выбрать изображение из галереи")
+                            }
+                            Text(customWallpaperName, color = TextMain, fontSize = 12.sp)
+                            Text("Затемнение обоев: ${customWallpaperDim.toInt()}%", color = TextMain)
+                            Slider(value = customWallpaperDim, onValueChange = { customWallpaperDim = it }, valueRange = 0f..80f, steps = 7)
+                            Button(enabled = !busy && customWallpaperFile != null, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) {
+                                    status = "Проверь IP и порт ADB"
+                                } else runTask({
+                                    val base = downloadCleanYourTvTheme(context, "cinema")
+                                    val config = makeCustomWallpaperConfig(context, base.first, customWallpaperDim.toInt())
+                                    connectWithRetry(context, host, p) { adb ->
+                                        pushLauncherTheme(adb, "custom", config, customWallpaperFile!!)
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Применение..." else "Применить мои обои")
+                            }
+                            Text("Собственные обои используют оформление Cinema как основу. Для возврата к готовому оформлению выбери любую готовую тему ниже.", color = TextMuted, fontSize = 11.sp)
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
                             listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
