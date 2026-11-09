@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.50"
+private const val APP_VERSION = "0.9.51"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2984,7 +2984,11 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
     }
 }
 
-private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>): TvProfileMatch? {
+private fun matchTvModelProfile(
+    details: String,
+    profiles: List<TvModelProfile>,
+    facts: Map<String, PackageFact> = emptyMap()
+): TvProfileMatch? {
     fun field(label: String) = details.lineSequence()
         .firstOrNull { it.trim().startsWith("$label:", ignoreCase = true) }
         ?.substringAfter(":")?.trim().orEmpty()
@@ -2992,7 +2996,7 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
     val manufacturer = field("Производитель")
     val model = field("Модель")
     val device = field("Устройство")
-    val sdk = Regex("SDK\\s+(\\d+)", RegexOption.IGNORE_CASE)
+    val sdk = Regex("SDK\\\\s+(\\\\d+)", RegexOption.IGNORE_CASE)
         .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
     val fingerprint = field("Отпечаток")
 
@@ -3018,16 +3022,10 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
     }.maxByOrNull { it.first }?.let { TvProfileMatch(it.second, it.third) }
     if (exact != null) return exact
 
-    // Mirror the upstream Clean Your TV brand sure-set rule: a package must be
-    // default-off (ask=false) in at least three reviewed profiles of this brand,
-    // and must not appear in any reviewed profile's never-disable/stock-role list.
-    val supportedBrands = listOf("Amazon", "Hisense", "Panasonic", "Philips", "Sony", "TCL", "Xiaomi", "XGIMI")
+    // Use reviewed profile brands instead of a fixed brand list. This enables the
+    // upstream careful-set path for manufacturers represented by only 1–2 profiles.
     val normalizedManufacturer = manufacturer.lowercase().replace(Regex("[^a-z0-9]"), "")
-    val brand = supportedBrands.firstOrNull { candidate ->
-        val normalized = candidate.lowercase().replace(Regex("[^a-z0-9]"), "")
-        normalizedManufacturer.isNotBlank() && normalizedManufacturer.contains(normalized)
-    } ?: return null
-
+    if (normalizedManufacturer.length < 3) return null
     val reviewPending = setOf(
         "amazon-fire-tv-aftdec012e", "google-chromecast-gtv-hd",
         "hisense-smarttv-4k-ffm-android11", "hisense-smarttv-4k-ffm-lushan",
@@ -3041,49 +3039,125 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
         "philips-google-tv-ta7", "sber-salute-tv-at30a6", "sony-bravia-vu1",
         "sony-bravia-vu3", "tcl-50dp660", "tcl-g08-eu-android12",
         "xiaomi-mi-box-s-android12", "xiaomi-mitv-mssp2", "xiaomi-mitv-mssp0",
-        "xiaomi-mitv-ayfr0", "xiaomi-mitv-astp0", "xiaomi-mitv-mteq0",
-        "redmi-mitv-mftp0", "aqua-matrixtv-ee-50", "jvc-lt55mb508",
-        "sharp-2t-c32gh3000i", "thomson-43rt1055", "hisense-fire-tv-aftcibfbd1"
+        "xiaomi-mitv-ayfr0", "xiaomi-mitv-astp0", "redmi-mitv-mftp0",
+        "aqua-matrixtv-ee-50", "jvc-lt55mb508", "sharp-2t-c32gh3000i",
+        "thomson-43rt1055", "hisense-fire-tv-aftcibfbd1"
     )
     val reviewedProfiles = profiles.filter { it.id !in reviewPending }
+    val brand = reviewedProfiles.asSequence()
+        .map { it.brand.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .mapNotNull { candidate ->
+            val normalized = candidate.lowercase().replace(Regex("[^a-z0-9]"), "")
+            if (normalized.length < 3 || !normalizedManufacturer.contains(normalized)) null
+            else candidate to normalized.length
+        }
+        .maxByOrNull { it.second }?.first ?: return null
     val brandProfiles = reviewedProfiles.filter { it.brand.equals(brand, ignoreCase = true) }
-    if (brandProfiles.size < 3) return null
-    val globallyProtected = reviewedProfiles.flatMap { it.neverDisable }.toSet()
+    if (brandProfiles.isEmpty()) return null
 
-    val votes = linkedMapOf<String, MutableMap<String, Int>>()
-    brandProfiles.forEach { profile ->
-        profile.packages.forEach { (packageName, rule) ->
-            if (!rule.ask) {
-                val categories = votes.getOrPut(packageName) { linkedMapOf() }
-                categories[rule.category] = (categories[rule.category] ?: 0) + 1
-            }
+    // The upstream careful set is intentionally limited to six curator-reviewed packages.
+    val carefulPackages = setOf(
+        "com.google.android.feedback",
+        "com.android.printspooler",
+        "com.android.tv.feedbackconsent",
+        "com.android.adservices.api",
+        "com.android.ondevicepersonalization.services",
+        "com.android.federatedcompute.services"
+    )
+    val carefulCategories = setOf("ads", "tracking", "preloads")
+    val safetyWords = Regex(
+        "talkback|accessib|marvin|remote|pairing|autopair|btservice|bluetooth|(^|_)rcu(_|$)|keyhandler|globalkey|virtualkey|fivekey|smartkey|keyintercept|inputkey",
+        RegexOption.IGNORE_CASE
+    )
+    val roleWords = Regex("setup|launcher|input|tuner|voice|update|key", RegexOption.IGNORE_CASE)
+    val tvStack = listOf(
+        "com.mediatek", "com.droidlogic", "com.realtek", "org.droidtv",
+        "com.hisense.smartsense", "com.vt", "com.mstar", "com.cvte",
+        "com.amlogic", "mitv.service"
+    )
+
+    // Count default-off occurrences across all reviewed lists; any ask-first entry vetoes it.
+    val offCount = mutableMapOf<String, Int>()
+    val askedSomewhere = mutableSetOf<String>()
+    reviewedProfiles.forEach { profile ->
+        profile.packages.forEach { (pkg, rule) ->
+            if (rule.ask) askedSomewhere += pkg
+            else offCount[pkg] = (offCount[pkg] ?: 0) + 1
         }
     }
-    val surePackages = votes.mapNotNull { (packageName, categoryVotes) ->
-        val totalVotes = categoryVotes.values.sum()
-        if (totalVotes < 3 || packageName in globallyProtected) return@mapNotNull null
-        val category = categoryVotes.entries.maxWithOrNull(
-            compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
-        )?.key ?: return@mapNotNull null
-        packageName to TvProfilePackage(category, false)
-    }.toMap()
+    val named = reviewedProfiles.flatMap { it.neverDisable }.toSet()
+    // Stock launcher, setup wizard and Live TV identities are protected separately in metadata.
+    // The parser folds these into neverDisable; keep the explicit union here for clarity/future schemas.
+    val careful = if (brandProfiles.size < 3) {
+        carefulPackages.filter { pkg ->
+            val presentAndSafeInEveryBrandProfile = brandProfiles.all { profile ->
+                val rule = profile.packages[pkg]
+                rule != null && !rule.ask && rule.category in carefulCategories
+            }
+            val packageSegments = pkg.split(".").drop(1)
+            presentAndSafeInEveryBrandProfile &&
+                (offCount[pkg] ?: 0) >= 10 &&
+                pkg !in askedSomewhere &&
+                pkg !in named &&
+                packageSegments.none { safetyWords.containsMatchIn(it) || roleWords.containsMatchIn(it) } &&
+                tvStack.none { pkg == it || pkg.startsWith("$it.") } &&
+                facts[pkg]?.category in carefulCategories
+        }
+    } else emptyList()
+
+    // Brands with fewer than three reviewed profiles receive no broad fallback:
+    // only the exact upstream careful set may be exposed, and never stock Home takeover.
+    if (brandProfiles.size < 3 && careful.isEmpty()) return null
+    val surePackages = if (brandProfiles.size < 3) {
+        careful.associateWith { pkg ->
+            TvProfilePackage(facts[pkg]?.category ?: "other", false)
+        }
+    } else {
+        val globallyProtected = reviewedProfiles.flatMap { it.neverDisable }.toSet()
+        val votes = linkedMapOf<String, MutableMap<String, Int>>()
+        brandProfiles.forEach { profile ->
+            profile.packages.forEach { (packageName, rule) ->
+                if (!rule.ask) {
+                    val categories = votes.getOrPut(packageName) { linkedMapOf() }
+                    categories[rule.category] = (categories[rule.category] ?: 0) + 1
+                }
+            }
+        }
+        votes.mapNotNull { (packageName, categoryVotes) ->
+            val totalVotes = categoryVotes.values.sum()
+            if (totalVotes < 3 || packageName in globallyProtected) return@mapNotNull null
+            val category = categoryVotes.entries.maxWithOrNull(
+                compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
+            )?.key ?: return@mapNotNull null
+            packageName to TvProfilePackage(category, false)
+        }.toMap()
+    }
 
     val conservativeProfile = TvModelProfile(
-        id = "brand-sure-set-${brand.lowercase()}",
-        platform = "Android TV / Fire TV — общий профиль бренда",
+        id = if (brandProfiles.size < 3) "brand-careful-set-${brand.lowercase()}" else "brand-sure-set-${brand.lowercase()}",
+        platform = if (brandProfiles.size < 3) "Android TV — особо осторожный набор бренда"
+            else "Android TV / Fire TV — общий профиль бренда",
         models = emptySet(),
         devices = emptySet(),
         brand = brand,
         sdkMin = null,
         sdkMax = null,
         fingerprintPrefix = null,
-        neverDisable = globallyProtected,
+        neverDisable = reviewedProfiles.flatMap { it.neverDisable }.toSet(),
         packages = surePackages,
-        testedBy = "Общие правила ${brandProfiles.size} проверенных профилей бренда",
-        testedFirmware = "Пересечение рекомендаций; точная модель не найдена",
+        testedBy = if (brandProfiles.size < 3) "Осторожный набор по правилам Clean Your TV; профилей бренда: ${brandProfiles.size}"
+            else "Общие правила ${brandProfiles.size} проверенных профилей бренда",
+        testedFirmware = if (brandProfiles.size < 3) "Только шесть заранее проверенных пакетов; точная модель не найдена"
+            else "Пересечение рекомендаций; точная модель не найдена",
         rebootTested = false
     )
-    return TvProfileMatch(conservativeProfile, "осторожный набор бренда — пакеты с минимум тремя совпадениями")
+    return TvProfileMatch(
+        conservativeProfile,
+        if (brandProfiles.size < 3) "особо осторожный набор бренда — только проверенные пакеты"
+        else "осторожный набор бренда — пакеты с минимум тремя совпадениями"
+    )
 }
 
 private fun tvProfileDisplayName(id: String): String = id
@@ -3195,7 +3269,7 @@ fun TvInstallerApp() {
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var tvCompatibilityReport by remember { mutableStateOf("") }
     var packageDisableSupported by remember { mutableStateOf(false) }
-    val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
+    val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles, packageFacts) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
@@ -5857,7 +5931,7 @@ fun TvInstallerApp() {
                                                 }
                                                 val installed = readAllPackages(adb).toSet()
                                                 val freshDetails = readTvDetails(adb)
-                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
+                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles, packageFacts)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
