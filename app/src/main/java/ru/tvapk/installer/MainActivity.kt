@@ -4499,7 +4499,7 @@ fun TvInstallerApp() {
                     try {
                         if (remote.isNotEmpty()) {
                             val details = shellText(adb, "dumpsys package ${module.packageName}")
-                            previousCode = Regex("versionCode=(\\\\d+)").find(details)?.groupValues?.get(1)?.toLongOrNull()
+                            previousCode = Regex("versionCode=(\\d+)").find(details)?.groupValues?.get(1)?.toLongOrNull()
                                 ?: throw Exception("Не удалось определить текущую версию установленного пакета")
                             require(previousCode!! <= version.versionCode) {
                                 "На телевизоре установлена более новая версия (код $previousCode). Откат запрещён."
@@ -4521,7 +4521,7 @@ fun TvInstallerApp() {
                             val installedPath = shellText(adb, "pm path ${module.packageName}")
                             require(installedPath.contains("package:")) { "После установки пакет не найден" }
                             val installedDetails = shellText(adb, "dumpsys package ${module.packageName}")
-                            val installedCode = Regex("versionCode=(\\\\d+)").find(installedDetails)?.groupValues?.get(1)?.toLongOrNull()
+                            val installedCode = Regex("versionCode=(\\d+)").find(installedDetails)?.groupValues?.get(1)?.toLongOrNull()
                             require(installedCode == version.versionCode) {
                                 "После установки обнаружена неожиданная версия: $installedCode"
                             }
@@ -4544,17 +4544,18 @@ fun TvInstallerApp() {
                                         is InstallResult.Failure -> throw Exception(result.reason)
                                     }
                                     val restored = shellText(adb, "dumpsys package ${module.packageName}")
-                                    val restoredCode = Regex("versionCode=(\\\\d+)").find(restored)?.groupValues?.get(1)?.toLongOrNull()
+                                    val restoredCode = Regex("versionCode=(\\d+)").find(restored)?.groupValues?.get(1)?.toLongOrNull()
                                     require(restoredCode == previousCode) { "Откат не восстановил прежнюю версию" }
                                 }
                             } catch (rollbackError: Exception) {
                                 val recovery = File(context.filesDir, "catalog-recovery-${System.currentTimeMillis()}")
-                                if (rollbackDir.renameTo(recovery)) keepBackup = true
+                                keepBackup = true
+                                val moved = rollbackDir.renameTo(recovery)
                                 throw Exception(
                                     "Установка не завершилась: ${errorText(installError)}. " +
                                         "Откат тоже не прошёл: ${errorText(rollbackError)}. " +
-                                        if (keepBackup) "Резервный APK сохранён: ${recovery.absolutePath}" else
-                                            "Резервная копия осталась в ${rollbackDir.absolutePath}"
+                                        if (moved) "Резервный APK сохранён: ${recovery.absolutePath}" else
+                                            "Резервная копия оставлена в ${rollbackDir.absolutePath}"
                                 )
                             }
                             throw Exception("Установка не завершилась; исходное состояние восстановлено. Причина: ${errorText(installError)}")
