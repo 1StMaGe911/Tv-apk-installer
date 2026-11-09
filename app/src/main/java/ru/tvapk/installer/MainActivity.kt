@@ -1669,6 +1669,7 @@ fun TvInstallerApp() {
     var autoStartLoaded by remember { mutableStateOf(false) }
     var systemPackageFilter by remember { mutableStateOf("") }
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreManagedChanges by remember { mutableStateOf(false) }
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
@@ -4081,6 +4082,67 @@ fun TvInstallerApp() {
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { pendingSystemDisable = null }) { Text("Отмена") }
+                                }
+                            )
+                        }
+                        if (managedSystemDisabledPackages.isNotEmpty() || disabledAutoStart.isNotEmpty()) {
+                            Text("Изменения системных компонентов под управлением приложения: системных пакетов — ${managedSystemDisabledPackages.size}; автозапуск — ${disabledAutoStart.size}", color = GoldLight, fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                pendingRestoreManagedChanges = true
+                            }) { Text("Восстановить системные компоненты и автозапуск") }
+                        }
+                        if (pendingRestoreManagedChanges) {
+                            AlertDialog(
+                                onDismissRequest = { pendingRestoreManagedChanges = false },
+                                title = { Text("Восстановить системные изменения?") },
+                                text = { Text("Будут включены только системные пакеты и компоненты автозапуска, которые отключало это приложение. Защищённые компоненты не будут отключаться. Продолжить?") },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        pendingRestoreManagedChanges = false
+                                        val systems = managedSystemDisabledPackages.toSet()
+                                        val components = disabledAutoStart.toSet()
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        if (host.isBlank() || p !in 1..65535) {
+                                            status = "Сначала укажи IP и порт ADB"
+                                        } else runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                val installed = readAllPackages(adb).toSet()
+                                                val restoredSystems = mutableSetOf<String>()
+                                                val restoredComponents = mutableSetOf<String>()
+                                                val failures = mutableListOf<String>()
+                                                systems.forEach { pkg ->
+                                                    if (pkg !in installed) failures.add("$pkg (не установлен)")
+                                                    else if (isProtectedSystemPackage(pkg)) failures.add("$pkg (защищённый компонент)")
+                                                    else try {
+                                                        changePackageState(adb, pkg, true)
+                                                        restoredSystems.add(pkg)
+                                                    } catch (_: Exception) { failures.add(pkg) }
+                                                }
+                                                components.forEach { component ->
+                                                    if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try {
+                                                        setAutoStartReceiverEnabled(adb, component, true)
+                                                        restoredComponents.add(component)
+                                                    } catch (_: Exception) { failures.add(component) }
+                                                    else failures.add("$component (неверный идентификатор)")
+                                                }
+                                                activity.runOnUiThread {
+                                                    managedSystemDisabledPackages = managedSystemDisabledPackages - restoredSystems
+                                                    disabledAutoStart = disabledAutoStart - restoredComponents
+                                                    disabledOnDevice = readDisabledPackages(adb)
+                                                    settings.edit()
+                                                        .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
+                                                        .putStringSet("disabled_autostart_components", disabledAutoStart)
+                                                        .apply()
+                                                }
+                                                if (failures.isEmpty()) "Системные компоненты и автозапуск восстановлены"
+                                                else "Восстановлено частично. Осталось повторить: ${failures.joinToString()}"
+                                            }
+                                        })
+                                    }) { Text("Восстановить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingRestoreManagedChanges = false }) { Text("Отмена") }
                                 }
                             )
                         }
