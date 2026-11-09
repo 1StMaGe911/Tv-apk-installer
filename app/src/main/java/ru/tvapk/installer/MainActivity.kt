@@ -915,11 +915,14 @@ private fun checkLatestVersion(): UpdateInfo {
     }
 }
 
+private const val MAX_UPDATE_APK_BYTES = 200L * 1024L * 1024L
+
 private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha256: String): File {
     require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Некорректная контрольная сумма APK" }
     val directory = File(context.cacheDir, "updates")
     if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
     val apkFile = File(directory, "tv-apk-installer-update.apk")
+    val stagingFile = File(directory, "tv-apk-installer-update.apk.part")
     val connection = URL(downloadUrl).openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "GET"
@@ -928,28 +931,47 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         connection.instanceFollowRedirects = true
         connection.setRequestProperty("User-Agent", "TV-APK-Installer")
         if (connection.responseCode != 200) throw Exception("Ошибка загрузки: HTTP ${connection.responseCode}")
-        connection.inputStream.use { input ->
-            apkFile.outputStream().use { output -> input.copyTo(output) }
+        val declaredLength = connection.contentLengthLong
+        if (declaredLength > MAX_UPDATE_APK_BYTES) {
+            throw Exception("APK превышает допустимый размер 200 МБ. Загрузка отменена")
         }
-        if (!apkFile.exists() || apkFile.length() < 1024L) {
-            apkFile.delete()
-            throw Exception("Загруженный APK повреждён или пуст")
-        }
+
         val digest = MessageDigest.getInstance("SHA-256")
-        apkFile.inputStream().use { input ->
-            val buffer = ByteArray(64 * 1024)
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
+        var totalBytes = 0L
+        stagingFile.delete()
+        connection.inputStream.use { input ->
+            stagingFile.outputStream().use { output ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    totalBytes += count
+                    if (totalBytes > MAX_UPDATE_APK_BYTES) {
+                        throw Exception("APK превышает допустимый размер 200 МБ. Загрузка отменена")
+                    }
+                    digest.update(buffer, 0, count)
+                    output.write(buffer, 0, count)
+                }
+                output.flush()
             }
+        }
+        if (totalBytes < 1024L || (declaredLength >= 0 && totalBytes != declaredLength)) {
+            throw Exception("Загруженный APK повреждён, пуст или имеет неполный размер")
         }
         val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
         if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
-            apkFile.delete()
             throw Exception("SHA-256 APK не совпадает с GitHub. Установка отменена")
         }
+        if (apkFile.exists() && !apkFile.delete()) {
+            throw Exception("Не удалось заменить предыдущий временный APK")
+        }
+        if (!stagingFile.renameTo(apkFile)) {
+            throw Exception("Не удалось завершить сохранение загруженного APK")
+        }
         return apkFile
+    } catch (e: Exception) {
+        stagingFile.delete()
+        throw e
     } finally {
         connection.disconnect()
     }
