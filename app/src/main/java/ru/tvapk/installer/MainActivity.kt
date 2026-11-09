@@ -421,7 +421,7 @@ private fun prepareCustomWallpaper(context: Context, uri: Uri): File {
     boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
     require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Файл не является корректным изображением" }
     require(bounds.outWidth <= 12000 && bounds.outHeight <= 12000) { "Изображение слишком большое по разрешению" }
-    val sample = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 3840)
+    val sample = maxOf(1, (maxOf(bounds.outWidth, bounds.outHeight) + 3839) / 3840)
     val options = BitmapFactory.Options().apply { inSampleSize = sample }
     val bitmap = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
         ?: throw Exception("Не удалось декодировать изображение")
@@ -1066,24 +1066,6 @@ fun TvInstallerApp() {
         selectedName = uri?.lastPathSegment ?: "APK не выбран"
     }
 
-    val customWallpaperPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { sourceUri ->
-        if (sourceUri != null) {
-            runTask({
-                val file = prepareCustomWallpaper(context, sourceUri)
-                val name = context.contentResolver.query(sourceUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getString(0) else null
-                } ?: "Собственные обои"
-                activity.runOnUiThread {
-                    customWallpaperFile = file
-                    customWallpaperName = name
-                }
-                "Изображение подготовлено: $name (${file.length() / 1024} КБ). Теперь можно применить его к Launcher."
-            })
-        }
-    }
-
     val settingsBackupExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { destinationUri ->
@@ -1137,6 +1119,24 @@ fun TvInstallerApp() {
                 onFinished(result)
             }
         }.start()
+    }
+
+    val customWallpaperPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            runTask({
+                val file = prepareCustomWallpaper(context, sourceUri)
+                val name = context.contentResolver.query(sourceUri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: "Собственные обои"
+                activity.runOnUiThread {
+                    customWallpaperFile = file
+                    customWallpaperName = name
+                }
+                "Изображение подготовлено: $name (${file.length() / 1024} КБ). Теперь можно применить его к Launcher."
+            })
+        }
     }
 
     val backupRestorePicker = rememberLauncherForActivityResult(
