@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.6"
+private const val APP_VERSION = "0.9.8"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -73,6 +73,45 @@ data class TvDevice(
     val ip: String,
     val port: Int
 )
+
+private data class CleanupJournal(
+    val deviceIdentity: String,
+    val host: String,
+    val port: Int,
+    val plannedPackages: List<String>,
+    val completedPackages: List<String>,
+    val createdAt: Long
+)
+
+private fun loadCleanupJournal(context: Context): CleanupJournal? = try {
+    val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return null
+    val json = JSONObject(raw)
+    val planned = json.optJSONArray("planned") ?: JSONArray()
+    val completed = json.optJSONArray("completed") ?: JSONArray()
+    CleanupJournal(
+        deviceIdentity = json.optString("deviceIdentity"),
+        host = json.optString("host"),
+        port = json.optInt("port", 5555),
+        plannedPackages = (0 until planned.length()).map { planned.optString(it) }.filter { it.isNotBlank() },
+        completedPackages = (0 until completed.length()).map { completed.optString(it) }.filter { it.isNotBlank() },
+        createdAt = json.optLong("createdAt", 0L)
+    ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
+} catch (_: Exception) { null }
+
+private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
+    val json = JSONObject()
+        .put("deviceIdentity", journal.deviceIdentity)
+        .put("host", journal.host)
+        .put("port", journal.port)
+        .put("planned", JSONArray(journal.plannedPackages))
+        .put("completed", JSONArray(journal.completedPackages))
+        .put("createdAt", journal.createdAt)
+    prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
+}
+
+private fun clearCleanupJournal(context: Context) {
+    prefs(context).edit().remove("cleanup_operation_journal").commit()
+}
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
@@ -1928,6 +1967,8 @@ fun TvInstallerApp() {
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
     var pendingRestoreManagedChanges by remember { mutableStateOf(false) }
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
+    var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
+    var pendingCleanupRollback by remember { mutableStateOf(false) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
     var profileCatalogExpanded by remember { mutableStateOf(false) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
@@ -2480,6 +2521,12 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.8 • Журнал безопасной очистки и откат незавершённой операции", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Перед отключением создаётся локальный журнал с идентификатором телевизора и планом. Каждый успешно отключённый пакет записывается сразу; после аварийного закрытия приложение предлагает восстановить только эти компоненты и только на том же телевизоре.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.9.7 • Встроенные модули Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Launcher и Curtain теперь встроены в APK приложения и устанавливаются после проверки размера и SHA-256. Отдельный APK импортировать не нужно.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.6 • Сезонная тема Diwali", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена праздничная тема Diwali из актуального каталога Clean Your TV. Она показывается только до даты окончания, указанной в исходной конфигурации темы.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -4014,6 +4061,69 @@ fun TvInstallerApp() {
                                 }
                             }
                         }
+
+                        cleanupJournal?.let { journal ->
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("НЕЗАВЕРШЁННАЯ ОЧИСТКА", color = Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
+                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Успешно отключено: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
+                                    Text("Восстановление разрешено только на исходном телевизоре (проверяется производитель, модель, устройство и отпечаток прошивки).", color = TextMuted, fontSize = 11.sp)
+                                    OutlinedButton(enabled = !busy && journal.completedPackages.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = { pendingCleanupRollback = true }) {
+                                        Text("Откатить незавершённую очистку")
+                                    }
+                                    if (pendingCleanupRollback) {
+                                        AlertDialog(
+                                            onDismissRequest = { pendingCleanupRollback = false },
+                                            title = { Text("Восстановить отключённые пакеты?") },
+                                            text = { Text("Будут включены только пакеты, которые эта операция успела отключить: ${journal.completedPackages.joinToString()}. Сначала будет проверено, что подключён именно исходный телевизор. Продолжить?") },
+                                            confirmButton = {
+                                                TextButton(enabled = !busy, onClick = {
+                                                    pendingCleanupRollback = false
+                                                    val host = ip.trim()
+                                                    val p = port.toIntOrNull()
+                                                    if (host.isBlank() || p == null || p !in 1..65535) {
+                                                        status = "Подключись к исходному телевизору по ADB"
+                                                    } else runTask({
+                                                        connectWithRetry(context, host, p) { adb ->
+                                                            require(readTvIdentity(adb) == journal.deviceIdentity) {
+                                                                "Это не тот телевизор, на котором началась очистка. Откат отменён."
+                                                            }
+                                                            val installed = readAllPackages(adb).toSet()
+                                                            val restored = mutableListOf<String>()
+                                                            val failures = mutableListOf<String>()
+                                                            journal.completedPackages.forEach { pkg ->
+                                                                if (pkg !in installed) failures.add("$pkg (пакет отсутствует)")
+                                                                else try {
+                                                                    changePackageState(adb, pkg, true)
+                                                                    restored.add(pkg)
+                                                                    saveCleanupJournal(context, journal.copy(completedPackages = journal.completedPackages - restored.toSet()))
+                                                                } catch (_: Exception) { failures.add(pkg) }
+                                                            }
+                                                            val remaining = journal.completedPackages - restored.toSet()
+                                                            activity.runOnUiThread {
+                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(completedPackages = remaining)
+                                                                disabledOnDevice = readDisabledPackages(adb)
+                                                                disabledPackages = disabledPackages - restored.toSet()
+                                                                managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
+                                                                settings.edit().putStringSet("disabled_packages", disabledPackages)
+                                                                    .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
+                                                            }
+                                                            if (remaining.isEmpty()) {
+                                                                clearCleanupJournal(context)
+                                                                "Откат завершён: восстановлено ${restored.size} пакетов."
+                                                            } else {
+                                                                "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}"
+                                                            }
+                                                        }
+                                                    }, { cleanupJournal = loadCleanupJournal(context) })
+                                                }) { Text("Восстановить") }
+                                            },
+                                            dismissButton = { TextButton(onClick = { pendingCleanupRollback = false }) { Text("Отмена") } }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
@@ -4089,15 +4199,38 @@ fun TvInstallerApp() {
                                                 require(safeSelected.size == selected.size) {
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
+                                                val deviceIdentity = readTvIdentity(adb)
+                                                var journal = CleanupJournal(
+                                                    deviceIdentity = deviceIdentity,
+                                                    host = host,
+                                                    port = p,
+                                                    plannedPackages = safeSelected,
+                                                    completedPackages = emptyList(),
+                                                    createdAt = System.currentTimeMillis()
+                                                )
+                                                saveCleanupJournal(context, journal)
+                                                activity.runOnUiThread { cleanupJournal = journal }
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
                                                 safeSelected.forEach { pkg ->
                                                     try {
                                                         changePackageState(adb, pkg, false)
                                                         disabledNow.add(pkg)
+                                                        journal = journal.copy(completedPackages = disabledNow.toList())
+                                                        saveCleanupJournal(context, journal)
                                                     } catch (_: Exception) {
-                                                        failures.add(pkg)
+                                                        if (pkg in readDisabledPackages(adb)) {
+                                                            disabledNow.add(pkg)
+                                                            journal = journal.copy(completedPackages = disabledNow.toList())
+                                                            saveCleanupJournal(context, journal)
+                                                        } else failures.add(pkg)
                                                     }
+                                                }
+                                                if (failures.isEmpty()) {
+                                                    clearCleanupJournal(context)
+                                                    activity.runOnUiThread { cleanupJournal = null }
+                                                } else {
+                                                    activity.runOnUiThread { cleanupJournal = journal }
                                                 }
                                                 activity.runOnUiThread {
                                                     if (disabledNow.isNotEmpty()) {
