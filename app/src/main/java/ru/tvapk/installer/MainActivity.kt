@@ -513,11 +513,37 @@ private fun readCurrentLauncherConfig(adb: Dadb): JSONObject {
     throw Exception("Не удалось прочитать текущий config.json Launcher. Ничего на телевизоре не изменено.")
 }
 
-private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<String>, fillDock: Boolean): String {
+private fun writeLauncherConfig(adb: Dadb, config: JSONObject): String {
     val packageName = "com.gathin.tvhome"
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен."
     }
+    val safeFile = File.createTempFile("launcher-config-", ".json")
+    val remote = "/data/local/tmp/launcher-config.json"
+    try {
+        safeFile.writeText(config.toString(2), Charsets.UTF_8)
+        when (val result = adb.push(safeFile, remote)) {
+            is dadb.SyncResult.Success -> Unit
+            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать конфигурацию: $result")
+        }
+        val directory = "/sdcard/Android/data/$packageName/files"
+        val command =
+            "rm -f $directory/config.json 2>/dev/null; " +
+            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
+            "r=\$?; rm -f $remote; exit \$r"
+        shellText(adb, command)
+        shellText(adb, "am force-stop --user 0 $packageName")
+        return try {
+            shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
+        } catch (_: Exception) {
+            shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
+        }
+    } finally {
+        safeFile.delete()
+    }
+}
+
+private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<String>, fillDock: Boolean): String {
     require(dock.none { it in hidden }) {
         "Одно приложение нельзя одновременно закрепить в доке и скрыть с главного экрана."
     }
@@ -535,29 +561,48 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
         config.put("rows_below_dock", rowsBelow)
         if (rowsBelow == 2) config.put("dock_title", false)
     }
-    val safeFile = File.createTempFile("launcher-apps-", ".json")
-    safeFile.writeText(config.toString(2), Charsets.UTF_8)
-    val remote = "/data/local/tmp/launcher-apps-config.json"
-    try {
-        when (val result = adb.push(safeFile, remote)) {
-            is dadb.SyncResult.Success -> Unit
-            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать конфигурацию: $result")
-        }
-        val directory = "/sdcard/Android/data/$packageName/files"
-        val command =
-            "rm -f $directory/config.json 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
-            "r=\$?; rm -f $remote; exit \$r"
-        shellText(adb, command)
-        shellText(adb, "am force-stop --user 0 $packageName")
-        val restart = try {
-            shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
-        } catch (_: Exception) {
-            shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
-        }
-        return "Список приложений обновлён. В доке: ${dock.size}, скрыто с главного экрана: ${hidden.size}. Приложения не удалялись и не отключались. $restart"
-    } finally {
-        safeFile.delete()
+    val restart = writeLauncherConfig(adb, config)
+    return "Список приложений обновлён. В доке: ${dock.size}, скрыто с главного экрана: ${hidden.size}. Приложения не удалялись и не отключались. $restart"
+}
+
+private fun applyLauncherClockSettings(
+    adb: Dadb,
+    idleMinutes: Int,
+    wallpaper: Boolean,
+    wallpaperDim: Int,
+    glow: Boolean,
+    backOpensClock: Boolean,
+    clockFormat: String
+): String {
+    require(clockFormat in setOf("system", "12", "24")) { "Неверный формат времени" }
+    val config = readCurrentLauncherConfig(adb)
+        .put("home_idle_clock_minutes", idleMinutes.coerceIn(0, 1440))
+        .put("clock_wallpaper", wallpaper)
+        .put("clock_wallpaper_dim", wallpaperDim.coerceIn(0, 90))
+        .put("clock_glow", glow)
+        .put("back_opens_clock", backOpensClock)
+        .put("clock_format", clockFormat)
+    val restart = writeLauncherConfig(adb, config)
+    return "Параметры часов Clean Your TV применены. Авточасы: ${if (idleMinutes <= 0) "выключены" else "через $idleMinutes мин."}. $restart"
+}
+
+private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
+    val component = "com.gathin.tvhome/.ClockDream"
+    val current = try { shellText(adb, "settings get secure screensaver_components").trim() } catch (_: Exception) { "" }
+    val components = current.split(":")
+        .map { it.trim() }
+        .filter { it.matches(Regex("[A-Za-z0-9_.$/]+")) }
+        .toMutableSet()
+    if (enabled) components.add(component) else components.remove(component)
+    val next = components.joinToString(":")
+    val wasEnabled = try { shellText(adb, "settings get secure screensaver_enabled").trim() == "1" } catch (_: Exception) { false }
+    val nowEnabled = if (enabled) true else wasEnabled && components.isNotEmpty()
+    shellText(adb, "settings put secure screensaver_components '$next'; settings put secure screensaver_enabled ${if (nowEnabled) 1 else 0}")
+    if (enabled) {
+        val opened = try { shellText(adb, "am start -a android.settings.DREAM_SETTINGS") } catch (_: Exception) { "Открой системные настройки заставки вручную." }
+        "Системная заставка Clean Your TV включена. Настрой время запуска в открывшемся меню. $opened"
+    } else {
+        "Системная заставка Clean Your TV отключена. Другие заставки сохранены."
     }
 }
 
