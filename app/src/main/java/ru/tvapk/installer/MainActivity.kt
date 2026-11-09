@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.25"
+private const val APP_VERSION = "0.9.26"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1113,6 +1113,9 @@ private fun applyLauncherHomeKeySettings(adb: Dadb, longPressHome: Boolean): Str
 private fun enableHomeKeyService(adb: Dadb): String {
     val packageName = "com.gathin.tvhome"
     val component = "$packageName/.HomeKeyService"
+    val fullComponent = "$packageName/$packageName.HomeKeyService"
+    fun isOurService(entry: String): Boolean = entry == component || entry == fullComponent
+
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен."
     }
@@ -1122,14 +1125,14 @@ private fun enableHomeKeyService(adb: Dadb): String {
     }
 
     // Never turn Accessibility on if that would also start unrelated services.
-    val raw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
-        .takeUnless { it.isBlank() || it == "null" }.orEmpty()
+    val rawResult = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+    val raw = rawResult.takeUnless { it.isBlank() || it == "null" }.orEmpty()
     val validEntry = Regex("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+")
     val services = if (raw.isEmpty()) emptyList() else raw.split(":")
     require(services.size <= 50 && services.all { validEntry.matches(it) }) {
         "Список специальных возможностей имеет неизвестный формат. Ничего не изменено."
     }
-    val others = services.filterNot { it == component }.distinct()
+    val others = services.filterNot(::isOurService).distinct()
     val accessibilityOn = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
     if (!accessibilityOn && others.isNotEmpty()) {
         throw IllegalStateException(
@@ -1140,18 +1143,30 @@ private fun enableHomeKeyService(adb: Dadb): String {
 
     val next = (others + component).distinct().joinToString(":")
     if (raw != next) {
-        shellText(adb, "settings put secure enabled_accessibility_services '$next'")
+        // Compare-and-set on the TV: don't overwrite a service list changed after our read.
+        val expectedCondition = if (raw.isEmpty()) {
+            "[ -z \"\$current\" ] || [ \"\$current\" = null ]"
+        } else {
+            "[ \"\$current\" = '" + raw + "' ]"
+        }
+        val command = "current=\$(settings get secure enabled_accessibility_services); " +
+            "if $expectedCondition; then settings put secure enabled_accessibility_services '$next'; " +
+            "else echo 'ACCESSIBILITY_LIST_CHANGED' >&2; exit 3; fi"
+        shellText(adb, command)
     }
     if (!accessibilityOn) {
         shellText(adb, "settings put secure accessibility_enabled 1")
     }
 
-    val verifiedList = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+    val verifiedRaw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+    val verifiedServices = verifiedRaw.takeUnless { it.isBlank() || it == "null" }?.split(":").orEmpty()
     val verifiedEnabled = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
-    require(component in verifiedList.split(":") && verifiedEnabled) {
-        "Телевизор не подтвердил включение HomeKeyService. Проверь настройки специальных возможностей."
+    require(verifiedServices.count(::isOurService) == 1 &&
+        verifiedServices.filterNot(::isOurService) == others && verifiedEnabled) {
+        "Телевизор не подтвердил включение HomeKeyService или список служб изменился. Проверь настройки специальных возможностей."
     }
     return "HomeKeyService включён и проверен. Другие службы специальных возможностей не включались. " +
+        "Список служб проверяется перед записью, чтобы не затереть изменения пользователя. " +
         "Служба нужна только пультам, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home."
 }
 
