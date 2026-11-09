@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.52"
+private const val APP_VERSION = "0.9.53"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2395,6 +2395,57 @@ private fun launchTvApp(adb: Dadb, packageName: String): String {
 }
 
 private const val CLEAN_TV_LAUNCHER_PACKAGE = "com.gathin.tvhome"
+
+private const val HOME_WATCHDOG_DIR = "/data/local/tmp/cleanyourtv"
+private const val HOME_WATCHDOG_SECONDS = 120
+
+private data class HomeWatchdog(val token: String) {
+    val tokenFile: String get() = HOME_WATCHDOG_DIR + "/home-ok-" + token
+    val processPattern: String get() = "[c]leanyourtv-rollback-" + token
+}
+
+private fun armHomeWatchdog(adb: Dadb, stockPackage: String, stockComponent: String): HomeWatchdog {
+    require(stockPackage.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")))
+    require(stockComponent.startsWith("$stockPackage/") &&
+        stockComponent.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")))
+    val token = java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+    val watchdog = HomeWatchdog(token)
+    val body = "sleep " + HOME_WATCHDOG_SECONDS + " & wait; [ -f " + watchdog.tokenFile + " ] && exit 0; " +
+        "pm enable --user 0 " + stockPackage + "; " +
+        "cmd package set-home-activity --user 0 " + stockComponent + "; " +
+        "am start -W -a android.intent.action.MAIN -c android.intent.category.HOME"
+    val logFile = HOME_WATCHDOG_DIR + "/watchdog-" + token + ".log"
+    val processName = "cleanyourtv-rollback-" + token
+    val variantA = "nohup setsid sh -c '" + body + "' " + processName + " >" + logFile + " 2>&1 &"
+    val variantB = "( sh -c '" + body + "' " + processName + " >" + logFile + " 2>&1 & )"
+
+    shellText(adb, "mkdir -p " + HOME_WATCHDOG_DIR + " && rm -f " + watchdog.tokenFile)
+    fun alive(): Boolean = runCatching {
+        shellText(adb, "pgrep -f '" + watchdog.processPattern + "'").isNotBlank()
+    }.getOrDefault(false)
+    fun stopStray() {
+        runCatching { shellText(adb, "pkill -f '" + watchdog.processPattern + "'") }
+    }
+
+    runCatching { shellText(adb, variantA) }
+    if (alive()) return watchdog
+    stopStray()
+    runCatching { shellText(adb, variantB) }
+    if (alive()) return watchdog
+
+    stopStray()
+    throw Exception(
+        "Не удалось запустить и проверить аварийный таймер Home. Штатный Launcher не отключён; переключение отменено."
+    )
+}
+
+private fun confirmHomeWatchdog(adb: Dadb, watchdog: HomeWatchdog) {
+    shellText(adb, "touch " + watchdog.tokenFile + " && test -f " + watchdog.tokenFile)
+    // The token file is authoritative: even if pkill is unavailable, the sleeping
+    // watchdog exits without changing Home when its timer expires.
+    runCatching { shellText(adb, "pkill -f '" + watchdog.processPattern + "'") }
+}
+
 private const val CLEAN_TV_LAUNCHER_COMPONENT = "com.gathin.tvhome/.MainActivity"
 private val KNOWN_STOCK_HOME_PACKAGES = setOf(
     "com.google.android.tvlauncher",
@@ -2505,6 +2556,17 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         throw Exception("Новый Launcher не прошёл проверку запуска. Штатный экран не отключался. Ответ: $start")
     }
 
+    val homeWatchdog = try {
+        armHomeWatchdog(adb, currentPackage, stockComponent)
+    } catch (watchdogError: Exception) {
+        prefs(context).edit()
+            .remove("launcher_handover_stock_package")
+            .remove("launcher_handover_stock_component")
+            .remove("launcher_handover_device_identity")
+            .remove("launcher_handover_active")
+            .apply()
+        throw watchdogError
+    }
     try {
         changePackageStateVerified(adb, currentPackage, false)
         shellText(adb, "cmd package set-home-activity --user 0 $CLEAN_TV_LAUNCHER_COMPONENT")
@@ -2512,6 +2574,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         require(after?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
             "Android не подтвердил новый Home (получено: ${after ?: "нет ответа"})."
         }
+        confirmHomeWatchdog(adb, homeWatchdog)
         prefs(context).edit().putBoolean("launcher_handover_active", true).apply()
         return "Clean Your TV Launcher назначен главным экраном. Штатный пакет $currentPackage сохранён в записи отката."
     } catch (handoverError: Exception) {
@@ -2522,6 +2585,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
             require(restored?.startsWith("$currentPackage/") == true) {
                 "Android вернул неожиданный Home: ${restored ?: "нет ответа"}"
             }
+            confirmHomeWatchdog(adb, homeWatchdog)
             prefs(context).edit()
                 .remove("launcher_handover_stock_package")
                 .remove("launcher_handover_stock_component")
