@@ -895,6 +895,7 @@ private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен."
     }
+    val config = readCurrentLauncherConfig(adb)
     val allowed = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
     files.forEach { file ->
         require(file.isFile && file.length() in 64..(10 * 1024 * 1024).toLong() && allowed.matches(file.name)) {
@@ -922,8 +923,7 @@ private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int
             "rm -f $remote"
         shellText(adb, command)
     }
-    val config = readCurrentLauncherConfig(adb)
-        .put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
+    config.put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
         .put("wallpaper_order", order)
         .put("wallpaper", true)
     val restart = writeLauncherConfig(adb, config)
