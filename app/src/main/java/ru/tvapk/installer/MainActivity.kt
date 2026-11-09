@@ -4282,7 +4282,7 @@ fun TvInstallerApp() {
                             // Оба APK уже прошли проверки SHA-256, подписи и совместимости.
                             // InstallResult обязателен: нельзя считать неудачную установку успешной.
                             modules.forEach { module ->
-                                when (val result = adb.install(module.file)) {
+                                when (val result = adb.install(module.file, "-r")) {
                                     is InstallResult.Success -> Unit
                                     is InstallResult.Failure -> throw Exception(
                                         "Установка ${module.packageName} не выполнена: ${result.reason}"
@@ -4323,7 +4323,7 @@ fun TvInstallerApp() {
                                             "Ответ удаления нового пакета: $result"
                                         }
                                     } else {
-                                        when (val result = adb.install(backup)) {
+                                        when (val result = adb.install(backup, "-r", "-d")) {
                                             is InstallResult.Success -> Unit
                                             is InstallResult.Failure -> throw Exception(result.reason)
                                         }
