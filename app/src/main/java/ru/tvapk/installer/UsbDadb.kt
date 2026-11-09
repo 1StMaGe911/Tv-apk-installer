@@ -47,6 +47,7 @@ class UsbDadb private constructor(
     private val keyFile: File
 ) : Dadb {
 
+    private var connectionFeatures: Set<String> = emptySet()
     private val features: Set<String>
     private var maxPayload = DEFAULT_MAX_PAYLOAD
     private var nextLocalId = 1
@@ -56,8 +57,6 @@ class UsbDadb private constructor(
         handshake()
         features = connectionFeatures
     }
-
-    private var connectionFeatures: Set<String> = emptySet()
 
     override fun supportsFeature(feature: String): Boolean = feature in features
 
@@ -212,7 +211,7 @@ class UsbDadb private constructor(
         connection.close()
     }
 
-    private data class Packet(val command: Int, val arg0: Int, val arg1: Int, val data: ByteArray)
+    internal data class Packet(val command: Int, val arg0: Int, val arg1: Int, val data: ByteArray)
 
     private class UsbAdbStream(
         private val adb: UsbDadb,
@@ -301,7 +300,7 @@ class UsbDadb private constructor(
         val n0inv = modulus.mod(r32).modInverse(r32).negate().toInt()
         val r = BigInteger.ONE.shiftLeft(words * 32)
         var n = modulus
-        var rr = r.modPow(BigInteger.TWO, modulus)
+        var rr = r.modPow(BigInteger.valueOf(2), modulus)
         val nWords = IntArray(words)
         val rrWords = IntArray(words)
         for (i in 0 until words) {
