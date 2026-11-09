@@ -7437,11 +7437,14 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                 onDismissRequest = { pendingCleanupPackages = emptyList() },
                                 title = { Text("Отключить выбранные компоненты?") },
                                 text = {
-                                    Text("Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nСистемные функции телевизора могут зависеть от этих компонентов. Их можно будет восстановить кнопкой «Восстановить все отключённые». Продолжить?")
+                                    Text("Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?")
                                 },
                                 confirmButton = {
                                     TextButton(enabled = !busy, onClick = {
                                         val selected = pendingCleanupPackages
+                                        val managedUsersBeforeCleanup = disabledPackages.toSet()
+                                        val managedSystemsBeforeCleanup = managedSystemDisabledPackages.toSet()
+                                        val managedAutoStartBeforeCleanup = disabledAutoStart.toSet()
                                         pendingCleanupPackages = emptyList()
                                         val host = ip.trim()
                                         val p = port.toIntOrNull()
@@ -7466,8 +7469,31 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
                                                 val deviceIdentity = readTvIdentity(adb)
-                                                // Persist the exact pre-cleanup disabled-package state before changing anything.
-                                                val baselineDisabled = readDisabledPackages(adb).toList().sorted()
+                                                // Capture and persist a full restore point before the first package mutation.
+                                                val baselineDisabledSet = readDisabledPackages(adb)
+                                                val baselineDisabled = baselineDisabledSet.toList().sorted()
+                                                val restoreUserSnapshot = readDisabledUserPackages(adb)
+                                                val managedUsersSnapshot = managedUsersBeforeCleanup.intersect(baselineDisabledSet)
+                                                val managedSystemsSnapshot = managedSystemsBeforeCleanup.intersect(baselineDisabledSet)
+                                                val managedAutoStartSnapshot = managedAutoStartBeforeCleanup
+                                                settings.edit()
+                                                    .putStringSet("restore_point_user_disabled", restoreUserSnapshot)
+                                                    .putStringSet("restore_point_managed_user_packages", managedUsersSnapshot)
+                                                    .putStringSet("restore_point_managed_system_packages", managedSystemsSnapshot)
+                                                    .putStringSet("restore_point_autostart_components", managedAutoStartSnapshot)
+                                                    .putString("restore_point_device_fingerprint", deviceIdentity)
+                                                    .putInt("restore_point_schema_version", 2)
+                                                    .putBoolean("restore_point_exists", true)
+                                                    .apply()
+                                                activity.runOnUiThread {
+                                                    restorePoint = restoreUserSnapshot
+                                                    restorePointManagedUserPackages = managedUsersSnapshot
+                                                    restorePointManagedSystemPackages = managedSystemsSnapshot
+                                                    restorePointAutoStartComponents = managedAutoStartSnapshot
+                                                    restorePointDeviceFingerprint = deviceIdentity
+                                                    restorePointSchemaVersion = 2
+                                                    restorePointExists = true
+                                                }
                                                 var journal = CleanupJournal(
                                                     deviceIdentity = deviceIdentity,
                                                     host = host,
