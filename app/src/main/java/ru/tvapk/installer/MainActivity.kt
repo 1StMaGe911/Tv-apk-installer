@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.78"
+private const val APP_VERSION = "0.9.79"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2438,7 +2438,8 @@ private data class RecoveryApkEntry(
     val packageName: String,
     val versionCode: Long,
     val signerSha256: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val sha256: String
 )
 
 private const val CLEAN_YOUR_TV_RECOVERY_SIGNER =
@@ -2476,6 +2477,10 @@ private fun restoreRecoveryApk(
         file.isFile && file.extension.equals("apk", true) &&
         file.length() in 1..(200L * 1024L * 1024L)
     ) { "Путь или размер аварийной копии не прошёл проверку" }
+
+    require(file.length() == entry.sizeBytes && recoveryFileSha256(file).equals(entry.sha256, true)) {
+        "SHA-256 аварийного APK не совпадает с результатом сканирования. Восстановление заблокировано."
+    }
 
     val info = context.packageManager.getPackageArchiveInfo(
         file.absolutePath,
@@ -2522,19 +2527,55 @@ private fun restoreRecoveryApk(
         ", versionCode " + entry.versionCode + ". APK оставлен в аварийном архиве."
 }
 
+private fun recoveryFileSha256(file: File): String {
+    require(file.isFile && file.length() in 1..(200L * 1024L * 1024L)) {
+        "Размер аварийного APK не прошёл проверку"
+    }
+    val digest = MessageDigest.getInstance("SHA-256")
+    var total = 0L
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= 200L * 1024L * 1024L) { "APK превышает лимит хеширования" }
+            digest.update(buffer, 0, count)
+        }
+    }
+    require(total == file.length()) { "Размер APK изменился во время проверки" }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+private fun verifyRecoveryFileUnchanged(entry: RecoveryApkEntry, file: File = entry.file): Boolean {
+    return runCatching {
+        val canonical = file.canonicalFile
+        canonical == entry.file.canonicalFile &&
+            canonical.isFile &&
+            canonical.length() == entry.sizeBytes &&
+            recoveryFileSha256(canonical).equals(entry.sha256, true)
+    }.getOrDefault(false)
+}
+
 private fun listRecoveryApks(context: Context): List<RecoveryApkEntry> {
     val root = context.filesDir.canonicalFile
     val dirs = root.listFiles()?.filter { dir ->
         dir.isDirectory &&
-            (dir.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+"))) &&
+            dir.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
             runCatching { dir.canonicalFile.parentFile == root }.getOrDefault(false)
     }?.sortedByDescending { it.lastModified() }?.take(50).orEmpty()
-    return dirs.flatMap { dir ->
-        dir.listFiles()?.filter { it.isFile && it.extension.equals("apk", true) &&
+    var totalHashedBytes = 0L
+    val scanBudgetBytes = 512L * 1024L * 1024L
+    val entries = mutableListOf<RecoveryApkEntry>()
+    for (dir in dirs) {
+        val files = dir.listFiles()?.filter { it.isFile && it.extension.equals("apk", true) &&
             it.length() in 1..(200L * 1024L * 1024L) &&
             runCatching { it.canonicalFile.parentFile == dir.canonicalFile }.getOrDefault(false)
-        }?.take(10).orEmpty().mapNotNull { apk ->
-            runCatching {
+        }?.sortedByDescending { it.lastModified() }?.take(10).orEmpty()
+        for (apk in files) {
+            val size = apk.length()
+            if (entries.size >= 100 || totalHashedBytes + size > scanBudgetBytes) break
+            val entry = runCatching {
                 val pm = context.packageManager
                 val info = pm.getPackageArchiveInfo(
                     apk.absolutePath,
@@ -2546,14 +2587,21 @@ private fun listRecoveryApks(context: Context): List<RecoveryApkEntry> {
                     info.signingInfo?.apkContentsSigners?.toList().orEmpty()
                 } else info.signatures?.toList().orEmpty()
                 require(signatures.size == 1) { "APK должен иметь ровно одну подпись" }
-                val digest = MessageDigest.getInstance("SHA-256").digest(signatures.single().toByteArray())
+                val signerDigest = MessageDigest.getInstance("SHA-256").digest(signatures.single().toByteArray())
                     .joinToString("") { "%02x".format(it) }
                 @Suppress("DEPRECATION")
                 val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
-                RecoveryApkEntry(apk, dir.name, info.packageName, code, digest, apk.length())
+                val fileDigest = recoveryFileSha256(apk)
+                RecoveryApkEntry(apk, dir.name, info.packageName, code, signerDigest, size, fileDigest)
             }.getOrNull()
-        }.orEmpty()
-    }.take(100)
+            if (entry != null) {
+                entries += entry
+                totalHashedBytes += size
+            }
+        }
+        if (entries.size >= 100 || totalHashedBytes >= scanBudgetBytes) break
+    }
+    return entries
 }
 
 private fun recoveryCleanupCandidates(
@@ -3778,7 +3826,7 @@ fun TvInstallerApp() {
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
     var localUndoBackups by remember { mutableStateOf(listUndoBackups(context)) }
     var recoveryApks by remember { mutableStateOf(listRecoveryApks(context)) }
-    var pendingRecoveryDelete by remember { mutableStateOf<File?>(null) }
+    var pendingRecoveryDelete by remember { mutableStateOf<RecoveryApkEntry?>(null) }
     var pendingRecoveryRestore by remember { mutableStateOf<RecoveryApkEntry?>(null) }
     var pendingRecoveryCleanup by remember { mutableStateOf(false) }
     var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
@@ -7384,7 +7432,8 @@ val actualAfterRestore = readDisabledPackages(adb)
                                         color = TextMuted, fontSize = 10.sp
                                     )
                                     Text("SHA-256 сертификата: ${entry.signerSha256}", color = TextMuted, fontSize = 9.sp)
-                                    Text("Издатель будет повторно проверен перед установкой.", color = TextMuted, fontSize = 10.sp)
+                                    Text("SHA-256 APK: ${entry.sha256}", color = TextMuted, fontSize = 9.sp)
+                                    Text("Хэш файла повторно проверяется перед восстановлением и удалением.", color = TextMuted, fontSize = 10.sp)
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         OutlinedButton(
                                             enabled = !busy,
@@ -7393,7 +7442,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                         ) { Text("Восстановить") }
                                         OutlinedButton(
                                             enabled = !busy,
-                                            onClick = { pendingRecoveryDelete = entry.file }
+                                            onClick = { pendingRecoveryDelete = entry }
                                         ) { Text("Удалить") }
                                     }
                                 }
@@ -7618,7 +7667,8 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
                                                 file.isFile && file.extension.equals("apk", true) &&
                                                 expectedRecoverySigner(entry, verifiedCatalog)?.equals(entry.signerSha256, true) == true
-                                            if (valid && file!!.delete()) removed++ else failed++
+                                            val unchanged = valid && verifyRecoveryFileUnchanged(entry, file!!)
+                                            if (unchanged && file!!.delete()) removed++ else failed++
                                         }
                                         recoveryApks = listRecoveryApks(context)
                                         status = "Очистка завершена: удалено $removed, ошибок $failed. Последние доверенные копии сохранены."
@@ -7636,16 +7686,19 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 text = { Text("APK будет удалён без возможности восстановления. Убедись, что он больше не нужен для ручного ремонта телевизора.") },
                                 confirmButton = {
                                     TextButton(onClick = {
-                                        val target = pendingRecoveryDelete ?: return@TextButton
+                                        val entry = pendingRecoveryDelete ?: return@TextButton
                                         pendingRecoveryDelete = null
+                                        val target = runCatching { entry.file.canonicalFile }.getOrNull()
                                         val root = context.filesDir.canonicalFile
-                                        val parent = target.canonicalFile.parentFile
-                                        val validFolder = parent?.parentFile == root &&
+                                        val parent = target?.parentFile
+                                        val validFolder = target != null && parent?.parentFile == root &&
+                                            parent.name == entry.folder &&
                                             parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+"))
-                                        if (validFolder && target.isFile && target.extension.equals("apk", true) && target.delete()) {
+                                        val unchanged = validFolder && verifyRecoveryFileUnchanged(entry, target!!)
+                                        if (unchanged && target!!.delete()) {
                                             recoveryApks = listRecoveryApks(context)
-                                            status = "Аварийная копия удалена"
-                                        } else status = "Ошибка: копия не удалена (путь не прошёл проверку или файл занят)"
+                                            status = "Аварийная копия удалена после проверки SHA-256"
+                                        } else status = "Ошибка: APK изменён, повреждён или путь не прошёл проверку. Удаление отменено."
                                     }) { Text("Удалить") }
                                 },
                                 dismissButton = {
