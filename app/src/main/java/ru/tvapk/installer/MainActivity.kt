@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.27"
+private const val APP_VERSION = "0.9.28"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1815,7 +1815,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
     }
 
     try {
-        changePackageState(adb, currentPackage, false)
+        changePackageStateVerified(adb, currentPackage, false)
         shellText(adb, "cmd package set-home-activity --user 0 $CLEAN_TV_LAUNCHER_COMPONENT")
         val after = resolveHomeComponent(adb)
         require(after?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
@@ -1825,7 +1825,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         return "Clean Your TV Launcher назначен главным экраном. Штатный пакет $currentPackage сохранён в записи отката."
     } catch (handoverError: Exception) {
         val rollbackResult = try {
-            changePackageState(adb, currentPackage, true)
+            changePackageStateVerified(adb, currentPackage, true)
             shellText(adb, "cmd package set-home-activity --user 0 $stockComponent")
             val restored = resolveHomeComponent(adb)
             require(restored?.startsWith("$currentPackage/") == true) {
@@ -1856,7 +1856,7 @@ private fun restoreStockHomeAfterHandover(context: Context, adb: Dadb): String {
     require(shellText(adb, "pm path $stockPackage").contains("package:")) {
         "Штатный Launcher $stockPackage больше не установлен. Установи его средствами производителя или выбери другой Home."
     }
-    changePackageState(adb, stockPackage, true)
+    changePackageStateVerified(adb, stockPackage, true)
     shellText(adb, "cmd package set-home-activity --user 0 $stockComponent")
     val restored = resolveHomeComponent(adb)
     require(restored?.startsWith("$stockPackage/") == true) {
