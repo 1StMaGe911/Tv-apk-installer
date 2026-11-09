@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.83"
+private const val APP_VERSION = "0.9.84"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -917,6 +917,63 @@ private fun checkLatestVersion(): UpdateInfo {
 
 private const val MAX_UPDATE_APK_BYTES = 200L * 1024L * 1024L
 
+private val UPDATE_DOWNLOAD_HOSTS = setOf(
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com"
+)
+
+/**
+ * Follows only the small set of HTTPS hosts used by GitHub release assets.
+ * Redirects are handled explicitly so a compromised release URL cannot send the
+ * updater to an unrelated host.
+ */
+private fun openUpdateDownloadConnection(initialUrl: URL): HttpURLConnection {
+    var current = initialUrl
+    var redirects = 0
+    while (true) {
+        val uri = current.toURI()
+        require(
+            current.protocol.equals("https", true) &&
+                current.host.lowercase(java.util.Locale.ROOT) in UPDATE_DOWNLOAD_HOSTS &&
+                current.port in setOf(-1, 443) &&
+                uri.rawUserInfo == null &&
+                uri.fragment == null
+        ) { "Перенаправление APK ведёт на недоверенный адрес" }
+
+        val connection = current.openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 20000
+        connection.readTimeout = 60000
+        connection.instanceFollowRedirects = false
+        connection.useCaches = false
+        connection.setRequestProperty("User-Agent", "TV-APK-Installer")
+        connection.setRequestProperty("Accept", "application/vnd.android.package-archive")
+
+        val code = try {
+            connection.responseCode
+        } catch (e: Exception) {
+            connection.disconnect()
+            throw e
+        }
+        if (code in setOf(301, 302, 303, 307, 308)) {
+            val location = connection.getHeaderField("Location")
+            connection.disconnect()
+            require(redirects < 5 && !location.isNullOrBlank()) {
+                "Слишком много перенаправлений или отсутствует адрес следующего сервера"
+            }
+            current = URL(current, location)
+            redirects++
+            continue
+        }
+        if (code != HttpURLConnection.HTTP_OK) {
+            connection.disconnect()
+            throw Exception("Ошибка загрузки: HTTP $code")
+        }
+        return connection
+    }
+}
+
 private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha256: String): File {
     require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Некорректная контрольная сумма APK" }
     val directory = File(context.cacheDir, "updates")
@@ -924,18 +981,16 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
     val apkFile = File(directory, "tv-apk-installer-update.apk")
     val stagingFile = File(directory, "tv-apk-installer-update.apk.part")
     val parsedUrl = URL(downloadUrl)
-    require(parsedUrl.protocol == "https" && parsedUrl.host.equals("github.com", ignoreCase = true)) {
-        "Разрешены только HTTPS-ссылки на GitHub Releases"
-    }
+    require(
+        parsedUrl.protocol == "https" &&
+            parsedUrl.host.equals("github.com", ignoreCase = true) &&
+            parsedUrl.port in setOf(-1, 443) &&
+            parsedUrl.userInfo == null
+    ) { "Разрешены только исходные HTTPS-ссылки на GitHub Releases" }
+
     val backupFile = File(directory, "tv-apk-installer-update.apk.bak")
-    val connection = parsedUrl.openConnection() as HttpURLConnection
+    val connection = openUpdateDownloadConnection(parsedUrl)
     try {
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 20000
-        connection.readTimeout = 60000
-        connection.instanceFollowRedirects = true
-        connection.setRequestProperty("User-Agent", "TV-APK-Installer")
-        if (connection.responseCode != 200) throw Exception("Ошибка загрузки: HTTP ${connection.responseCode}")
         val declaredLength = connection.contentLengthLong
         if (declaredLength > MAX_UPDATE_APK_BYTES) {
             throw Exception("APK превышает допустимый размер 200 МБ. Загрузка отменена")
@@ -958,6 +1013,7 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
                     output.write(buffer, 0, count)
                 }
                 output.flush()
+                output.fd.sync()
             }
         }
         if (totalBytes < 1024L || (declaredLength >= 0 && totalBytes != declaredLength)) {
@@ -967,6 +1023,43 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
             throw Exception("SHA-256 APK не совпадает с GitHub. Установка отменена")
         }
+
+        @Suppress("DEPRECATION")
+        val archiveFlags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+            else PackageManager.GET_SIGNATURES
+        val archiveInfo = context.packageManager.getPackageArchiveInfo(stagingFile.absolutePath, archiveFlags)
+            ?: throw Exception("Загруженный файл не является корректным APK")
+        require(archiveInfo.packageName == context.packageName) {
+            "APK обновления предназначен для другого приложения. Установка отменена."
+        }
+        @Suppress("DEPRECATION")
+        val archiveSignatures = if (Build.VERSION.SDK_INT >= 28) {
+            archiveInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+        } else {
+            archiveInfo.signatures?.toList().orEmpty()
+        }
+        require(archiveSignatures.size == 1) {
+            "У APK обновления должен быть ровно один сертификат подписанта"
+        }
+        val archiveSigner = MessageDigest.getInstance("SHA-256")
+            .digest(archiveSignatures.single().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val installedSigner = installedSignerSha256(context, context.packageName)
+        require(archiveSigner.equals(installedSigner, true)) {
+            "Сертификат APK обновления не совпадает с установленным приложением. Установка заблокирована."
+        }
+        @Suppress("DEPRECATION")
+        val archiveVersionCode = if (Build.VERSION.SDK_INT >= 28) archiveInfo.longVersionCode
+            else archiveInfo.versionCode.toLong()
+        @Suppress("DEPRECATION")
+        val installedInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+        @Suppress("DEPRECATION")
+        val installedVersionCode = if (Build.VERSION.SDK_INT >= 28) installedInfo.longVersionCode
+            else installedInfo.versionCode.toLong()
+        require(archiveVersionCode > installedVersionCode) {
+            "APK обновления не новее установленной версии (код $archiveVersionCode ≤ $installedVersionCode)"
+        }
+
         backupFile.delete()
         val hadPreviousFile = apkFile.exists()
         if (hadPreviousFile && !apkFile.renameTo(backupFile)) {
