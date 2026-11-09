@@ -598,7 +598,7 @@ private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
     val wasEnabled = try { shellText(adb, "settings get secure screensaver_enabled").trim() == "1" } catch (_: Exception) { false }
     val nowEnabled = if (enabled) true else wasEnabled && components.isNotEmpty()
     shellText(adb, "settings put secure screensaver_components '$next'; settings put secure screensaver_enabled ${if (nowEnabled) 1 else 0}")
-    if (enabled) {
+    return if (enabled) {
         val opened = try { shellText(adb, "am start -a android.settings.DREAM_SETTINGS") } catch (_: Exception) { "Открой системные настройки заставки вручную." }
         "Системная заставка Clean Your TV включена. Настрой время запуска в открывшемся меню. $opened"
     } else {
