@@ -7203,7 +7203,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             } else rollbackCandidates
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
+                                                            var durableRollbackJournal = journal
                                                             rollbackPackages.forEach { pkg ->
+                                                                durableRollbackJournal = durableRollbackJournal.copy(
+                                                                    completedPackages = (rollbackPackages - restored.toSet()).toList(),
+                                                                    inFlightPackage = pkg,
+                                                                    restoredPackages = (journal.restoredPackages + restored).distinct()
+                                                                )
+                                                                check(saveCleanupJournal(context, durableRollbackJournal)) {
+                                                                    "Не удалось сохранить этап восстановления для $pkg. Команда включения не отправлена."
+                                                                }
                                                                 if (pkg !in installed) {
                                                                     failures.add("$pkg (пакет отсутствует)")
                                                                 } else {
@@ -7221,19 +7230,21 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                     }
                                                                 }
                                                                 val stillPending = rollbackPackages - restored.toSet()
-                                                                val nextJournal = journal.copy(
-                                                                    completedPackages = stillPending,
-                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending },
+                                                                durableRollbackJournal = durableRollbackJournal.copy(
+                                                                    completedPackages = stillPending.toList(),
+                                                                    inFlightPackage = null,
                                                                     restoredPackages = (journal.restoredPackages + restored).distinct()
                                                                 )
-                                                                saveCleanupJournal(context, nextJournal)
+                                                                check(saveCleanupJournal(context, durableRollbackJournal)) {
+                                                                    "Не удалось надёжно сохранить результат восстановления $pkg. Журнал оставлен для повторной проверки."
+                                                                }
                                                             }
                                                             val remaining = rollbackPackages - restored.toSet()
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
-                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(
-                                                                    completedPackages = remaining,
-                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in remaining },
+                                                                cleanupJournal = if (remaining.isEmpty()) null else durableRollbackJournal.copy(
+                                                                    completedPackages = remaining.toList(),
+                                                                    inFlightPackage = null,
                                                                     restoredPackages = (journal.restoredPackages + restored).distinct()
                                                                 )
                                                                 disabledOnDevice = actualDisabledAfterRestore
@@ -7244,7 +7255,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             }
                                                             if (remaining.isEmpty()) {
                                                                 appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + restored).distinct())
-                                                                clearCleanupJournal(context)
+                                                                check(clearCleanupJournal(context)) {
+                                                                    "Пакеты восстановлены, но не удалось удалить журнал. Он сохранён для повторной проверки."
+                                                                }
                                                                 activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
                                                                 "Откат завершён: восстановлено ${restored.size} пакетов."
                                                             } else {
