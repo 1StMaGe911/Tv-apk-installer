@@ -695,7 +695,9 @@ private data class MaintenanceRunHistoryEntry(
     val cacheTrimAttempted: Boolean, val cacheTrimOutcome: String,
     val detectedCandidates: Int, val approvedCandidates: Int,
     val reviewCandidates: Int, val blockedCandidates: Int,
-    val warnings: List<String>
+    val warnings: List<String>,
+    val cleanupOutcome: String = "Пакетные изменения не выполнялись",
+    val changedPackages: List<String> = emptyList()
 )
 
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
@@ -713,7 +715,9 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
             cacheTrimAttempted = item.optBoolean("cacheTrimAttempted"), cacheTrimOutcome = item.optString("cacheTrimOutcome"),
             detectedCandidates = item.optInt("detectedCandidates"), approvedCandidates = item.optInt("approvedCandidates"),
             reviewCandidates = item.optInt("reviewCandidates"), blockedCandidates = item.optInt("blockedCandidates"),
-            warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() }
+            warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() },
+            cleanupOutcome = item.optString("cleanupOutcome", "Пакетные изменения не выполнялись"),
+            changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) }
         )
     }.sortedByDescending { it.createdAt }.take(20)
 } catch (_: Exception) { emptyList() }
@@ -728,7 +732,58 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
             .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
             .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
-            .put("warnings", JSONArray(item.warnings)))
+            .put("warnings", JSONArray(item.warnings))
+            .put("cleanupOutcome", item.cleanupOutcome)
+            .put("changedPackages", JSONArray(item.changedPackages)))
+    }
+    prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+} catch (_: Exception) { false }
+
+
+private fun updateLatestMaintenanceCleanupHistory(
+    context: Context,
+    deviceIdentity: String,
+    outcome: String,
+    changedPackages: List<String>
+): Boolean = try {
+    val existing = loadMaintenanceRunHistory(context).toMutableList()
+    val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
+    if (index >= 0) {
+        existing[index] = existing[index].copy(
+            cleanupOutcome = outcome,
+            changedPackages = changedPackages.distinct()
+        )
+    } else {
+        existing.add(0, MaintenanceRunHistoryEntry(
+            createdAt = System.currentTimeMillis(),
+            deviceIdentity = deviceIdentity,
+            memoryBefore = null,
+            memoryAfter = null,
+            storageBefore = null,
+            storageAfter = null,
+            cacheTrimAttempted = false,
+            cacheTrimOutcome = "Не запускалась",
+            detectedCandidates = 0,
+            approvedCandidates = 0,
+            reviewCandidates = 0,
+            blockedCandidates = 0,
+            warnings = emptyList(),
+            cleanupOutcome = outcome,
+            changedPackages = changedPackages.distinct()
+        ))
+    }
+    val array = JSONArray()
+    existing.sortedByDescending { it.createdAt }.take(20).forEach { item ->
+        array.put(JSONObject()
+            .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
+            .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
+            .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+            .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
+            .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
+            .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
+            .put("warnings", JSONArray(item.warnings))
+            .put("cleanupOutcome", item.cleanupOutcome)
+            .put("changedPackages", JSONArray(item.changedPackages)))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
 } catch (_: Exception) { false }
@@ -4278,7 +4333,9 @@ fun TvInstallerApp() {
                             .put("cacheTrimAttempted", entry.cacheTrimAttempted).put("cacheTrimOutcome", entry.cacheTrimOutcome)
                             .put("detectedCandidates", entry.detectedCandidates).put("approvedCandidates", entry.approvedCandidates)
                             .put("reviewCandidates", entry.reviewCandidates).put("blockedCandidates", entry.blockedCandidates)
-                            .put("warnings", JSONArray(entry.warnings)))
+                            .put("warnings", JSONArray(entry.warnings))
+                            .put("cleanupOutcome", entry.cleanupOutcome)
+                            .put("changedPackages", JSONArray(entry.changedPackages)))
                     }
                 }
                 val document = JSONObject().put("format", "tv-apk-installer-maintenance-history")
@@ -7448,6 +7505,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 }
                                                             }
                                                             val remaining = rollbackPackages - restored.toSet()
+                                                            val rollbackOutcome = if (remaining.isEmpty()) "Откат завершён" else "Откат частичный"
+                                                            val historyUpdated = updateLatestMaintenanceCleanupHistory(
+                                                                context, journal.deviceIdentity, rollbackOutcome, restored
+                                                            )
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
                                                                 cleanupJournal = if (remaining.isEmpty()) null else durableRollbackJournal.copy(
@@ -7467,9 +7528,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                     "Пакеты восстановлены, но не удалось удалить журнал. Он сохранён для повторной проверки."
                                                                 }
                                                                 activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
-                                                                "Откат завершён: восстановлено ${restored.size} пакетов."
+                                                                "Откат завершён: восстановлено ${restored.size} пакетов." + if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
                                                             } else {
-                                                                "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}"
+                                                                "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}" + if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
                                                             }
                                                         }
                                                     }, { cleanupJournal = loadCleanupJournal(context) })
@@ -7772,6 +7833,14 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val finalDisabledState = runCatching { readDisabledPackages(adb) }.getOrNull()
                                                 val postCleanupDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
                                                 val postCleanupHealth = postCleanupDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
+                                                val cleanupOutcome = when {
+                                                    failures.isEmpty() -> "Очистка завершена"
+                                                    disabledNow.isNotEmpty() -> "Очистка частично выполнена"
+                                                    else -> "Очистка не выполнена"
+                                                }
+                                                val historyUpdated = updateLatestMaintenanceCleanupHistory(
+                                                    context, deviceIdentity, cleanupOutcome, disabledNow
+                                                )
                                                 activity.runOnUiThread {
                                                     if (disabledNow.isNotEmpty()) {
                                                         val userDisabledNow = disabledNow.filter { it in userPackages }.toSet()
@@ -7787,6 +7856,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     if (finalDisabledState != null) disabledOnDevice = finalDisabledState
                                                     if (postCleanupDiagnostics != null) diagnostics = postCleanupDiagnostics
                                                 }
+                                                if (!historyUpdated) failures.add("не удалось сохранить результат пакетной операции в истории обслуживания")
                                                 val verificationSummary = if (finalDisabledState != null) {
                                                     "\nПовторная проверка на ТВ: ${safeSelected.count { it in finalDisabledState }} из ${safeSelected.size} пакетов действительно отключено."
                                                 } else {
@@ -7935,6 +8005,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
+                                            Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
+                                            if (entry.changedPackages.isNotEmpty()) Text("Изменено: ${entry.changedPackages.joinToString()}", color = TextMuted, fontSize = 10.sp)
+
                                             if (entry.warnings.isNotEmpty()) Text(entry.warnings.joinToString(" · "), color = Color(0xFFFFD98A), fontSize = 10.sp)
                                         }
                                     }
