@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.54"
+private const val APP_VERSION = "0.9.55"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2577,8 +2577,16 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         require(after?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
             "Android не подтвердил новый Home (получено: ${after ?: "нет ответа"})."
         }
+        // Persist the recoverable state BEFORE cancelling the TV-side dead-man timer.
+        // If the phone disappears between these operations, the timer restores stock Home
+        // while the local recovery record remains available for the next connection.
+        val activeRecordSaved = prefs(context).edit()
+            .putBoolean("launcher_handover_active", true)
+            .commit()
+        check(activeRecordSaved) {
+            "Не удалось сохранить состояние передачи Home. Аварийный таймер остаётся активен и восстановит штатный Launcher."
+        }
         confirmHomeWatchdog(adb, homeWatchdog)
-        prefs(context).edit().putBoolean("launcher_handover_active", true).apply()
         return "Clean Your TV Launcher назначен главным экраном. Штатный пакет $currentPackage сохранён в записи отката."
     } catch (handoverError: Exception) {
         val rollbackResult = try {
