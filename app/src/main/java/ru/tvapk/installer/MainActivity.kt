@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.8.5"
+private const val APP_VERSION = "0.8.6"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1597,6 +1597,8 @@ fun TvInstallerApp() {
     var autoStartLoaded by remember { mutableStateOf(false) }
     var systemPackageFilter by remember { mutableStateOf("") }
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
+    var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
+    var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
     var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
@@ -3521,23 +3523,100 @@ fun TvInstallerApp() {
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
+                        if (selectedCleanupPackages.isNotEmpty()) {
+                            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && (packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true) }
+                            }) { Text("Отключить выбранные (${selectedCleanupPackages.size})") }
+                        }
                         cleanupCandidates.forEach { candidate ->
                             val profileRule = activeProfile?.packages?.get(candidate)
                             val fact = packageFacts[candidate] ?: profileRule?.let { profileFact ->
                                 PackageFact(candidate, candidate, "Рекомендация из профиля ${activeProfile.id}. Проверь назначение компонента перед действием.", profileFact.category)
                             }
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("• " + candidate, color = GoldLight, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (fact != null) {
-                                    Text(fact.name + " • " + cleanupCategoryLabel(fact.category), color = TextMain, fontSize = 11.sp)
-                                    if (profileRule?.ask == true) Text("В профиле Clean Your TV: требуется ручная оценка перед отключением.", color = Color(0xFFFFD98A), fontSize = 10.sp)
-                                    Text(fact.description, color = Color.LightGray, fontSize = 10.sp)
+                                    Checkbox(
+                                        checked = candidate in selectedCleanupPackages,
+                                        onCheckedChange = { checked ->
+                                            selectedCleanupPackages = if (checked) selectedCleanupPackages + candidate
+                                            else selectedCleanupPackages - candidate
+                                        },
+                                        enabled = !busy
+                                    )
                                 } else {
-                                    Text("Совпадение по названию пакета; назначение не подтверждено справочником.", color = Color.LightGray, fontSize = 10.sp)
+                                    Spacer(Modifier.width(48.dp))
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                                    Text(candidate, color = GoldLight, fontSize = 12.sp)
+                                    if (fact != null) {
+                                        Text(fact.name + " • " + cleanupCategoryLabel(fact.category), color = TextMain, fontSize = 11.sp)
+                                        if (profileRule?.ask == true) Text("В профиле Clean Your TV: требуется ручная оценка перед отключением.", color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                        Text(fact.description, color = Color.LightGray, fontSize = 10.sp)
+                                    } else {
+                                        Text("Совпадение по названию пакета; назначение не подтверждено справочником.", color = Color.LightGray, fontSize = 10.sp)
+                                    }
                                 }
                             }
                         }
-                        if (cleanupCandidates.isNotEmpty()) Text("Ничего не отключается автоматически. Перед любым действием проверяй назначение пакета: отключение системных компонентов может нарушить работу телевизора.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (cleanupCandidates.isNotEmpty()) Text("Отмечай только знакомые тебе компоненты. Отключение не удаляет пакет, но может повлиять на функции телевизора. Неизвестные совпадения по названию нельзя выбрать.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (pendingCleanupPackages.isNotEmpty()) {
+                            AlertDialog(
+                                onDismissRequest = { pendingCleanupPackages = emptyList() },
+                                title = { Text("Отключить выбранные компоненты?") },
+                                text = {
+                                    Text("Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nСистемные функции телевизора могут зависеть от этих компонентов. Их можно будет восстановить кнопкой «Восстановить все отключённые». Продолжить?")
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        val selected = pendingCleanupPackages
+                                        pendingCleanupPackages = emptyList()
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull()
+                                        if (host.isBlank() || p == null || p !in 1..65535) {
+                                            status = "Сначала укажи IP и порт ADB"
+                                        } else runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                val installed = readAllPackages(adb).toSet()
+                                                val freshDetails = readTvDetails(adb)
+                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
+                                                val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
+                                                val safeSelected = selected.filter { pkg ->
+                                                    pkg in installed && pkg in freshCandidates &&
+                                                        (packageFacts.containsKey(pkg) || freshProfile?.packages?.containsKey(pkg) == true) &&
+                                                        !isProtectedSystemPackage(pkg) && pkg !in (freshProfile?.neverDisable ?: emptySet())
+                                                }
+                                                require(safeSelected.size == selected.size) {
+                                                    "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
+                                                }
+                                                val disabledNow = mutableListOf<String>()
+                                                val failures = mutableListOf<String>()
+                                                safeSelected.forEach { pkg ->
+                                                    try {
+                                                        changePackageState(adb, pkg, false)
+                                                        disabledNow.add(pkg)
+                                                    } catch (_: Exception) {
+                                                        failures.add(pkg)
+                                                    }
+                                                }
+                                                activity.runOnUiThread {
+                                                    if (disabledNow.isNotEmpty()) {
+                                                        disabledPackages = disabledPackages + disabledNow
+                                                        disabledOnDevice = disabledOnDevice + disabledNow
+                                                        selectedCleanupPackages = selectedCleanupPackages - disabledNow.toSet()
+                                                        settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
+                                                    }
+                                                }
+                                                "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
+                                                    if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}"
+                                            }
+                                        })
+                                    }) { Text("Отключить выбранные") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingCleanupPackages = emptyList() }) { Text("Отмена") }
+                                }
+                            )
+                        }
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
                             if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
