@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.47"
+private const val APP_VERSION = "0.9.48"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2906,7 +2906,10 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
                 sdkMin = nullableInt("sdkMin"),
                 sdkMax = nullableInt("sdkMax"),
                 fingerprintPrefix = match.optString("fingerprintPrefix").takeIf { it.isNotBlank() && it != "null" },
-                neverDisable = stringSet(item.optJSONArray("neverDisable")),
+                neverDisable = stringSet(item.optJSONArray("neverDisable")) +
+                    stringSet(item.optJSONArray("stockLaunchers")).map { it.substringBefore('/') } +
+                    listOf(item.optString("liveTv", ""), item.optString("setupWraith", ""))
+                        .filter { it.isNotBlank() && it != "null" }.toSet(),
                 packages = packageMap,
                 testedBy = tested.optString("by", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указано",
                 testedFirmware = tested.optString("firmware", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указана",
@@ -2953,27 +2956,58 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
     }.maxByOrNull { it.first }?.let { TvProfileMatch(it.second, it.third) }
     if (exact != null) return exact
 
-    // Conservative fallback: only brands with upstream-reviewed fallback support.
-    // A package is suggested only when every profile for that brand lists it as
-    // ask=false with the same category. neverDisable is unioned across profiles.
+    // Mirror the upstream Clean Your TV brand sure-set rule: a package must be
+    // default-off (ask=false) in at least three reviewed profiles of this brand,
+    // and must not appear in any reviewed profile's never-disable/stock-role list.
     val supportedBrands = listOf("Amazon", "Hisense", "Panasonic", "Philips", "Sony", "TCL", "Xiaomi", "XGIMI")
     val normalizedManufacturer = manufacturer.lowercase().replace(Regex("[^a-z0-9]"), "")
     val brand = supportedBrands.firstOrNull { candidate ->
         val normalized = candidate.lowercase().replace(Regex("[^a-z0-9]"), "")
         normalizedManufacturer.isNotBlank() && normalizedManufacturer.contains(normalized)
     } ?: return null
-    val brandProfiles = profiles.filter { it.brand.equals(brand, ignoreCase = true) }
-    if (brandProfiles.isEmpty()) return null
 
-    val commonPackages = brandProfiles.first().packages.mapNotNull { (packageName, firstRule) ->
-        if (firstRule.ask) return@mapNotNull null
-        val agreed = brandProfiles.all { profile ->
-            profile.packages[packageName]?.let { !it.ask && it.category == firstRule.category } == true
+    val reviewPending = setOf(
+        "amazon-fire-tv-aftdec012e", "google-chromecast-gtv-hd",
+        "hisense-smarttv-4k-ffm-android11", "hisense-smarttv-4k-ffm-lushan",
+        "karbonn-swtv-20ae", "ok-ai-pont-ikebukuro", "philips-50pud7406",
+        "skyworth-sw-22sa", "skyworth-swtv-22ae-fhd", "sony-bravia-4k-ur3",
+        "sony-bravia-4k-vh1", "sony-kd-43x80l", "xiaomi-mi-box-3",
+        "xiaomi-mitv-mftr0", "xiaomi-mitv-moeu0", "xiaomi-mitv-mooq2",
+        "xiaomi-mitv-mssp1", "motorola-mt4310",
+        "epson-ls800", "lumio-vision-7", "nvidia-shield-tv-2017",
+        "oneplus-tv-cebu", "oneplus-tv-dosa", "philips-google-tv-ta1",
+        "philips-google-tv-ta7", "sber-salute-tv-at30a6", "sony-bravia-vu1",
+        "sony-bravia-vu3", "tcl-50dp660", "tcl-g08-eu-android12",
+        "xiaomi-mi-box-s-android12", "xiaomi-mitv-mssp2", "xiaomi-mitv-mssp0",
+        "xiaomi-mitv-ayfr0", "xiaomi-mitv-astp0", "xiaomi-mitv-mteq0",
+        "redmi-mitv-mftp0", "aqua-matrixtv-ee-50", "jvc-lt55mb508",
+        "sharp-2t-c32gh3000i", "thomson-43rt1055", "hisense-fire-tv-aftcibfbd1"
+    )
+    val reviewedProfiles = profiles.filter { it.id !in reviewPending }
+    val brandProfiles = reviewedProfiles.filter { it.brand.equals(brand, ignoreCase = true) }
+    if (brandProfiles.size < 3) return null
+    val globallyProtected = reviewedProfiles.flatMap { it.neverDisable }.toSet()
+
+    val votes = linkedMapOf<String, MutableMap<String, Int>>()
+    brandProfiles.forEach { profile ->
+        profile.packages.forEach { (packageName, rule) ->
+            if (!rule.ask) {
+                val categories = votes.getOrPut(packageName) { linkedMapOf() }
+                categories[rule.category] = (categories[rule.category] ?: 0) + 1
+            }
         }
-        if (agreed) packageName to firstRule else null
+    }
+    val surePackages = votes.mapNotNull { (packageName, categoryVotes) ->
+        val totalVotes = categoryVotes.values.sum()
+        if (totalVotes < 3 || packageName in globallyProtected) return@mapNotNull null
+        val category = categoryVotes.entries.maxWithOrNull(
+            compareBy<Map.Entry<String, Int>> { it.value }.thenBy { it.key }
+        )?.key ?: return@mapNotNull null
+        packageName to TvProfilePackage(category, false)
     }.toMap()
+
     val conservativeProfile = TvModelProfile(
-        id = "brand-fallback-${brand.lowercase()}",
+        id = "brand-sure-set-${brand.lowercase()}",
         platform = "Android TV / Fire TV — общий профиль бренда",
         models = emptySet(),
         devices = emptySet(),
@@ -2981,13 +3015,13 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
         sdkMin = null,
         sdkMax = null,
         fingerprintPrefix = null,
-        neverDisable = brandProfiles.flatMap { it.neverDisable }.toSet(),
-        packages = commonPackages,
-        testedBy = "Общие правила всех ${brandProfiles.size} профилей бренда",
-        testedFirmware = "Разные модели и прошивки; применяется только пересечение",
+        neverDisable = globallyProtected,
+        packages = surePackages,
+        testedBy = "Общие правила ${brandProfiles.size} проверенных профилей бренда",
+        testedFirmware = "Пересечение рекомендаций; точная модель не найдена",
         rebootTested = false
     )
-    return TvProfileMatch(conservativeProfile, "осторожный профиль бренда — только общие проверенные правила")
+    return TvProfileMatch(conservativeProfile, "осторожный набор бренда — пакеты с минимум тремя совпадениями")
 }
 
 private fun tvProfileDisplayName(id: String): String = id
