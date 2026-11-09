@@ -1874,7 +1874,7 @@ fun TvInstallerApp() {
                 } ?: throw Exception("Не удалось создать файл")
                 status = "Резервная копия настроек сохранена"
             } catch (e: Exception) {
-                status = "Ошибка экспорта настроек: \${errorText(e)}"
+                status = "Ошибка экспорта настроек: ${errorText(e)}"
             }
         }
     }
@@ -1890,7 +1890,7 @@ fun TvInstallerApp() {
                 status = "Настройки восстановлены. Перезапускаю приложение..."
                 activity.recreate()
             } catch (e: Exception) {
-                status = "Ошибка восстановления: \${errorText(e)}"
+                status = "Ошибка восстановления: ${errorText(e)}"
             }
         }
     }
@@ -1930,7 +1930,7 @@ fun TvInstallerApp() {
                 } ?: throw Exception("Не удалось создать файл")
                 status = "Переносимый сценарий восстановления сохранён."
             } catch (e: Exception) {
-                status = "Ошибка экспорта сценария: \${errorText(e)}"
+                status = "Ошибка экспорта сценария: ${errorText(e)}"
             }
         }
         pendingPortableRestoreScript = null
@@ -3852,7 +3852,7 @@ fun TvInstallerApp() {
                                     )
                                     portableRestoreScriptExporter.launch("tv-apk-installer-restore.sh")
                                 } catch (e: Exception) {
-                                    status = "Не удалось подготовить сценарий: \${errorText(e)}"
+                                    status = "Не удалось подготовить сценарий: ${errorText(e)}"
                                 }
                             }
                         ) { Text("Экспортировать сценарий восстановления ADB") }
