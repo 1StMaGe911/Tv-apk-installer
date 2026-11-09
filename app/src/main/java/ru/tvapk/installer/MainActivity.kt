@@ -4348,11 +4348,13 @@ fun TvInstallerApp() {
                             var recoveryNote = ""
                             if (rollbackErrors.isNotEmpty()) {
                                 val recoveryDir = File(context.filesDir, "cleanyourtv-recovery-${System.currentTimeMillis()}")
-                                keepRollbackFiles = true
-                                if (rollbackDir.renameTo(recoveryDir)) {
+                                val preserved = rollbackDir.renameTo(recoveryDir) ||
+                                    runCatching { rollbackDir.copyRecursively(recoveryDir, overwrite = false); true }.getOrDefault(false)
+                                if (preserved) {
                                     recoveryNote = " Резервные APK сохранены в ${recoveryDir.absolutePath} для ручного восстановления."
                                 } else {
-                                    recoveryNote = " Резервные APK оставлены во временной папке ${rollbackDir.absolutePath}."
+                                    keepRollbackFiles = true
+                                    recoveryNote = " Не удалось перенести резервные APK в постоянную папку; они оставлены в ${rollbackDir.absolutePath}."
                                 }
                             }
                             throw Exception(
