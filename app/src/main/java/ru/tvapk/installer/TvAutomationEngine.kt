@@ -48,7 +48,7 @@ internal object TvAutomationEngine {
 
     /** Parses machine-readable df -k /data output conservatively. */
     internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
-        val match = Regex("""(?m)^\\S+\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)%\\s+/data\\s*$""")
+        val match = Regex("""(?m)^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/data\s*$""")
             .find(output) ?: return null
         val totalKb = match.groupValues[1].toLongOrNull() ?: return null
         val usedKb = match.groupValues[2].toLongOrNull() ?: return null
