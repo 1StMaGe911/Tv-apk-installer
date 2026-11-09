@@ -47,7 +47,7 @@ internal object CatalogArtifactDownloader {
 
         repeat(MAX_ATTEMPTS) { attempt ->
             var offset = partial.length()
-            var etag = etagFile.takeIf { it.isFile && it.length() in 1..512 }?.readText()?.takeIf { it.isNotBlank() }
+            var etag = etagFile.takeIf { it.isFile && it.length() in 1L..512L }?.readText()?.takeIf { it.isNotBlank() }
             if (offset > version.size || (offset > 0L && etag == null)) {
                 partial.delete()
                 etagFile.delete()
