@@ -1349,7 +1349,7 @@ private fun readTvDetails(adb: Dadb): String {
 
 private fun readPackageDisableCapability(adb: Dadb): Boolean {
     val help = try { shellText(adb, "pm help") } catch (_: Exception) { return false }
-    val commandAdvertised = Regex("""(?m)^.*\\bdisable-user\\b.*$""").containsMatchIn(help)
+    val commandAdvertised = Regex("""(?m)^.*\bdisable-user\b.*$""").containsMatchIn(help)
     if (!commandAdvertised) return false
     return try {
         readDisabledPackages(adb)
