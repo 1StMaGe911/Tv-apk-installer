@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.81"
+private const val APP_VERSION = "0.9.82"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2523,8 +2523,43 @@ private fun restoreRecoveryApk(
     require(installedCode == entry.versionCode) {
         "После восстановления ожидался versionCode " + entry.versionCode + ", получен " + installedCode
     }
+    val installedSigner = installedSignerSha256(context, entry.packageName)
+    require(installedSigner.equals(expected, true)) {
+        "Подпись установленного пакета после восстановления не совпадает с доверенным сертификатом"
+    }
     return "Восстановлена доверенная копия " + entry.packageName +
         ", versionCode " + entry.versionCode + ". APK оставлен в аварийном архиве."
+}
+
+private fun installedSignerSha256(context: Context, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"))) {
+        "Некорректное имя установленного пакета"
+    }
+    @Suppress("DEPRECATION")
+    val info = if (Build.VERSION.SDK_INT >= 33) {
+        context.packageManager.getPackageInfo(
+            packageName,
+            PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+        )
+    } else {
+        context.packageManager.getPackageInfo(
+            packageName,
+            if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+            else PackageManager.GET_SIGNATURES
+        )
+    }
+    @Suppress("DEPRECATION")
+    val signatures = if (Build.VERSION.SDK_INT >= 28) {
+        info.signingInfo?.apkContentsSigners?.toList().orEmpty()
+    } else {
+        info.signatures?.toList().orEmpty()
+    }
+    require(signatures.size == 1) {
+        "У установленного пакета должен быть ровно один сертификат подписанта"
+    }
+    return MessageDigest.getInstance("SHA-256")
+        .digest(signatures.single().toByteArray())
+        .joinToString("") { "%02x".format(it) }
 }
 
 private fun recoveryFileSha256(file: File): String {
@@ -4803,6 +4838,10 @@ fun TvInstallerApp() {
                             require(installedCode == version.versionCode) {
                                 "После установки обнаружена неожиданная версия: $installedCode"
                             }
+                            val installedSigner = installedSignerSha256(context, module.packageName)
+                            require(installedSigner.equals(version.signerSha256, true)) {
+                                "Сертификат установленного пакета после установки не совпадает с подписанным каталогом"
+                            }
                             "${module.name} ${version.versionName} установлен. Пакет: ${module.packageName}; " +
                                 "versionCode: ${version.versionCode}; SHA-256 и сертификат проверены; " +
                                 "Android SDK: $deviceSdk; ABI: ${deviceAbis.joinToString()}"
@@ -4824,6 +4863,10 @@ fun TvInstallerApp() {
                                     val restored = shellText(adb, "dumpsys package ${module.packageName}")
                                     val restoredCode = Regex("versionCode=(\\d+)").find(restored)?.groupValues?.get(1)?.toLongOrNull()
                                     require(restoredCode == previousCode) { "Откат не восстановил прежнюю версию" }
+                                    require(
+                                        installedSignerSha256(context, module.packageName)
+                                            .equals(version.signerSha256, true)
+                                    ) { "Откат восстановил неожиданную подпись пакета" }
                                 }
                             } catch (rollbackError: Exception) {
                                 val recovery = File(context.filesDir, "catalog-recovery-${System.currentTimeMillis()}")
