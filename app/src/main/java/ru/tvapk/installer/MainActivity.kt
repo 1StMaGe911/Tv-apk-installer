@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.3"
+private const val APP_VERSION = "0.9.4"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1800,10 +1800,21 @@ private fun tvProfileDisplayName(id: String): String = id
     .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
 private fun cleanupCategoryLabel(category: String): String = when (category) {
-    "ads" -> "Реклама"
-    "tracking" -> "Слежение и аналитика"
-    "demo" -> "Демо-компонент"
-    "preloads" -> "Предустановленное приложение"
+    "accessibility" -> "Специальные возможности"
+    "ads" -> "Реклама и рекомендации"
+    "brand" -> "Сервисы производителя"
+    "casting" -> "Трансляция и передача"
+    "demo" -> "Демо-компоненты"
+    "home" -> "Домашний экран"
+    "launcher" -> "Оболочка и запуск"
+    "other" -> "Прочие компоненты"
+    "preloads" -> "Предустановленные приложения"
+    "screensaver" -> "Заставка"
+    "streaming" -> "Стриминг и видео"
+    "system" -> "Системные компоненты"
+    "tracking" -> "Телеметрия и аналитика"
+    "updates" -> "Обновления"
+    "voice" -> "Голосовые функции"
     else -> category
 }
 
@@ -1902,6 +1913,7 @@ fun TvInstallerApp() {
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
     var pendingRestoreManagedChanges by remember { mutableStateOf(false) }
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
+    var privacyAuditExpanded by remember { mutableStateOf(false) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var managedSystemDisabledPackages by remember { mutableStateOf(settings.getStringSet("managed_system_disabled_packages", emptySet())?.toSet() ?: emptySet()) }
@@ -3919,6 +3931,47 @@ fun TvInstallerApp() {
                                 !isProtectedSystemPackage(it)
                         }
                         val knownCandidates = cleanupCandidates.count { packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true }
+                        val privacyAudit = allPackages.mapNotNull { pkg ->
+                            val fact = packageFacts[pkg]
+                            val profileFact = activeProfile?.packages?.get(pkg)
+                            val category = fact?.category ?: profileFact?.category ?: return@mapNotNull null
+                            val name = fact?.name ?: pkg
+                            val description = fact?.description ?: "Компонент указан в профиле этой модели; назначение следует проверить."
+                            Triple(pkg, category, "$name — $description")
+                        }
+                        val privacyGroups = privacyAudit.groupBy { it.second }.toSortedMap()
+                        val privacySensitive = privacyAudit.count { it.second in setOf("ads", "tracking", "voice", "brand") }
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("АУДИТ ПРИВАТНОСТИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    if (allPackages.isEmpty()) "Сначала определи устройство: аудит читает список установленных пакетов через ADB."
+                                    else "Локальная проверка без отправки данных в интернет. Найдено ${privacyAudit.size} известных компонентов из ${allPackages.size}; рекламные, аналитические, голосовые и брендовые — ${privacySensitive}.",
+                                    color = TextMuted, fontSize = 11.sp
+                                )
+                                privacyGroups.forEach { (category, entries) ->
+                                    Text("${cleanupCategoryLabel(category)}: ${entries.size}", color = TextMain, fontSize = 12.sp)
+                                }
+                                OutlinedButton(
+                                    enabled = allPackages.isNotEmpty(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = { privacyAuditExpanded = !privacyAuditExpanded }
+                                ) { Text(if (privacyAuditExpanded) "Скрыть результаты аудита" else "Подробный отчёт по пакетам") }
+                                if (privacyAuditExpanded) {
+                                    privacyGroups.forEach { (category, entries) ->
+                                        Text(cleanupCategoryLabel(category).uppercase(), color = GoldLight, style = MaterialTheme.typography.labelMedium)
+                                        entries.sortedBy { it.first }.forEach { (pkg, _, detail) ->
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(pkg, color = TextMain, fontSize = 11.sp)
+                                                Text(detail, color = TextMuted, fontSize = 10.sp)
+                                                if (pkg in disabledOnDevice) Text("Отключён на телевизоре", color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                    Text("Категории и описания взяты из открытого справочника Clean Your TV и профиля устройства. Это инвентаризация известных пакетов, а не доказательство передачи данных конкретным приложением и не заключение о безопасности.", color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                }
+                            }
+                        }
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
