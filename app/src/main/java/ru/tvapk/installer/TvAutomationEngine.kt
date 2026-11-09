@@ -39,6 +39,26 @@ internal object TvAutomationEngine {
             safeToDisable = safe
         )
     }
+    internal data class DataStorageSnapshot(
+        val totalBytes: Long,
+        val usedBytes: Long,
+        val availableBytes: Long,
+        val usedPercent: Int
+    )
+
+    /** Parses machine-readable df -k /data output conservatively. */
+    internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
+        val match = Regex("""(?m)^\\S+\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)%\\s+/data\\s*$""")
+            .find(output) ?: return null
+        val totalKb = match.groupValues[1].toLongOrNull() ?: return null
+        val usedKb = match.groupValues[2].toLongOrNull() ?: return null
+        val availableKb = match.groupValues[3].toLongOrNull() ?: return null
+        val usedPercent = match.groupValues[4].toIntOrNull() ?: return null
+        if (totalKb <= 0 || usedKb < 0 || availableKb < 0 || usedPercent !in 0..100) return null
+        if (usedKb > totalKb || availableKb > totalKb) return null
+        return DataStorageSnapshot(totalKb * 1024L, usedKb * 1024L, availableKb * 1024L, usedPercent)
+    }
+
     internal data class HealthAssessment(
         val memoryAvailablePercent: Int?,
         val dataUsedPercent: Int?,
