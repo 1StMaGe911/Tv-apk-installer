@@ -85,3 +85,31 @@ jobs:
           files: app/build/outputs/apk/debug/app-debug.apk
           overwrite_files: true
           make_latest: true
+
+      - name: Проверить опубликованный APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          LOCAL_APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$LOCAL_APK"
+
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            -o release.json
+
+          jq -e --arg tag "$RELEASE_TAG" \
+            '.tag_name == $tag and any(.assets[]; .name == "app-debug.apk" and .size > 0)' \
+            release.json >/dev/null
+
+          APK_URL=$(jq -r '.assets[] | select(.name == "app-debug.apk") | .browser_download_url' release.json)
+          curl --fail --location --silent --show-error "$APK_URL" -o published.apk
+
+          LOCAL_SHA=$(sha256sum "$LOCAL_APK" | cut -d' ' -f1)
+          PUBLISHED_SHA=$(sha256sum published.apk | cut -d' ' -f1)
+          test "$LOCAL_SHA" = "$PUBLISHED_SHA"
+          echo "Release $RELEASE_TAG contains the exact APK produced by this workflow."
+          echo "SHA-256: $LOCAL_SHA"
