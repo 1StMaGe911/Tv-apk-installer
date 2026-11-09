@@ -4162,12 +4162,12 @@ fun TvInstallerApp() {
                                                             }
                                                             val installed = readAllPackages(adb).toSet()
                                                             val disabledNowOnTv = readDisabledPackages(adb)
-                                                            val rollbackPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv }))
-                                                                .distinct()
-                                                                .filter { it !in journal.baselineDisabledPackages }
-                                                            require(journal.schemaVersion < 2 || journal.baselineDisabledPackages.isNotEmpty() || rollbackPackages.isEmpty()) {
-                                                                "Снимок исходного состояния неполный. Автоматический откат остановлен для защиты ранее отключённых пакетов."
-                                                            }
+                                                            val rollbackCandidates = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv })).distinct()
+                                                            // Version 1 journals predate snapshots; preserve their existing rollback behavior.
+                                                            // Version 2 restores only packages that were enabled before this cleanup.
+                                                            val rollbackPackages = if (journal.schemaVersion >= 2) {
+                                                                rollbackCandidates.filter { it !in journal.baselineDisabledPackages }
+                                                            } else rollbackCandidates
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
                                                             rollbackPackages.forEach { pkg ->
