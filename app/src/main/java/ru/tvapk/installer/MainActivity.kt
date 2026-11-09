@@ -2996,7 +2996,7 @@ private fun matchTvModelProfile(
     val manufacturer = field("Производитель")
     val model = field("Модель")
     val device = field("Устройство")
-    val sdk = Regex("SDK\\\\s+(\\\\d+)", RegexOption.IGNORE_CASE)
+    val sdk = Regex("SDK\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
     val fingerprint = field("Отпечаток")
 
