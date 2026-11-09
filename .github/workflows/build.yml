@@ -38,6 +38,9 @@ jobs:
         with:
           cache-disabled: false
 
+      - name: Проверить логику автоматизации
+        run: gradle :app:testDebugUnitTest --no-daemon
+
       - name: Подготовить ключ подписи
         env:
           KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
