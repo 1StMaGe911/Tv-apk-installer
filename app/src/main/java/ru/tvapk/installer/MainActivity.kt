@@ -474,9 +474,17 @@ private fun pushLauncherTheme(
         val current = readCurrentLauncherConfig(adb)
         listOf(
             "dock_apps", "hidden_apps", "app_keys", "key_filter",
-            "wallpaper_rotation_minutes", "wallpaper_order",
+            "wallpaper_rotation_minutes", "wallpaper_order", "wallpaper_moods", "wallpaper_captions",
             "clock_format", "clock_glow", "clock_wallpaper", "clock_wallpaper_dim",
-            "home_idle_clock_minutes", "back_opens_clock"
+            "home_idle_clock_minutes", "back_opens_clock",
+            // Keep the personal home-screen widgets and controls when a theme omits them.
+            "greeting_name", "show_greeting", "date_below_clock", "show_stats",
+            "show_network_pill", "show_inputs_pill", "icon_only_buttons", "icon_only_inputs",
+            "wifi_status_color", "wifi_status_warnings", "top_bar_apps", "vpn_app",
+            "library_button", "show_library_pill", "settings_key_panel",
+            "inputs_connected_only", "inputs_cec_state_only",
+            "boot_to_live_tv", "open_on_start_choice", "open_on_start_network_wait",
+            "open_on_start_on_wake", "live_tv_package", "live_tv_action", "live_tv_input_id"
         ).forEach { key ->
             if (current.has(key)) themed.put(key, current.get(key))
         }
