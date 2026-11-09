@@ -211,7 +211,7 @@ class UsbDadb private constructor(
         connection.close()
     }
 
-    internal data class Packet(val command: Int, val arg0: Int, val arg1: Int, val data: ByteArray)
+    internal data class Packet(val command: Int, val arg0: Int, val arg1: Int, val data: ByteArray, var acknowledged: Boolean = false)
 
     private class UsbAdbStream(
         private val adb: UsbDadb,
@@ -228,7 +228,7 @@ class UsbDadb private constructor(
             override fun read(sink: Buffer, byteCount: Long): Long {
                 if (byteCount == 0L) return 0L
                 if (streamClosed) return -1L
-                if (current == null || currentOffset >= current!!.data.size) {
+                while (current == null || currentOffset >= current!!.data.size) {
                     current = adb.readStreamPacket(localId, remoteId, pending)
                     currentOffset = 0
                     if (current == null) {
@@ -236,9 +236,8 @@ class UsbDadb private constructor(
                         return -1L
                     }
                     if (current!!.data.isEmpty()) {
-                        adb.acknowledge(localId, remoteId)
+                        if (!current!!.acknowledged) adb.acknowledge(localId, remoteId)
                         current = null
-                        return read(sink, byteCount)
                     }
                 }
                 val packet = current!!
@@ -246,7 +245,7 @@ class UsbDadb private constructor(
                 sink.write(packet.data, currentOffset, count)
                 currentOffset += count
                 if (currentOffset >= packet.data.size) {
-                    adb.acknowledge(localId, remoteId)
+                    if (!packet.acknowledged) adb.acknowledge(localId, remoteId)
                     current = null
                 }
                 return count.toLong()
