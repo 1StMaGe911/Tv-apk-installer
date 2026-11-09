@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.4"
+private const val APP_VERSION = "0.9.5"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -386,7 +386,7 @@ private fun applyLauncherAppearance(
     return "Оформление Clean Your TV применено: $columns приложений в ряду, $rowsBelowDock ряд(а) под доком. Launcher перезапущен. $restart"
 }
 private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<File, File> {
-    require(themeName in setOf("arcade", "cinema", "console", "horizon", "library", "mist")) {
+    require(themeName in setOf("arcade", "cinema", "console", "horizon", "library", "mist", "quiet")) {
         "Неизвестная тема Clean Your TV"
     }
     val base = "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/$themeName"
@@ -420,7 +420,22 @@ private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<
     }
     val config = download("config.json", 128 * 1024L)
     JSONObject(config.readText(Charsets.UTF_8))
-    val wallpaper = download("wallpaper.jpg", 12 * 1024 * 1024L)
+    // Quiet is a pure-black look and intentionally ships without wallpaper.jpg.
+    // pushLauncherTheme expects an image payload, but config.json disables wallpaper for this look.
+    val wallpaper = if (themeName == "quiet") {
+        val connection = URL("https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/cinema/wallpaper.jpg").openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15000
+            connection.readTimeout = 60000
+            require(connection.responseCode == 200) { "Не удалось получить нейтральный файл обоев для темы Quiet" }
+            val target = File(context.cacheDir, "cyt-quiet-wallpaper.jpg")
+            connection.inputStream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+            require(target.length() in 32L..(12L * 1024L * 1024L)) { "Файл обоев Quiet повреждён" }
+            target
+        } finally {
+            connection.disconnect()
+        }
+    } else download("wallpaper.jpg", 12 * 1024 * 1024L)
     return config to wallpaper
 }
 
@@ -3556,7 +3571,7 @@ fun TvInstallerApp() {
                             }
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
-                            listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
+                            listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман", "quiet" to "Тихий чёрный экран").forEach { (themeId, label) ->
                                 OutlinedButton(enabled = !busy, onClick = {
                                     val host = ip.trim()
                                     val p = port.toIntOrNull()
