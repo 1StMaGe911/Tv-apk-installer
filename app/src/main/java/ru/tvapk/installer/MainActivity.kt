@@ -53,7 +53,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.7.2"
+private const val APP_VERSION = "0.7.3"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -524,9 +524,11 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
     config.put("fill_dock", fillDock)
     val columns = config.optInt("columns", 4).coerceIn(1, 8)
     if (dock.isNotEmpty()) {
-        config.put("rows_below_dock", ((dock.size + columns - 1) / columns - 1).coerceIn(0, 2))
+        val rowsBelow = if (config.optBoolean("cinematic_home", false)) 0
+            else ((dock.size + columns - 1) / columns - 1).coerceIn(0, 2)
+        config.put("rows_below_dock", rowsBelow)
+        if (rowsBelow == 2) config.put("dock_title", false)
     }
-    val local = File(adb.hashCode().toString() + "-launcher-apps.json")
     val safeFile = File.createTempFile("launcher-apps-", ".json")
     safeFile.writeText(config.toString(2), Charsets.UTF_8)
     val remote = "/data/local/tmp/launcher-apps-config.json"
