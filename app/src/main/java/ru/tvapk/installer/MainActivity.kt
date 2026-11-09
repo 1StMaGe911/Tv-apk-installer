@@ -1986,6 +1986,7 @@ fun TvInstallerApp() {
     var pendingSystemDisable by remember { mutableStateOf<String?>(null) }
     var pendingRestoreManagedChanges by remember { mutableStateOf(false) }
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
+    var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
@@ -4162,8 +4163,40 @@ fun TvInstallerApp() {
                         }
                         if (selectedCleanupPackages.isNotEmpty()) {
                             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && it !in disabledOnDevice && activeProfile?.packages?.get(it)?.ask == false && it !in (activeProfile?.neverDisable ?: emptySet()) }
-                            }) { Text("Отключить выбранные (${selectedCleanupPackages.size})") }
+                                showCleanupPlan = true
+                            }) { Text("Сформировать план очистки (${selectedCleanupPackages.size})") }
+                        }
+                        if (showCleanupPlan) {
+                            val planPackages = selectedCleanupPackages.sorted()
+                            val allowedPlan = planPackages.filter { it in verifiedCleanupCandidates }
+                            val blockedPlan = planPackages - allowedPlan.toSet()
+                            AlertDialog(
+                                onDismissRequest = { showCleanupPlan = false },
+                                title = { Text("План очистки") },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                                        Text("Будет отключено: ${allowedPlan.size}. Пропущено по правилам безопасности: ${blockedPlan.size}.", color = TextMain)
+                                        if (allowedPlan.isNotEmpty()) {
+                                            Text("РАЗРЕШЕНО ПРОФИЛЕМ ЭТОЙ МОДЕЛИ", color = GoldLight, style = MaterialTheme.typography.labelMedium)
+                                            allowedPlan.forEach { Text("• $it", color = TextMain, fontSize = 11.sp) }
+                                        }
+                                        if (blockedPlan.isNotEmpty()) {
+                                            Text("НЕ БУДУТ ИЗМЕНЕНЫ", color = Color(0xFFFFD98A), style = MaterialTheme.typography.labelMedium)
+                                            blockedPlan.forEach { Text("• $it", color = TextMuted, fontSize = 11.sp) }
+                                        }
+                                        Text("План предварительный: перед выполнением приложение повторно сверит пакеты, профиль телевизора и защитные правила. Пакеты будут отключены, а не удалены.", color = TextMuted, fontSize = 11.sp)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy && allowedPlan.isNotEmpty(), onClick = {
+                                        pendingCleanupPackages = allowedPlan
+                                        showCleanupPlan = false
+                                    }) { Text("Перейти к подтверждению") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showCleanupPlan = false }) { Text("Закрыть") }
+                                }
+                            )
                         }
                         cleanupCandidates.forEach { candidate ->
                             val profileRule = activeProfile?.packages?.get(candidate)
@@ -4244,7 +4277,7 @@ fun TvInstallerApp() {
                                                     journal = journal.copy(inFlightPackage = pkg)
                                                     saveCleanupJournal(context, journal)
                                                     try {
-                                                        changePackageState(adb, pkg, false)
+                                                        changePackageStateVerified(adb, pkg, false)
                                                         disabledNow.add(pkg)
                                                         journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
                                                         saveCleanupJournal(context, journal)
