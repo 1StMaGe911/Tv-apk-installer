@@ -2211,6 +2211,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.8 • Расширенная точка восстановления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Точка сохраняет не только отключённые пользовательские приложения, но и изменения, выполненные самим TV APK Installer: отключённые системные пакеты и компоненты автозапуска. При восстановлении сравнивается модель и отпечаток прошивки; защищённые системные компоненты не отключаются. Старые точки без полного снимка нужно создать заново.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.7 • Безопасное восстановление и сохранение настроек", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Точки восстановления привязаны к модели и отпечатку прошивки, поэтому приложение останавливает восстановление при несовпадении устройства. При применении темы сохраняются персональные виджеты, параметры входов и запуска ТВ; неизвестные ключи конфигурации, отсутствующие в старой теме, также сохраняются.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
