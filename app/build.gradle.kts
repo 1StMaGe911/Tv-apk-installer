@@ -47,6 +47,7 @@ android {
 
 dependencies {
     implementation("dev.mobile:dadb:2.0.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
     implementation("androidx.core:core:1.15.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
