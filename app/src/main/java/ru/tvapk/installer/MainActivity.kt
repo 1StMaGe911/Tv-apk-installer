@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.20"
+private const val APP_VERSION = "0.9.21"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1394,6 +1394,148 @@ private fun parseRestorePointBackup(jsonText: String): PortableRestorePoint {
     return PortableRestorePoint(fingerprint, userDisabled, managedUsers, managedSystems, autoStart)
 }
 
+
+private data class PortableRestoreBundle(val point: PortableRestorePoint, val restoreScript: String)
+
+private fun sha256Hex(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+private fun buildPortableRestorePowerShell(
+    fingerprint: String,
+    managedUsers: Set<String>,
+    snapshotUsers: Set<String>,
+    managedSystems: Set<String>,
+    snapshotSystems: Set<String>,
+    managedAutoStart: Set<String>,
+    snapshotAutoStart: Set<String>
+): String {
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    val users = managedUsers + snapshotUsers
+    val systems = managedSystems + snapshotSystems
+    val components = managedAutoStart + snapshotAutoStart
+    require(users.all { packagePattern.matches(it) } && systems.all { packagePattern.matches(it) && !isProtectedSystemPackage(it) }) {
+        "В ZIP есть некорректный или защищённый пакет"
+    }
+    require(components.all { componentPattern.matches(it) }) { "В ZIP есть некорректный компонент" }
+    val identity = fingerprint.split("|")
+    require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) { "Нет полной идентификации телевизора" }
+    return buildString {
+        appendLine("# TV APK Installer portable restore bundle")
+        appendLine("\$ErrorActionPreference = 'Stop'")
+        appendLine("if (-not (Get-Command adb -ErrorAction SilentlyContinue)) { throw 'Android platform-tools (adb) не найдены.' }")
+        appendLine("adb get-state | Out-Null")
+        appendLine("if (\$LASTEXITCODE -ne 0) { throw 'Телевизор не подключён или не авторизован в ADB.' }")
+        appendLine("\$actual = @((adb shell getprop ro.product.manufacturer).Trim(), (adb shell getprop ro.product.model).Trim(), (adb shell getprop ro.product.device).Trim(), (adb shell getprop ro.build.fingerprint).Trim()) -join '|'")
+        appendLine("\$expected = '" + fingerprint + "'")
+        appendLine("if (\$actual -cne \$expected) { throw 'Модель или прошивка не совпадает с точкой. Ничего не изменено.' }")
+        appendLine("\$failed = 0")
+        appendLine("function Set-TvState([string]\$Target, [bool]\$Disabled) {")
+        appendLine("  if (\$Disabled) { adb shell pm disable-user --user 0 \$Target | Out-Null } else { adb shell pm enable --user 0 \$Target | Out-Null }")
+        appendLine("  if (\$LASTEXITCODE -ne 0) { Write-Warning ('Не удалось изменить: ' + \$Target); \$script:failed++ }")
+        appendLine("}")
+        users.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotUsers) "\$true" else "\$false") }
+        systems.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotSystems) "\$true" else "\$false") }
+        components.sorted().forEach { component -> appendLine("Set-TvState '" + component + "' " + if (component in snapshotAutoStart) "\$true" else "\$false") }
+        appendLine("if (\$failed -ne 0) { throw ('Восстановление выполнено частично. Ошибок: ' + \$failed) }")
+        appendLine("Write-Host 'Сценарий завершён. Проверь состояние телевизора.'")
+    }
+}
+
+private fun buildPortableRestoreBundleZip(
+    restorePointJson: String,
+    restoreSh: String,
+    restorePs1: String
+): ByteArray {
+    val point = parseRestorePointBackup(restorePointJson)
+    val entries = linkedMapOf(
+        "restore-point.json" to restorePointJson.toByteArray(Charsets.UTF_8),
+        "restore.sh" to restoreSh.toByteArray(Charsets.UTF_8),
+        "restore.ps1" to restorePs1.toByteArray(Charsets.UTF_8),
+        "README.txt" to ("TV APK Installer — переносимая точка восстановления\n\n" +
+            "Содержимое: restore-point.json — снимок состояния; restore.sh — сценарий Bash; " +
+            "restore.ps1 — сценарий PowerShell.\n" +
+            "Перед запуском сценария установи Android platform-tools, подключи телевизор по ADB " +
+            "и подтверди авторизацию. Скрипты сверяют производителя, модель, устройство и fingerprint прошивки.\n" +
+            "Импорт ZIP в приложение только загружает точку; команды из архива автоматически не запускаются.\n").toByteArray(Charsets.UTF_8)
+    )
+    val manifest = JSONObject()
+        .put("format", "tv-apk-installer-restore-bundle")
+        .put("schemaVersion", 1)
+        .put("createdAt", System.currentTimeMillis())
+        .put("deviceFingerprint", point.fingerprint)
+        .put("entries", JSONArray().also { array ->
+            entries.forEach { (name, content) ->
+                array.put(JSONObject().put("name", name).put("size", content.size).put("sha256", sha256Hex(content)))
+            }
+        }).toString(2).toByteArray(Charsets.UTF_8)
+    val output = ByteArrayOutputStream()
+    ZipOutputStream(output).use { zip ->
+        (linkedMapOf("manifest.json" to manifest) + entries).forEach { (name, content) ->
+            zip.putNextEntry(ZipEntry(name).apply { time = 0L })
+            zip.write(content)
+            zip.closeEntry()
+        }
+    }
+    return output.toByteArray().also { require(it.size <= 8 * 1024 * 1024) { "ZIP точки восстановления слишком большой" } }
+}
+
+private fun parsePortableRestoreBundleZip(bytes: ByteArray): PortableRestoreBundle {
+    require(bytes.size in 1..(8 * 1024 * 1024)) { "Размер ZIP недопустим" }
+    val files = linkedMapOf<String, ByteArray>()
+    var total = 0
+    ZipInputStream(bytes.inputStream()).use { zip ->
+        while (true) {
+            val entry = zip.nextEntry ?: break
+            require(!entry.isDirectory) { "Папки в ZIP не поддерживаются" }
+            require(entry.name in setOf("manifest.json", "restore-point.json", "restore.sh", "restore.ps1", "README.txt")) {
+                "В ZIP найден неизвестный файл: " + entry.name.take(80)
+            }
+            require(entry.name !in files) { "Повторяющийся файл в ZIP: " + entry.name }
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = zip.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= 8 * 1024 * 1024) { "Распакованный ZIP слишком большой" }
+                out.write(buffer, 0, count)
+            }
+            files[entry.name] = out.toByteArray()
+            zip.closeEntry()
+        }
+    }
+    val manifestBytes = files["manifest.json"] ?: throw Exception("В ZIP отсутствует manifest.json")
+    val manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
+    require(manifest.optString("format") == "tv-apk-installer-restore-bundle" && manifest.optInt("schemaVersion") == 1) {
+        "Неподдерживаемый формат ZIP-архива"
+    }
+    val listed = linkedMapOf<String, Pair<Int, String>>()
+    val array = manifest.getJSONArray("entries")
+    for (i in 0 until array.length()) {
+        val item = array.getJSONObject(i)
+        val name = item.getString("name")
+        require(name in setOf("restore-point.json", "restore.sh", "restore.ps1", "README.txt") && name !in listed) {
+            "Некорректная запись в манифесте"
+        }
+        listed[name] = item.getInt("size") to item.getString("sha256")
+    }
+    require(listed.keys == setOf("restore-point.json", "restore.sh", "restore.ps1", "README.txt")) {
+        "Манифест неполный или содержит неизвестные записи"
+    }
+    require(files.keys == listed.keys + "manifest.json") { "Состав ZIP не совпадает с манифестом" }
+    listed.forEach { (name, expected) ->
+        val content = files[name] ?: throw Exception("В ZIP отсутствует " + name)
+        require(content.size == expected.first && sha256Hex(content) == expected.second) {
+            "Проверка целостности " + name + " не пройдена"
+        }
+    }
+    val point = parseRestorePointBackup(files.getValue("restore-point.json").toString(Charsets.UTF_8))
+    require(manifest.optString("deviceFingerprint") == point.fingerprint) { "Отпечаток в манифесте не совпадает с точкой" }
+    return PortableRestoreBundle(point, files.getValue("restore.sh").toString(Charsets.UTF_8))
+}
+
 private fun buildPortableRestoreScript(
     fingerprint: String,
     managedUsers: Set<String>,
@@ -2183,6 +2325,7 @@ fun TvInstallerApp() {
     var restorePointSchemaVersion by remember { mutableStateOf(settings.getInt("restore_point_schema_version", 1)) }
     var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
     var pendingPortableRestoreScript by remember { mutableStateOf<String?>(null) }
+    var pendingPortableRestoreBundle by remember { mutableStateOf<ByteArray?>(null) }
 
 
     var usbMode by remember { mutableStateOf(false) }
@@ -2418,6 +2561,63 @@ fun TvInstallerApp() {
                 status = "Точка импортирована. При восстановлении будет проверена модель и прошивка телевизора."
             } catch (e: Exception) {
                 status = "Ошибка импорта точки: ${errorText(e)}"
+            }
+        }
+    }
+
+    val portableRestoreBundleExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destinationUri ->
+        val bundle = pendingPortableRestoreBundle
+        if (destinationUri != null && bundle != null) {
+            try {
+                context.contentResolver.openOutputStream(destinationUri)?.use { it.write(bundle) }
+                    ?: throw Exception("Не удалось создать ZIP-файл")
+                status = "ZIP-архив точки восстановления сохранён. Внутри есть JSON, Bash и PowerShell сценарии."
+            } catch (e: Exception) {
+                status = "Ошибка экспорта ZIP: ${errorText(e)}"
+            }
+        }
+        pendingPortableRestoreBundle = null
+    }
+
+    val portableRestoreBundleImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 8 * 1024 * 1024) { "ZIP-файл превышает допустимый размер 8 МБ" }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: throw Exception("Не удалось прочитать ZIP-файл")
+                val bundle = parsePortableRestoreBundleZip(bytes)
+                val point = bundle.point
+                restorePoint = point.userDisabled
+                restorePointManagedUserPackages = point.managedUsers
+                restorePointManagedSystemPackages = point.managedSystems
+                restorePointAutoStartComponents = point.autoStartComponents
+                restorePointDeviceFingerprint = point.fingerprint
+                restorePointSchemaVersion = 2
+                restorePointExists = true
+                settings.edit()
+                    .putStringSet("restore_point_user_disabled", point.userDisabled)
+                    .putStringSet("restore_point_managed_user_packages", point.managedUsers)
+                    .putStringSet("restore_point_managed_system_packages", point.managedSystems)
+                    .putStringSet("restore_point_autostart_components", point.autoStartComponents)
+                    .putString("restore_point_device_fingerprint", point.fingerprint)
+                    .putInt("restore_point_schema_version", 2)
+                    .putBoolean("restore_point_exists", true)
+                    .apply()
+                status = "ZIP проверен по SHA-256. Точка импортирована; модель и прошивка будут проверены перед восстановлением."
+            } catch (e: Exception) {
+                status = "Ошибка импорта ZIP: ${errorText(e)}"
             }
         }
     }
@@ -4726,6 +4926,41 @@ fun TvInstallerApp() {
                             ) { Text("Импорт точки JSON") }
                         }
                         Text("JSON-файл переносит саму точку между установками приложения. Импорт не меняет телевизор; при запуске восстановления отпечаток модели и прошивки сверяется с подключённым устройством.", color = TextMuted, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                enabled = !busy && restorePointExists && restorePointSchemaVersion >= 2 && !restorePointDeviceFingerprint.isNullOrBlank(),
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    try {
+                                        val fingerprint = restorePointDeviceFingerprint ?: throw Exception("Создай точку заново")
+                                        val json = buildRestorePointBackupJson(
+                                            fingerprint, restorePoint, restorePointManagedUserPackages,
+                                            restorePointManagedSystemPackages, restorePointAutoStartComponents
+                                        )
+                                        val bash = buildPortableRestoreScript(
+                                            fingerprint, disabledPackages, restorePointManagedUserPackages,
+                                            managedSystemDisabledPackages, restorePointManagedSystemPackages,
+                                            disabledAutoStart, restorePointAutoStartComponents
+                                        )
+                                        val powershell = buildPortableRestorePowerShell(
+                                            fingerprint, disabledPackages, restorePointManagedUserPackages,
+                                            managedSystemDisabledPackages, restorePointManagedSystemPackages,
+                                            disabledAutoStart, restorePointAutoStartComponents
+                                        )
+                                        pendingPortableRestoreBundle = buildPortableRestoreBundleZip(json, bash, powershell)
+                                        portableRestoreBundleExporter.launch("tv-apk-installer-restore-bundle.zip")
+                                    } catch (e: Exception) {
+                                        status = "Не удалось подготовить ZIP: ${errorText(e)}"
+                                    }
+                                }
+                            ) { Text("Экспорт ZIP-пакета") }
+                            OutlinedButton(
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f),
+                                onClick = { portableRestoreBundleImporter.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }
+                            ) { Text("Импорт ZIP-пакета") }
+                        }
+                        Text("ZIP содержит манифест, контрольные суммы SHA-256, снимок и сценарии для Bash и PowerShell. Архив проверяется перед импортом; сценарии не запускаются автоматически.", color = TextMuted, fontSize = 11.sp)
 
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
