@@ -1347,22 +1347,35 @@ private fun readTvDetails(adb: Dadb): String {
     }.trim()
 }
 
+private fun readPackageDisableCapability(adb: Dadb): Boolean {
+    val help = try { shellText(adb, "pm help") } catch (_: Exception) { return false }
+    val commandAdvertised = Regex("""(?m)^.*\\bdisable-user\\b.*$""").containsMatchIn(help)
+    if (!commandAdvertised) return false
+    return try {
+        readDisabledPackages(adb)
+        true
+    } catch (_: Exception) {
+        false
+    }
+}
+
 private fun readTvCompatibilityReport(adb: Dadb): String {
     fun probe(label: String, command: String, success: (String) -> Boolean): String {
         val output = try { shellText(adb, command).trim() } catch (_: Exception) { "" }
         return "$label: " + if (output.isNotBlank() && success(output)) "доступно" else "не подтверждено"
     }
     val sdk = try { shellText(adb, "getprop ro.build.version.sdk").trim().toIntOrNull() } catch (_: Exception) { null }
+    val packageDisable = readPackageDisableCapability(adb)
     return buildString {
         appendLine("ПРОВЕРКА СОВМЕСТИМОСТИ")
         appendLine("Версия Android SDK: ${sdk?.toString() ?: "не определена"}")
-        appendLine(probe("Package Manager", "pm list packages", { it.contains("package:") || it.isEmpty() }))
-        appendLine(probe("Справка отключения пакетов", "pm help", { it.contains("disable", ignoreCase = true) }))
+        appendLine(probe("Package Manager", "pm list packages", { it.contains("package:") }))
+        appendLine("Отключение пакетов с проверкой результата: " + if (packageDisable) "поддерживается" else "не подтверждено — пакетная очистка заблокирована")
         appendLine(probe("Команды cmd package", "cmd package help", { it.isNotBlank() && !it.contains("not found", true) }))
         appendLine(probe("Системные настройки", "settings get secure android_id", { it.isNotBlank() }))
         appendLine(probe("Сведения о питании", "dumpsys power", { it.contains("power", true) }))
         appendLine()
-        append("Доступность команд не гарантирует поддержку каждой функции прошивкой. Перед изменением пакетов приложение дополнительно проверяет профиль модели и фактический результат.")
+        append("Проверка команд — предварительная. Каждая операция дополнительно проверяется на телевизоре; неподтверждённое отключение не будет считаться успешным.")
     }
 }
 
@@ -1993,6 +2006,7 @@ fun TvInstallerApp() {
     var busy by remember { mutableStateOf(false) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var tvCompatibilityReport by remember { mutableStateOf("") }
+    var packageDisableSupported by remember { mutableStateOf(false) }
     val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
@@ -4063,7 +4077,8 @@ fun TvInstallerApp() {
                         val activeProfile = matchedTvProfile?.profile
                         val cleanupCandidates = findCleanupCandidates(allPackages, packageFacts, activeProfile)
                         val verifiedCleanupCandidates = cleanupCandidates.filter {
-                            activeProfile?.packages?.get(it)?.ask == false &&
+                            packageDisableSupported &&
+                                activeProfile?.packages?.get(it)?.ask == false &&
                                 it !in (activeProfile?.neverDisable ?: emptySet()) &&
                                 it !in disabledOnDevice &&
                                 !isProtectedSystemPackage(it)
@@ -4255,7 +4270,7 @@ fun TvInstallerApp() {
                                 }
                             }
                         }
-                        if (cleanupCandidates.isNotEmpty()) Text("Для пакетного отключения доступны только компоненты, отмеченные в точном профиле модели как проверенные (ask=false). Остальные рекомендации остаются справочными: их нельзя отключить этой кнопкой. Отключение не удаляет пакет, но может повлиять на функции телевизора.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (cleanupCandidates.isNotEmpty()) Text(if (packageDisableSupported) "Для пакетного отключения доступны только компоненты точного профиля модели с правилом ask=false. Остальные рекомендации справочные. Перед каждой операцией результат проверяется через Package Manager." else "Пакетная очистка заблокирована: устройство ещё не подтвердило поддержку команды отключения и чтения фактического состояния пакетов. Повтори определение устройства.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (pendingCleanupPackages.isNotEmpty()) {
                             AlertDialog(
                                 onDismissRequest = { pendingCleanupPackages = emptyList() },
@@ -4273,6 +4288,9 @@ fun TvInstallerApp() {
                                             status = "Сначала укажи IP и порт ADB"
                                         } else runTask({
                                             connectWithRetry(context, host, p) { adb ->
+                                                require(readPackageDisableCapability(adb)) {
+                                                    "Прошивка не подтвердила поддержку отключения пакетов и чтения их состояния. Очистка отменена без изменений."
+                                                }
                                                 val installed = readAllPackages(adb).toSet()
                                                 val freshDetails = readTvDetails(adb)
                                                 val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
@@ -4376,12 +4394,14 @@ fun TvInstallerApp() {
                                 connectWithRetry(context, host, p) { adb ->
                                     val details = readTvDetails(adb)
                                     val compatibility = readTvCompatibilityReport(adb)
+                                    val packageDisable = readPackageDisableCapability(adb)
                                     val packages = readUserPackages(adb)
                                     val installed = readAllPackages(adb)
                                     val disabled = readDisabledPackages(adb)
                                     activity.runOnUiThread {
                                         tvDetails = details
                                         tvCompatibilityReport = compatibility
+                                        packageDisableSupported = packageDisable
                                         userPackages = packages
                                         allPackages = installed
                                         disabledOnDevice = disabled
