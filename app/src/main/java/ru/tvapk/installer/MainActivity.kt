@@ -2,6 +2,8 @@
 package ru.tvapk.installer
 
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.content.Intent
@@ -2465,7 +2467,14 @@ fun TvInstallerApp() {
             status = "Сначала укажи IP и порт ADB и подключись к телевизору"
         } else {
             runTask({
-                fun copyPinnedModule(assetName: String, outputName: String, expectedSize: Long, expectedSha256: String): File {
+                fun copyPinnedModule(
+                    assetName: String,
+                    outputName: String,
+                    expectedSize: Long,
+                    expectedSha256: String,
+                    expectedPackage: String,
+                    expectedSignerSha256: String
+                ): File {
                     val outputFile = File(context.cacheDir, outputName)
                     context.assets.open("cleanyourtv-modules/$assetName").use { input ->
                         outputFile.outputStream().use { output -> input.copyTo(output) }
@@ -2479,6 +2488,29 @@ fun TvInstallerApp() {
                     require(digest.equals(expectedSha256, ignoreCase = true)) {
                         "Проверка SHA-256 не пройдена для $assetName. Установка отменена."
                     }
+
+                    val packageInfo = context.packageManager.getPackageArchiveInfo(
+                        outputFile.absolutePath,
+                        if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+                        else PackageManager.GET_SIGNATURES
+                    ) ?: throw Exception("Android не смог прочитать подпись $assetName")
+                    require(packageInfo.packageName == expectedPackage) {
+                        "Неверный package name у $assetName: ${packageInfo.packageName}"
+                    }
+                    val signatures = if (Build.VERSION.SDK_INT >= 28) {
+                        packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageInfo.signatures?.toList().orEmpty()
+                    }
+                    val signerDigests = signatures.map { signature ->
+                        java.security.MessageDigest.getInstance("SHA-256")
+                            .digest(signature.toByteArray())
+                            .joinToString("") { "%02x".format(it) }
+                    }
+                    require(signerDigests.any { it.equals(expectedSignerSha256, ignoreCase = true) }) {
+                        "Подпись разработчика $assetName не совпадает с закреплённым сертификатом. Установка отменена."
+                    }
                     return outputFile
                 }
 
@@ -2486,13 +2518,17 @@ fun TvInstallerApp() {
                     "cleanyourtv-launcher.apk",
                     "cleanyourtv-launcher.apk",
                     540541L,
-                    "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e"
+                    "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e",
+                    "com.gathin.tvhome",
+                    "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
                 )
                 val curtainApk = copyPinnedModule(
                     "cleanyourtv-curtain.apk",
                     "cleanyourtv-curtain.apk",
                     65955L,
-                    "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e"
+                    "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e",
+                    "tv.cleanyour.curtain",
+                    "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
                 )
                 connectWithRetry(context, host, p) { adb ->
                     adb.install(launcherApk)
