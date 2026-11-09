@@ -2133,6 +2133,15 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.6 • Выбор рекомендаций очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен ручной выбор известных пакетов из рекомендаций Clean Your TV и пакетное отключение после подтверждения. Перед отключением список повторно сверяется с телевизором, защищённые компоненты и neverDisable исключаются. Отключённые пакеты можно восстановить.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.8.5 • Возврат оформления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Перед установкой готовой темы автоматически сохраняется ZIP-копия прежней конфигурации, обоев и локальной коллекции. Добавлена кнопка возврата к состоянию до последней темы.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.8.4 • Сохранение персональных настроек", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Установка готовой темы сохраняет закреплённые и скрытые приложения, назначения кнопок, настройки часов и параметры ротации обоев. Если текущую конфигурацию прочитать не удалось, установка прекращается без перезаписи настроек.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.2 • USB ADB и управление коллекцией обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлено прямое USB ADB-подключение для устройств, которые предоставляют ADB USB-интерфейс, с системным запросом разрешения, RSA-авторизацией и установкой выбранного APK по USB. Также добавлено безопасное удаление коллекции wallpapers с телевизора с подтверждением; локальные копии на телефоне сохраняются.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
