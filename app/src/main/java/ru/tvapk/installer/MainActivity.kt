@@ -3989,6 +3989,7 @@ fun TvInstallerApp() {
     var packageDisableSupported by remember { mutableStateOf(false) }
     val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles, packageFacts) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
+    var automationReport by remember { mutableStateOf("") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -7542,6 +7543,76 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                 }
                             })
                         }) { Text("Определить устройство и найти приложения") }
+                        Button(
+                            enabled = !busy && ip.isNotBlank() && port.toIntOrNull() in 1..65535,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                val host = ip.trim()
+                                val adbPort = port.toIntOrNull() ?: 5555
+                                runTask({
+                                    connectWithRetry(context, host, adbPort) { adb ->
+                                        val details = readTvDetails(adb)
+                                        val compatibility = readTvCompatibilityReport(adb)
+                                        val disableSupported = readPackageDisableCapability(adb)
+                                        val users = readUserPackages(adb)
+                                        val installed = readAllPackages(adb)
+                                        val disabled = readDisabledPackages(adb)
+                                        val profileMatch = matchTvModelProfile(details, tvModelProfiles, packageFacts)
+                                        val profile = profileMatch?.profile
+                                        val candidates = findCleanupCandidates(installed, packageFacts, profile).toSet()
+                                        val approved = profile?.packages
+                                            ?.filterValues { rule -> !rule.ask }
+                                            ?.keys
+                                            ?.toSet()
+                                            ?: emptySet()
+                                        val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
+                                        val plan = TvAutomationEngine.buildPlan(
+                                            installedPackages = installed.toSet(),
+                                            disabledPackages = disabled,
+                                            detectedCandidates = candidates,
+                                            profileApprovedPackages = approved,
+                                            protectedPackages = protected,
+                                            neverDisablePackages = profile?.neverDisable ?: emptySet()
+                                        )
+                                        val report = buildString {
+                                            appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
+                                            appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
+                                            appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
+                                            appendLine("Уже отключено: ${disabled.size}")
+                                            appendLine("Кандидатов по справочнику: ${plan.detectedCount}")
+                                            appendLine("Безопасно разрешено точным профилем: ${plan.approvedCount}")
+                                            appendLine("Требуют ручной оценки: ${plan.reviewCount}")
+                                            appendLine("Защищено или исключено: ${plan.blockedCount}")
+                                            appendLine("Отключение пакетов: ${if (disableSupported) "поддерживается" else "не подтверждено — действия заблокированы"}")
+                                            if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
+                                            else appendLine("Подготовлен предварительный план из ${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
+                                        }
+                                        activity.runOnUiThread {
+                                            tvDetails = details
+                                            tvCompatibilityReport = compatibility
+                                            packageDisableSupported = disableSupported
+                                            userPackages = users
+                                            allPackages = installed
+                                            disabledOnDevice = disabled
+                                            selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
+                                            automationReport = report
+                                        }
+                                        report
+                                    }
+                                })
+                            }
+                        ) { Text("⚡ Автоматически проверить и подготовить план") }
+                        if (automationReport.isNotBlank()) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("АВТОМАТИЧЕСКИЙ ПЛАН", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                    Text(automationReport, color = TextMain, fontSize = 11.sp)
+                                    if (selectedCleanupPackages.isNotEmpty()) {
+                                        Text("Подготовлено безопасных кандидатов: ${selectedCleanupPackages.size}. Ни один пакет не отключён автоматически.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
                         if (tvCompatibilityReport.isNotBlank()) {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
