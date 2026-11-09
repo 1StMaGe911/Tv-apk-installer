@@ -4530,7 +4530,15 @@ fun TvInstallerApp() {
                             val backupSignatures = if (Build.VERSION.SDK_INT >= 28) {
                                 backupInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
                             } else backupInfo.signatures?.toList().orEmpty()
-                            require(backupSignatures.isNotEmpty()) { "У резервной копии не найдена подпись APK" }
+                            require(backupSignatures.size == 1) {
+                                "У резервной копии должен быть ровно один сертификат подписанта"
+                            }
+                            val backupSignerSha256 = MessageDigest.getInstance("SHA-256")
+                                .digest(backupSignatures.single().toByteArray())
+                                .joinToString("") { "%02x".format(it) }
+                            require(backupSignerSha256.equals(version.signerSha256, ignoreCase = true)) {
+                                "Сертификат резервной копии не совпадает с доверенным сертификатом издателя из подписанного каталога"
+                            }
                             @Suppress("DEPRECATION")
                             val backupCode = if (Build.VERSION.SDK_INT >= 28) backupInfo.longVersionCode
                                 else backupInfo.versionCode.toLong()
