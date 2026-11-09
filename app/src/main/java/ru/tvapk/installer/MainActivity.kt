@@ -293,7 +293,7 @@ private fun loadTrackedAutoStartChanges(context: Context): List<TrackedAutoStart
             TrackedAutoStartChange(identity, component, wasState, isState, item.optLong("changedAt", 0L))
         }.distinctBy { it.deviceIdentity + "|" + it.component }.sortedByDescending { it.changedAt }
     } catch (e: Exception) {
-        throw Exception("Не удалось прочитать журнал автозапуска. Исходные данные сохранены; новые записи и откат заблокированы: \${e.message}", e)
+        throw Exception("Не удалось прочитать журнал автозапуска. Исходные данные сохранены; новые записи и откат заблокированы: ${e.message}", e)
     }
 }
 
@@ -422,9 +422,9 @@ private fun rollbackTrackedAutoStartChanges(context: Context, adb: Dadb): String
                 current != entry.isState -> conflicts++
                 else -> {
                     val command = when (entry.wasState) {
-                        "default" -> "pm default-state --user 0 \${entry.component}"
-                        "enabled" -> "pm enable --user 0 \${entry.component}"
-                        "disabled" -> "pm disable --user 0 \${entry.component}"
+                        "default" -> "pm default-state --user 0 ${entry.component}"
+                        "enabled" -> "pm enable --user 0 ${entry.component}"
+                        "disabled" -> "pm disable --user 0 ${entry.component}"
                         else -> throw Exception("Неизвестное исходное состояние")
                     }
                     shellText(adb, command)
