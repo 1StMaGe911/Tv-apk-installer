@@ -18,10 +18,13 @@ import androidx.work.WorkerParameters
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 private const val UPDATE_WORK_NAME = "tv_apk_installer_periodic_update_check"
 private const val UPDATE_CHANNEL_ID = "app_updates"
+private const val MAX_RELEASE_METADATA_BYTES = 256 * 1024
 
 fun schedulePeriodicUpdateCheck(context: Context) {
     val constraints = Constraints.Builder()
@@ -57,15 +60,38 @@ class UpdateCheckWorker(
                 connection.setRequestProperty("User-Agent", "TV-APK-Installer")
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
                 if (connection.responseCode != 200) return Result.retry()
-                JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                val declaredLength = connection.contentLengthLong
+                if (declaredLength > MAX_RELEASE_METADATA_BYTES) {
+                    throw IOException("GitHub release metadata is unexpectedly large")
+                }
+                val body = connection.inputStream.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8 * 1024)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_RELEASE_METADATA_BYTES) {
+                            throw IOException("GitHub release metadata exceeds size limit")
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toString(Charsets.UTF_8.name())
+                }
+                JSONObject(body)
             } finally {
                 connection.disconnect()
             }
 
-            val latestTag = json.optString("tag_name").removePrefix("v")
+            val rawTag = json.optString("tag_name")
+            if (!rawTag.matches(Regex("^v?\\d+(?:\\.\\d+){1,3}$"))) {
+                throw IOException("GitHub returned an invalid release version")
+            }
+            val latestTag = rawTag.removePrefix("v")
             val installedVersion = appVersionName()
 
-            if (latestTag.isNotBlank() && compareVersions(latestTag, installedVersion) > 0) {
+            if (compareVersions(latestTag, installedVersion) > 0) {
                 val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
                 val alreadyNotified = preferences.getString("last_notified_update_version", null)
                 if (alreadyNotified != latestTag) {
