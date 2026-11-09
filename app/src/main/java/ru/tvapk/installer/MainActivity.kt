@@ -4230,7 +4230,8 @@ fun TvInstallerApp() {
 
                     data class PreviousModuleState(
                         val module: VerifiedCleanModule,
-                        val backupApk: File?
+                        val backupApk: File?,
+                        val versionCode: Long?
                     )
 
                     // Сохраняем прежние APK до установки. Для этих модулей ожидается один APK
@@ -4238,6 +4239,7 @@ fun TvInstallerApp() {
                     // потому что не сможем гарантировать точный откат.
                     val rollbackDir = File(context.cacheDir, "cleanyourtv-rollback-${System.currentTimeMillis()}")
                     require(rollbackDir.mkdirs()) { "Не удалось подготовить резервную папку. Установка отменена." }
+                    var keepRollbackFiles = false
                     try {
                         val previousStates = modules.map { module ->
                             val pathResult = shellText(adb, "pm path ${module.packageName}")
@@ -4247,7 +4249,7 @@ fun TvInstallerApp() {
                                 .distinct()
                                 .toList()
                             if (remotePaths.isEmpty()) {
-                                PreviousModuleState(module, null)
+                                PreviousModuleState(module, null, null)
                             } else {
                                 require(remotePaths.size == 1) {
                                     "У ${module.packageName} найдено несколько APK/split-файлов. " +
@@ -4274,7 +4276,7 @@ fun TvInstallerApp() {
                                 require(backup.isFile && backup.length() in 1..(64L * 1024L * 1024L)) {
                                     "Резервная копия ${module.packageName} неполная или слишком большая."
                                 }
-                                PreviousModuleState(module, backup)
+                                PreviousModuleState(module, backup, currentCode)
                             }
                         }
 
@@ -4322,25 +4324,46 @@ fun TvInstallerApp() {
                                             result.contains("not installed", ignoreCase = true)) {
                                             "Ответ удаления нового пакета: $result"
                                         }
+                                        require(!shellText(adb, "pm path ${previous.module.packageName}").contains("package:")) {
+                                            "Новый пакет всё ещё присутствует после отката удаления."
+                                        }
                                     } else {
                                         when (val result = adb.install(backup, "-r", "-d")) {
                                             is InstallResult.Success -> Unit
                                             is InstallResult.Failure -> throw Exception(result.reason)
+                                        }
+                                        val restoredPath = shellText(adb, "pm path ${previous.module.packageName}")
+                                        require(restoredPath.contains("package:")) { "Прежний пакет не появился после отката." }
+                                        val restoredDetails = shellText(adb, "dumpsys package ${previous.module.packageName}")
+                                        val restoredCode = Regex("versionCode=(\\d+)").find(restoredDetails)
+                                            ?.groupValues?.get(1)?.toLongOrNull()
+                                        require(restoredCode == previous.versionCode) {
+                                            "После отката ожидался versionCode ${previous.versionCode}, получен $restoredCode."
                                         }
                                     }
                                 } catch (rollbackError: Exception) {
                                     rollbackErrors += "${previous.module.packageName}: ${errorText(rollbackError)}"
                                 }
                             }
+                            var recoveryNote = ""
+                            if (rollbackErrors.isNotEmpty()) {
+                                val recoveryDir = File(context.filesDir, "cleanyourtv-recovery-${System.currentTimeMillis()}")
+                                keepRollbackFiles = true
+                                if (rollbackDir.renameTo(recoveryDir)) {
+                                    recoveryNote = " Резервные APK сохранены в ${recoveryDir.absolutePath} для ручного восстановления."
+                                } else {
+                                    recoveryNote = " Резервные APK оставлены во временной папке ${rollbackDir.absolutePath}."
+                                }
+                            }
                             throw Exception(
-                                "Установка Clean Your TV не завершилась; выполнен откат к прежнему состоянию. " +
+                                "Установка Clean Your TV не завершилась; выполнена попытка отката к прежнему состоянию. " +
                                     "Причина: ${errorText(installError)}" +
-                                    if (rollbackErrors.isEmpty()) " Откат проверен по ответам ADB." else
-                                        " Ошибки отката: ${rollbackErrors.joinToString("; ")}"
+                                    if (rollbackErrors.isEmpty()) " Исходные версии/отсутствие пакетов проверены после отката." else
+                                        " Ошибки отката: ${rollbackErrors.joinToString("; ")}." + recoveryNote
                             )
                         }
                     } finally {
-                        rollbackDir.deleteRecursively()
+                        if (!keepRollbackFiles) rollbackDir.deleteRecursively()
                     }
 
                 }
