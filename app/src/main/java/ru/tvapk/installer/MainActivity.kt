@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.content.Intent
 import android.hardware.usb.UsbManager
+import android.hardware.usb.UsbDevice
+import android.app.PendingIntent
 import android.net.Uri as AndroidUri
 import android.provider.Settings
 import android.provider.OpenableColumns
@@ -55,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.8.1"
+private const val APP_VERSION = "0.8.2"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1548,6 +1550,7 @@ fun TvInstallerApp() {
 
 
     var usbMode by remember { mutableStateOf(false) }
+    var usbDevices by remember { mutableStateOf(emptyList<UsbDevice>()) }
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
@@ -2074,8 +2077,8 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Text("v0.8.2 • Управление коллекцией обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Добавлено безопасное удаление коллекции wallpapers с телевизора с подтверждением. Автоматическая ротация выключается, а локальные копии на телефоне сохраняются для повторной загрузки.", color = TextMain)
+                                        Text("v0.8.2 • USB ADB и управление коллекцией обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено прямое USB ADB-подключение для устройств, которые предоставляют ADB USB-интерфейс, с системным запросом разрешения, RSA-авторизацией и установкой выбранного APK по USB. Также добавлено безопасное удаление коллекции wallpapers с телевизора с подтверждением; локальные копии на телефоне сохраняются.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.1 • Настройка долгого нажатия Home", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена настройка home_long_press_home для HomeKeyService: можно направить длительное нажатие кнопки Home в Clean Your TV. Настройка включается отдельно и требует HomeKeyService.", color = TextMain)
@@ -2318,13 +2321,98 @@ fun TvInstallerApp() {
                 if (section == "usb") {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("USB OTG", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                            Text("Проверка USB-устройств, подключённых непосредственно к телефону или планшету. Подключение к телевизору по IP для этой функции не требуется.", color = TextMuted, fontSize = 12.sp)
-                            OutlinedButton(onClick = {
+                            Text("USB OTG / USB ADB", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Подключи Android TV или приставку кабелем OTG к телефону. Для прямого ADB телевизор должен работать как USB-устройство и предоставлять интерфейс ADB (FF/42/01). Большинство обычных USB-портов телевизора работают только как HOST и не поддерживают такое подключение.", color = TextMuted, fontSize = 12.sp)
+                            OutlinedButton(enabled = !busy, onClick = {
                                 val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
-                                val found = manager.deviceList.values
-                                status = if (found.isEmpty()) "USB-устройства не обнаружены" else "Найдены USB-устройства: " + found.joinToString { "${it.vendorId}:${it.productId}" } + ". USB ADB пока не реализован."
+                                usbDevices = manager.deviceList.values.toList()
+                                status = if (usbDevices.isEmpty()) "USB-устройства не обнаружены. Проверь OTG-кабель и поддержку USB Host телефоном."
+                                else "Обнаружено USB-устройств: ${usbDevices.size}. Проверь, есть ли у нужного устройства интерфейс ADB."
                             }, modifier = Modifier.fillMaxWidth()) { Text("Найти USB-устройства") }
+                            if (usbDevices.isEmpty()) {
+                                Text("Сначала выполни поиск USB-устройств.", color = TextMuted, fontSize = 12.sp)
+                            }
+                            usbDevices.forEach { device ->
+                                Card(colors = CardDefaults.cardColors(containerColor = Bg), modifier = Modifier.fillMaxWidth()) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(device.productName?.toString()?.takeIf { it.isNotBlank() } ?: device.deviceName, color = TextMain, style = MaterialTheme.typography.titleSmall)
+                                        Text("VID:PID ${"%04X".format(device.vendorId)}:${"%04X".format(device.productId)} • Device ID: ${device.deviceId}", color = TextMuted, fontSize = 11.sp)
+                                        val hasAdb = UsbDadb.hasAdbInterface(device)
+                                        Text(
+                                            if (hasAdb) "Найден ADB USB-интерфейс (FF/42/01)"
+                                            else "ADB USB-интерфейс не найден",
+                                            color = if (hasAdb) GoldLight else Color(0xFFFFB4A9),
+                                            fontSize = 12.sp
+                                        )
+                                        if (hasAdb) {
+                                            OutlinedButton(enabled = !busy, onClick = {
+                                                val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+                                                if (!manager.hasPermission(device)) {
+                                                    val permissionIntent = PendingIntent.getBroadcast(
+                                                        context,
+                                                        device.deviceId,
+                                                        Intent("${context.packageName}.USB_PERMISSION"),
+                                                        PendingIntent.FLAG_UPDATE_CURRENT or
+                                                            (if (android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                                                    )
+                                                    manager.requestPermission(device, permissionIntent)
+                                                    status = "Подтверди доступ к USB в системном окне, затем снова нажми «Подключиться по USB»."
+                                                } else {
+                                                    runTask({
+                                                        getAdbKey(context)
+                                                        val keyFile = File(File(context.filesDir, "adb"), "adbkey")
+                                                        UsbDadb.connect(context, device, keyFile).use { adb ->
+                                                            val model = shellText(adb, "getprop ro.product.model").trim().ifBlank { "Android TV" }
+                                                            val manufacturer = shellText(adb, "getprop ro.product.manufacturer").trim()
+                                                            "USB ADB подключён: ${manufacturer} ${model}".trim()
+                                                        }
+                                                    })
+                                                }
+                                            }, modifier = Modifier.fillMaxWidth()) { Text("Подключиться по USB") }
+                                            OutlinedButton(enabled = !busy && selectedUri != null, onClick = {
+                                                val uri = selectedUri
+                                                if (uri == null) {
+                                                    status = "Сначала выбери APK в разделе «Установка APK»."
+                                                } else {
+                                                    val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
+                                                    if (!manager.hasPermission(device)) {
+                                                        val permissionIntent = PendingIntent.getBroadcast(
+                                                            context,
+                                                            device.deviceId,
+                                                            Intent("${context.packageName}.USB_PERMISSION"),
+                                                            PendingIntent.FLAG_UPDATE_CURRENT or
+                                                                (if (android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
+                                                        )
+                                                        manager.requestPermission(device, permissionIntent)
+                                                        status = "Подтверди доступ к USB, затем снова нажми «Установить выбранный APK по USB»."
+                                                    } else {
+                                                        runTask({
+                                                            val apkFile = File(context.cacheDir, "selected_usb_app.apk")
+                                                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                                                apkFile.outputStream().use { output -> input.copyTo(output) }
+                                                            } ?: throw Exception("Не удалось прочитать выбранный APK")
+                                                            getAdbKey(context)
+                                                            val keyFile = File(File(context.filesDir, "adb"), "adbkey")
+                                                            UsbDadb.connect(context, device, keyFile).use { adb ->
+                                                                when (val result = adb.install(apkFile)) {
+                                                                    is InstallResult.Success -> "APK успешно установлен через USB"
+                                                                    is InstallResult.Failure -> throw Exception(result.reason)
+                                                                }
+                                                            }
+                                                        }, onFinished = { result ->
+                                                            if (result == "APK успешно установлен через USB") {
+                                                                history.add(0, "$selectedName — USB ${device.productName ?: device.deviceName}")
+                                                                while (history.size > 30) history.removeAt(history.lastIndex)
+                                                                saveHistory(context, history)
+                                                            }
+                                                        })
+                                                    }
+                                                }
+                                            }, modifier = Modifier.fillMaxWidth()) { Text("Установить выбранный APK по USB") }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 } else {
