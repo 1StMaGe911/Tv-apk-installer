@@ -5208,6 +5208,7 @@ fun TvInstallerApp() {
                             OutlinedButton(enabled = !busy, onClick = {
                                 runTask({
                                     val catalog = CleanYourTvTrust.loadBundled(context)
+                                    activity.runOnUiThread { verifiedCatalog = catalog }
                                     val usable = catalog.modules.count { it.tier == "verified" || it.tier == "community" }
                                     "Подпись каталога Clean Your TV подтверждена. Последовательность: ${catalog.sequence}; модулей: ${catalog.modules.size}; доступно по уровню доверия: $usable; срок действия до: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. Подпись: ${catalog.trustedComment}"
                                 })
@@ -5217,12 +5218,97 @@ fun TvInstallerApp() {
                             OutlinedButton(enabled = !busy, onClick = {
                                 runTask({
                                     val catalog = CleanYourTvTrust.loadLatest(context)
+                                    activity.runOnUiThread { verifiedCatalog = catalog }
                                     val usable = catalog.modules.count { it.tier == "verified" || it.tier == "community" }
                                     "Свежий каталог загружен с официального GitHub и проверен по цепочке minisign. Последовательность: ${catalog.sequence}; модулей: ${catalog.modules.size}; доступно по уровню доверия: $usable; действует до: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. Защита от отката сохранена."
                                 })
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Загрузить и проверить свежий каталог")
                             }
+                            verifiedCatalog?.let { catalog ->
+                                Text(
+                                    "КАТАЛОГ ДОПОЛНЕНИЙ • версия ${catalog.sequence}",
+                                    color = GoldLight,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    "Срок действия: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. " +
+                                        "Подпись каталога проверена. Установка доступна только для уровней Verified и Community.",
+                                    color = TextMuted,
+                                    fontSize = 11.sp
+                                )
+                                catalog.modules.forEach { module ->
+                                    val latest = module.versions.firstOrNull()
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B10)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(module.name, color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                            Text(module.summary, color = TextMain, fontSize = 12.sp)
+                                            Text(
+                                                "${module.packageName} • ${module.publisher} • ${module.tier.uppercase()}",
+                                                color = TextMuted,
+                                                fontSize = 10.sp
+                                            )
+                                            Text(module.description, color = TextMuted, fontSize = 11.sp)
+                                            if (latest != null) {
+                                                Text(
+                                                    "Версия ${latest.versionName} (код ${latest.versionCode}) • ${latest.size / 1024} КБ • min SDK ${latest.minSdk}",
+                                                    color = TextMain,
+                                                    fontSize = 11.sp
+                                                )
+                                                Text(
+                                                    "Сеть: ${latest.networkStatement}",
+                                                    color = TextMuted,
+                                                    fontSize = 10.sp
+                                                )
+                                                if (latest.permissions.isNotEmpty()) {
+                                                    Text("Разрешения:", color = GoldLight, fontSize = 11.sp)
+                                                    latest.permissions.forEach { permission ->
+                                                        Text(
+                                                            "• ${permission.first}: ${permission.second}",
+                                                            color = TextMuted,
+                                                            fontSize = 10.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                TextButton(onClick = { uriHandler.openUri(module.source) }) {
+                                                    Text("Источник проекта")
+                                                }
+                                                Button(
+                                                    enabled = !busy && latest != null &&
+                                                        (module.tier == "verified" || module.tier == "community") &&
+                                                        latest?.revoked == false &&
+                                                        catalog.expiresAtMillis > System.currentTimeMillis(),
+                                                    onClick = { installCatalogModule(module) }
+                                                ) {
+                                                    Text("Проверить и установить")
+                                                }
+                                            }
+                                            if (module.tier != "verified" && module.tier != "community") {
+                                                Text(
+                                                    "Установка заблокирована уровнем доверия: ${module.tier}",
+                                                    color = Color(0xFFFFD98A),
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                            if (latest?.revoked == true) {
+                                                Text("Эта версия отозвана и не может быть установлена.", color = Color(0xFFFF8A80), fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            } ?: Text(
+                                "Каталог дополнений пока не загружен. Сначала проверь встроенную подпись или загрузи свежий каталог.",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
 Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
                             Text("В APK встроены официальные Clean Your TV Launcher и Curtain из закреплённой версии 0.4.8. Перед установкой проверяются SHA-256, подпись разработчика, package name и совместимость Android TV. Перед обновлением сохраняются прежние APK; при ошибке приложение проверяет откат. Более новые версии модулей на телевизоре не заменяются более старыми. Импортировать оригинальный APK не нужно.", color = TextMuted, fontSize = 12.sp)
                             Button(enabled = !busy, onClick = { installCleanYourTvModules() }, modifier = Modifier.fillMaxWidth()) {
