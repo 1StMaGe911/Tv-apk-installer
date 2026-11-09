@@ -7524,20 +7524,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     check(saveCleanupJournal(context, journal)) {
                                                         "Не удалось сохранить этап операции для $pkg. Отключение отменено."
                                                     }
-                                                    val operationError = try {
+                                                    try {
                                                         changePackageStateVerified(adb, pkg, false)
-                                                        null
-                                                    } catch (e: Exception) {
-                                                        e
+                                                    } catch (_: Exception) {
+                                                        // The actual Package Manager state is checked immediately below.
                                                     }
                                                     val isDisabledAfterAttempt = pkg in readDisabledPackages(adb)
                                                     if (isDisabledAfterAttempt) disabledNow.add(pkg) else failures.add(pkg)
                                                     journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
                                                     check(saveCleanupJournal(context, journal)) {
                                                         "Не удалось надёжно сохранить результат для $pkg. Операция остановлена; журнал оставлен для восстановления."
-                                                    }
-                                                    if (operationError != null && !isDisabledAfterAttempt) {
-                                                        // Keep processing independent packages; the failure is recorded in the final report.
                                                     }
                                                 }
                                                 if (failures.isEmpty()) {
