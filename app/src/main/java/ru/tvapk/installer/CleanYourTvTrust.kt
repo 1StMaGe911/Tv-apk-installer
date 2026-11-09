@@ -71,15 +71,22 @@ internal object CleanYourTvTrust {
         val cached = listOf("cache_index", "cache_index_sig", "cache_keys", "cache_keys_sig")
             .map { prefs.getString(it, null) }
         if (cached.all { it != null }) {
-            val bundle = CatalogBundle(
-                Base64.getDecoder().decode(cached[0]),
-                Base64.getDecoder().decode(cached[1]),
-                Base64.getDecoder().decode(cached[2]),
-                Base64.getDecoder().decode(cached[3])
+            val limits = listOf(MAX_INDEX_BYTES, MAX_SIGNATURE_BYTES, MAX_KEYS_BYTES, MAX_SIGNATURE_BYTES)
+            val decoded = cached.mapIndexed { index, encoded ->
+                val value = requireNotNull(encoded)
+                require(value.length <= ((limits[index] + 2) / 3) * 4 + 8) { "Локальный кэш каталога повреждён или слишком велик" }
+                Base64.getDecoder().decode(value).also {
+                    require(it.isNotEmpty() && it.size <= limits[index]) { "Локальный кэш каталога повреждён или слишком велик" }
+                }
+            }
+            val bundle = CatalogBundle(decoded[0], decoded[1], decoded[2], decoded[3])
+            // Re-verify the cached bytes against the compiled root and persisted anti-rollback marks.
+            return verify(
+                bundle.index, bundle.indexSignature, bundle.keys, bundle.keysSignature,
+                prefs.getLong("accepted_index_sequence", 0L).takeIf { it > 0L },
+                System.currentTimeMillis(),
+                prefs.getLong("accepted_keys_sequence", 0L).takeIf { it > 0L }
             )
-            // A previously accepted network catalog remains usable offline, but is re-verified
-            // against the compiled root and persisted anti-rollback high-water marks every time.
-            return verify(context, bundle)
         }
         require(cached.all { it == null }) { "Локальный кэш каталога неполон; требуется сетевое обновление" }
         val bundle = CatalogBundle(
