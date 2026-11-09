@@ -1240,6 +1240,8 @@ fun TvInstallerApp() {
     var launcherClockGlow by remember { mutableStateOf(settings.getBoolean("launcher_clock_glow", true)) }
     var launcherBackOpensClock by remember { mutableStateOf(settings.getBoolean("launcher_back_opens_clock", false)) }
     var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
+    var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
+    var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1624,6 +1626,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.5 • Назначение кнопок пульта", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен редактор app_keys: назначение клавиш и scancode на приложения, действия и входы ТВ. Добавлено включение InputKeyService через ADB с подтверждением, поддержка автозапуска на TCL и очистка назначений без удаления других служб специальных возможностей.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.4 • Часы и системная заставка", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлены настройки автоматических часов, обоев и затемнения на экране часов, свечения, формата времени и действия кнопки Назад. Можно установить или отключить системную заставку ClockDream Clean Your TV с сохранением других заставок.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2111,6 +2116,9 @@ fun TvInstallerApp() {
                                                 launcherClockGlow = current.optBoolean("clock_glow", true)
                                                 launcherBackOpensClock = current.optBoolean("back_opens_clock", false)
                                                 launcherClockFormat = current.optString("clock_format", "system").takeIf { it in setOf("system", "12", "24") } ?: "system"
+                                                launcherRemoteKeyMappings = current.optJSONArray("app_keys")?.let { array ->
+                                                    (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString("\\n")
+                                                } ?: ""
                                                 settings.edit()
                                                     .putString("launcher_dock_packages", dockText)
                                                     .putString("launcher_hidden_packages", hiddenText)
@@ -2121,6 +2129,7 @@ fun TvInstallerApp() {
                                                     .putBoolean("launcher_clock_glow", launcherClockGlow)
                                                     .putBoolean("launcher_back_opens_clock", launcherBackOpensClock)
                                                     .putString("launcher_clock_format", launcherClockFormat)
+                                                    .putString("launcher_remote_key_mappings", launcherRemoteKeyMappings)
                                                     .apply()
                                             }
                                         }
@@ -2281,6 +2290,72 @@ fun TvInstallerApp() {
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
                             Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("КНОПКИ ПУЛЬТА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Одна запись на строку. Можно назначить кнопку на приложение, действие или вход телевизора. Список текущих назначений загружается вместе с настройками Launcher.", color = TextMuted, fontSize = 11.sp)
+                            OutlinedTextField(
+                                value = launcherRemoteKeyMappings,
+                                onValueChange = { launcherRemoteKeyMappings = it },
+                                label = { Text("Назначения кнопок") },
+                                placeholder = { Text("KEYCODE_BUTTON_3:com.google.android.youtube.tv\\nhold:KEYCODE_BUTTON_8:org.xbmc.kodi\\nKEYCODE_PROG_RED:settings") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 3,
+                                maxLines = 8
+                            )
+                            Text("Форматы: KEYCODE_NAME:package, 190:package, scan:490:package, hold:KEYCODE_NAME:package. Действия: back, home, recents, mute, sleep, screensaver, settings, wifi, library, inputs. Также поддерживаются input:<id>, guide:<package> и package/.Activity.", color = TextMuted, fontSize = 10.sp)
+                            Button(enabled = !busy, onClick = { pendingRemoteKeyEnable = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Сохранить и включить обработку кнопок")
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb -> disableLauncherRemoteMappings(adb) }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Очистить назначения кнопок") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        shellText(adb, "am start -a android.settings.ACCESSIBILITY_SETTINGS")
+                                        "Открыты настройки специальных возможностей телевизора."
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Открыть настройки специальных возможностей") }
+                            Text("InputKeyService получает только события нажатий кнопок пульта. На некоторых прошивках, включая отдельные версии TCL Android 12, фильтрация может влиять на удержание кнопок громкости. Если это произойдёт, отключи InputKeyService в настройках специальных возможностей.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            if (pendingRemoteKeyEnable) {
+                                AlertDialog(
+                                    onDismissRequest = { pendingRemoteKeyEnable = false },
+                                    title = { Text("Включить обработку кнопок пульта?") },
+                                    text = { Text("Будет включён InputKeyService — служба специальных возможностей Clean Your TV. Она обрабатывает события кнопок и запускает назначенные приложения или действия, не запрашивая содержимое экрана. На некоторых прошивках может измениться поведение удержания клавиш громкости. Продолжить?") },
+                                    confirmButton = {
+                                        TextButton(enabled = !busy, onClick = {
+                                            val mappings = try { parseLauncherRemoteMappings(launcherRemoteKeyMappings) } catch (e: Exception) {
+                                                status = errorText(e)
+                                                pendingRemoteKeyEnable = false
+                                                return@TextButton
+                                            }
+                                            val host = ip.trim()
+                                            val p = port.toIntOrNull()
+                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                status = "Проверь IP и порт ADB"
+                                                pendingRemoteKeyEnable = false
+                                            } else {
+                                                pendingRemoteKeyEnable = false
+                                                settings.edit().putString("launcher_remote_key_mappings", launcherRemoteKeyMappings).apply()
+                                                runTask({
+                                                    connectWithRetry(context, host, p) { adb ->
+                                                        applyLauncherRemoteMappings(adb, launcherRemoteKeyMappings)
+                                                    }
+                                                })
+                                            }
+                                        }) { Text("Включить") }
+                                    },
+                                    dismissButton = { TextButton(onClick = { pendingRemoteKeyEnable = false }) { Text("Отмена") } }
+                                )
+                            }
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
                             listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
