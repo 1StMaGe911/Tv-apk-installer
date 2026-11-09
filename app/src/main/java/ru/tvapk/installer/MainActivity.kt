@@ -4270,8 +4270,11 @@ fun TvInstallerApp() {
                 val details = readTvDetails(adb)
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
-                val autoCacheTrimMessage = if (settings.getBoolean("auto_cache_trim", false) &&
-                    (healthAssessment.dataUsedPercent ?: 0) >= 90
+                val autoCacheTrimEnabledNow = settings.getBoolean("auto_cache_trim", false)
+                val autoCacheTrimMessage = if (TvAutomationEngine.shouldAutomaticallyTrimCache(
+                        autoCacheTrimEnabledNow,
+                        healthAssessment.dataUsedPercent
+                    )
                 ) {
                     val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
                     if (trimAttempt.isSuccess) {
@@ -4285,7 +4288,7 @@ fun TvInstallerApp() {
                     } else {
                         "Автоматическая очистка кэша не выполнена: ${errorText(trimAttempt.exceptionOrNull()!!)}"
                     }
-                } else if (settings.getBoolean("auto_cache_trim", false) && healthAssessment.dataUsedPercent == null) {
+                } else if (autoCacheTrimEnabledNow && healthAssessment.dataUsedPercent == null) {
                     "Автоматическая очистка кэша пропущена: нет достоверных данных о заполнении /data."
                 } else ""
                 val compatibility = readTvCompatibilityReport(adb)
