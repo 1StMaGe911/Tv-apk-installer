@@ -4416,7 +4416,7 @@ fun TvInstallerApp() {
                 require(module.tier == "verified" || module.tier == "community") {
                     "Этот модуль нельзя устанавливать: уровень доверия ${module.tier}"
                 }
-                val version = module.versions.firstOrNull()
+                val version = module.versions.maxByOrNull { it.versionCode }
                     ?: throw Exception("У модуля нет доступных версий")
                 require(!version.revoked) { "Эта версия APK отозвана в подписанном каталоге" }
 
@@ -4517,6 +4517,25 @@ fun TvInstallerApp() {
                             }
                             require(backup!!.isFile && backup!!.length() in 1..(200L * 1024L * 1024L)) {
                                 "Резервная копия установленного APK неполная"
+                            }
+                            val backupInfo = context.packageManager.getPackageArchiveInfo(
+                                backup!!.absolutePath,
+                                if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+                                else PackageManager.GET_SIGNATURES
+                            ) ?: throw Exception("Резервный APK повреждён или не читается")
+                            require(backupInfo.packageName == module.packageName) {
+                                "Резервная копия относится к другому пакету: ${backupInfo.packageName}"
+                            }
+                            @Suppress("DEPRECATION")
+                            val backupSignatures = if (Build.VERSION.SDK_INT >= 28) {
+                                backupInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                            } else backupInfo.signatures?.toList().orEmpty()
+                            require(backupSignatures.isNotEmpty()) { "У резервной копии не найдена подпись APK" }
+                            @Suppress("DEPRECATION")
+                            val backupCode = if (Build.VERSION.SDK_INT >= 28) backupInfo.longVersionCode
+                                else backupInfo.versionCode.toLong()
+                            require(backupCode == previousCode) {
+                                "Версия резервной копии ($backupCode) не совпадает с установленной ($previousCode)"
                             }
                         }
                         try {
@@ -5289,7 +5308,7 @@ fun TvInstallerApp() {
                                     fontSize = 11.sp
                                 )
                                 catalog.modules.forEach { module ->
-                                    val latest = module.versions.firstOrNull()
+                                    val latest = module.versions.maxByOrNull { it.versionCode }
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = Color(0xFF211B10)),
                                         modifier = Modifier.fillMaxWidth()
@@ -5306,6 +5325,17 @@ fun TvInstallerApp() {
                                                 fontSize = 10.sp
                                             )
                                             Text(module.description, color = TextMuted, fontSize = 11.sp)
+                                            if (module.versions.size > 1) {
+                                                Text("ИСТОРИЯ ВЕРСИЙ", color = GoldLight, fontSize = 10.sp)
+                                                module.versions.sortedByDescending { it.versionCode }.forEach { entry ->
+                                                    Text(
+                                                        "${entry.versionName} • код ${entry.versionCode} • ${entry.size / 1024} КБ" +
+                                                            if (entry.revoked) " • ОТОЗВАНА" else "",
+                                                        color = if (entry.revoked) Color(0xFFFF8A80) else TextMuted,
+                                                        fontSize = 10.sp
+                                                    )
+                                                }
+                                            }
                                             val installedCode = installedCatalogVersions[module.packageName]
                                             val latestCode = latest?.versionCode
                                             val updateAvailable = installedCode != null && latestCode != null && latestCode > installedCode
