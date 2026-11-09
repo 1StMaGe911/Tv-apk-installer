@@ -2206,6 +2206,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.7 • Безопасное восстановление и сохранение настроек", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Точки восстановления привязаны к модели и отпечатку прошивки, поэтому приложение останавливает восстановление при несовпадении устройства. При применении темы сохраняются персональные виджеты, параметры входов и запуска ТВ; неизвестные ключи конфигурации, отсутствующие в старой теме, также сохраняются.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.6 • Выбор рекомендаций очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен выбор компонентов, проверенных для точного профиля модели (ask=false), и пакетное отключение после подтверждения. Перед отключением список повторно сверяется с телевизором; защищённые компоненты и neverDisable исключаются. Отключённые пакеты можно восстановить.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
