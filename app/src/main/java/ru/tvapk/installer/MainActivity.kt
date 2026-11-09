@@ -239,8 +239,8 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal): Boole
     return prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
-private fun clearCleanupJournal(context: Context) {
-    prefs(context).edit().remove("cleanup_operation_journal").commit()
+private fun clearCleanupJournal(context: Context): Boolean {
+    return prefs(context).edit().remove("cleanup_operation_journal").commit()
 }
 
 private data class TrackedPackageChange(
@@ -7524,25 +7524,27 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     check(saveCleanupJournal(context, journal)) {
                                                         "Не удалось сохранить этап операции для $pkg. Отключение отменено."
                                                     }
-                                                    try {
+                                                    val operationError = try {
                                                         changePackageStateVerified(adb, pkg, false)
-                                                        disabledNow.add(pkg)
-                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
-                                                        check(saveCleanupJournal(context, journal)) {
-                                                            "Не удалось подтвердить запись результата для $pkg. Операция остановлена; журнал оставлен для восстановления."
-                                                        }
-                                                    } catch (_: Exception) {
-                                                        if (pkg in readDisabledPackages(adb)) disabledNow.add(pkg)
-                                                        else failures.add(pkg)
-                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
-                                                        check(saveCleanupJournal(context, journal)) {
-                                                            "Не удалось сохранить состояние после ошибки $pkg. Операция остановлена; требуется проверка журнала."
-                                                        }
+                                                        null
+                                                    } catch (e: Exception) {
+                                                        e
+                                                    }
+                                                    val isDisabledAfterAttempt = pkg in readDisabledPackages(adb)
+                                                    if (isDisabledAfterAttempt) disabledNow.add(pkg) else failures.add(pkg)
+                                                    journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
+                                                    check(saveCleanupJournal(context, journal)) {
+                                                        "Не удалось надёжно сохранить результат для $pkg. Операция остановлена; журнал оставлен для восстановления."
+                                                    }
+                                                    if (operationError != null && !isDisabledAfterAttempt) {
+                                                        // Keep processing independent packages; the failure is recorded in the final report.
                                                     }
                                                 }
                                                 if (failures.isEmpty()) {
                                                     appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
-                                                    clearCleanupJournal(context)
+                                                    check(clearCleanupJournal(context)) {
+                                                        "Очистка завершена, но не удалось удалить журнал операции. Он сохранён для безопасной повторной проверки."
+                                                    }
                                                     activity.runOnUiThread {
                                                         cleanupJournal = null
                                                         cleanupHistory = loadCleanupHistory(context)
