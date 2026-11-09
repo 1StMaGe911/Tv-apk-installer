@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.34"
+private const val APP_VERSION = "0.9.35"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -5532,7 +5532,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(enabled = !busy && pkg !in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
-                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageState(adb, pkg, false) } }, { result ->
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateVerified(adb, pkg, false) } }, { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 disabledPackages = disabledPackages + pkg
                                                 settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
@@ -5541,7 +5541,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                     }) { Text("Отключить") }
                                     OutlinedButton(enabled = !busy && pkg in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
-                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageState(adb, pkg, true) } }, { result ->
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateVerified(adb, pkg, true) } }, { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 disabledPackages = disabledPackages - pkg
                                                 settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
@@ -5691,7 +5691,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                     val p = port.toIntOrNull() ?: 5555
                                                     runTask({
                                                         connectWithRetry(context, host, p) { adb ->
-                                                            changePackageState(adb, pkg, true)
+                                                            changePackageStateVerified(adb, pkg, true)
                                                             "Системный пакет восстановлен: $pkg"
                                                         }
                                                     }, { result ->
@@ -5738,7 +5738,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 require(pkg !in (freshProfile?.neverDisable ?: emptySet())) {
                                                     "Профиль этой модели запрещает отключать $pkg. Команда отменена."
                                                 }
-                                                changePackageState(adb, pkg, false)
+                                                changePackageStateVerified(adb, pkg, false)
                                                 "Системный пакет отключён: $pkg"
                                             }
                                         }, { result ->
@@ -5785,7 +5785,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                     if (pkg !in installed) failures.add("$pkg (не установлен)")
                                                     else if (isProtectedSystemPackage(pkg)) failures.add("$pkg (защищённый компонент)")
                                                     else try {
-                                                        changePackageState(adb, pkg, true)
+                                                        changePackageStateVerified(adb, pkg, true)
                                                         restoredSystems.add(pkg)
                                                     } catch (_: Exception) { failures.add(pkg) }
                                                 }
@@ -5825,7 +5825,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
                                         val failed = mutableListOf<String>()
-                                        restoreList.forEach { pkg -> try { changePackageState(adb, pkg, true) } catch (_: Exception) { failed.add(pkg) } }
+                                        restoreList.forEach { pkg -> try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failed.add(pkg) } }
                                         if (failed.isEmpty()) "Все приложения восстановлены" else "Не удалось восстановить: ${failed.joinToString()}"
                                     }
                                 }, { result ->
