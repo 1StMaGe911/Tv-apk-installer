@@ -57,6 +57,25 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun rejectsStorageSnapshotsWhoseUsedAndAvailableSpaceExceedTotal() {
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot(
+            "/dev/block/dm-1 100 70 40 70% /data"
+        ))
+    }
+
+    @Test
+    fun ignoresImpossibleMemoryCountersInsteadOfReportingHealthyValues() {
+        val diagnostics = """
+            MemTotal: 1000 kB
+            MemAvailable: 1200 kB
+        """.trimIndent()
+
+        val result = TvAutomationEngine.assessHealth(diagnostics)
+        assertNull(result.memoryAvailablePercent)
+        assertTrue(result.summary.contains("Недостаточно данных"))
+    }
+
+    @Test
     fun healthAssessmentReportsMemoryStorageAndUptime() {
         val diagnostics = """
             ОПЕРАТИВНАЯ ПАМЯТЬ
