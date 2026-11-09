@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.82"
+private const val APP_VERSION = "0.9.83"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -4696,9 +4696,8 @@ fun TvInstallerApp() {
                 require(module.tier == "verified" || module.tier == "community") {
                     "Этот модуль нельзя устанавливать: уровень доверия ${module.tier}"
                 }
-                val version = module.versions.maxByOrNull { it.versionCode }
-                    ?: throw Exception("У модуля нет доступных версий")
-                require(!version.revoked) { "Эта версия APK отозвана в подписанном каталоге" }
+                val version = module.versions.filterNot { it.revoked }.maxByOrNull { it.versionCode }
+                    ?: throw Exception("Все версии этого модуля отозваны или отсутствуют в подписанном каталоге")
 
                 val apk = CatalogArtifactDownloader.download(context, version) { received, total ->
                     if (received == total || received % (512L * 1024L) < 64L * 1024L) {
@@ -5051,6 +5050,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.83 • Выбор неотозванной версии дополнения", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Если самая новая версия APK отозвана в подписанном каталоге, приложение больше не блокирует весь модуль без необходимости: выбирается самая новая неотозванная версия. Если отозваны все версии, установка остаётся заблокированной.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.82 • Проверка подписи после установки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("После установки дополнения, отката и восстановления аварийной копии приложение повторно проверяет сертификат уже установленного пакета. Успешный ответ ADB и совпадение версии больше не считаются достаточным подтверждением.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -5613,7 +5615,8 @@ fun TvInstallerApp() {
                                     fontSize = 11.sp
                                 )
                                 catalog.modules.forEach { module ->
-                                    val latest = module.versions.maxByOrNull { it.versionCode }
+                                    val catalogHead = module.versions.maxByOrNull { it.versionCode }
+                                    val latest = module.versions.filterNot { it.revoked }.maxByOrNull { it.versionCode }
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = Color(0xFF211B10)),
                                         modifier = Modifier.fillMaxWidth()
@@ -5703,8 +5706,13 @@ fun TvInstallerApp() {
                                                     fontSize = 10.sp
                                                 )
                                             }
-                                            if (latest?.revoked == true) {
-                                                Text("Эта версия отозвана и не может быть установлена.", color = Color(0xFFFF8A80), fontSize = 10.sp)
+                                            if (catalogHead?.revoked == true) {
+                                                Text(
+                                                    if (latest == null) "Все версии модуля отозваны; установка заблокирована."
+                                                    else "Последняя версия ${catalogHead.versionName} (код ${catalogHead.versionCode}) отозвана. Для установки выбрана самая новая неотозванная версия ${latest.versionName} (код ${latest.versionCode}).",
+                                                    color = Color(0xFFFF8A80),
+                                                    fontSize = 10.sp
+                                                )
                                             }
                                         }
                                     }
