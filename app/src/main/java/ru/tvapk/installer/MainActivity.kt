@@ -7511,6 +7511,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             )
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
+                                                                maintenanceRunHistory = loadMaintenanceRunHistory(context)
                                                                 cleanupJournal = if (remaining.isEmpty()) null else durableRollbackJournal.copy(
                                                                     completedPackages = remaining.toList(),
                                                                     inFlightPackage = null,
@@ -7842,6 +7843,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     context, deviceIdentity, cleanupOutcome, disabledNow
                                                 )
                                                 activity.runOnUiThread {
+                                                    maintenanceRunHistory = loadMaintenanceRunHistory(context)
                                                     if (disabledNow.isNotEmpty()) {
                                                         val userDisabledNow = disabledNow.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = disabledNow.filter { it !in userPackages }.toSet()
