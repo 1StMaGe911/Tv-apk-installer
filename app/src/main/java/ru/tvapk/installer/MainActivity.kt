@@ -2470,7 +2470,7 @@ private fun restoreRecoveryApk(
     val root = context.filesDir.canonicalFile
     val file = entry.file.canonicalFile
     val folder = file.parentFile
-    require(folder?.parentFile == root &&
+    require(folder != null && folder.parentFile == root &&
         folder.name == entry.folder &&
         folder.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
         file.isFile && file.extension.equals("apk", true) &&
