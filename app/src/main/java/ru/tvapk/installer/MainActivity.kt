@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.28"
+private const val APP_VERSION = "0.9.29"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -774,6 +774,15 @@ private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
     val wasEnabled = try { shellText(adb, "settings get secure screensaver_enabled").trim() == "1" } catch (_: Exception) { false }
     val nowEnabled = if (enabled) true else wasEnabled && components.isNotEmpty()
     shellText(adb, "settings put secure screensaver_components '$next'; settings put secure screensaver_enabled ${if (nowEnabled) 1 else 0}")
+    val verifiedComponents = try {
+        shellText(adb, "settings get secure screensaver_components").trim()
+    } catch (e: Exception) {
+        throw Exception("Не удалось проверить список заставок после изменения: ${errorText(e)}", e)
+    }
+    val verifiedEnabled = shellText(adb, "settings get secure screensaver_enabled").trim() == "1"
+    require(verifiedComponents == next && verifiedEnabled == nowEnabled) {
+        "Телевизор не подтвердил новое состояние заставки. Список или переключатель отличается от ожидаемого."
+    }
     return if (enabled) {
         val opened = try { shellText(adb, "am start -a android.settings.DREAM_SETTINGS") } catch (_: Exception) { "Открой системные настройки заставки вручную." }
         "Системная заставка Clean Your TV включена. Настрой время запуска в открывшемся меню. $opened"
@@ -846,10 +855,24 @@ private fun configureInputKeyService(adb: Dadb, enabled: Boolean): String {
             "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
         }
         shellText(adb, command)
+        val verifiedRaw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+        val verifiedServices = verifiedRaw.takeUnless { it.isBlank() || it == "null" }?.split(":").orEmpty()
+        val accessibilityEnabled = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
+        require(verifiedServices.count { it == component } == 1 &&
+            verifiedServices.filterNot { it == component } == base &&
+            accessibilityEnabled) {
+            "Телевизор не подтвердил включение InputKeyService или изменился список других служб специальных возможностей."
+        }
         return "Сервис обработки кнопок включён. Сохранённые назначения готовы к работе."
     } else {
-        val next = services.filterNot { it == component }.joinToString(":")
+        val nextServices = services.filterNot { it == component }
+        val next = nextServices.joinToString(":")
         shellText(adb, "settings put secure enabled_accessibility_services '$next'")
+        val verifiedRaw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
+        val verifiedServices = verifiedRaw.takeUnless { it.isBlank() || it == "null" }?.split(":").orEmpty()
+        require(component !in verifiedServices && verifiedServices == nextServices) {
+            "Телевизор не подтвердил отключение InputKeyService или изменился список других служб специальных возможностей."
+        }
         return "Сервис обработки кнопок отключён. Остальные службы специальных возможностей сохранены."
     }
 }
