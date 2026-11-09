@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.45"
+private const val APP_VERSION = "0.9.46"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -91,6 +91,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
     val queue = java.util.concurrent.ConcurrentLinkedQueue<NsdServiceInfo>()
     val resolving = java.util.concurrent.atomic.AtomicBoolean(false)
     val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
+    val accepting = java.util.concurrent.atomic.AtomicBoolean(true)
     val finished = java.util.concurrent.CountDownLatch(1)
     val ownAddresses = runCatching {
         NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
@@ -140,7 +141,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
             override fun onDiscoveryStarted(type: String) = Unit
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val key = "${serviceInfo.serviceType}/${serviceInfo.serviceName}"
-                if (!stopped.get() && seenServices.add(key)) {
+                if (accepting.get() && seenServices.add(key)) {
                     queue.offer(serviceInfo)
                     resolveNext()
                 }
@@ -163,8 +164,24 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
     } catch (_: InterruptedException) {
         Thread.currentThread().interrupt()
     } finally {
-        stopped.set(true)
+        // Stop accepting new announcements first, but let already queued DNS-SD
+        // resolutions finish so a slow TV is not silently omitted.
+        accepting.set(false)
         started.forEach { listener -> runCatching { nsd.stopServiceDiscovery(listener) } }
+        val drainDeadline = System.nanoTime() +
+            java.util.concurrent.TimeUnit.SECONDS.toNanos(2)
+        while (!Thread.currentThread().isInterrupted &&
+            System.nanoTime() < drainDeadline &&
+            (resolving.get() || queue.isNotEmpty())
+        ) {
+            try {
+                Thread.sleep(25)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
+        }
+        stopped.set(true)
     }
     return found.values.sortedWith(compareBy<TvDevice> { it.name.lowercase() }.thenBy { it.ip }.thenBy { it.port })
 }
