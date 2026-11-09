@@ -55,18 +55,18 @@ internal object TvAutomationEngine {
         fun number(pattern: Regex): Long? =
             pattern.find(diagnostics)?.groupValues?.getOrNull(1)?.toLongOrNull()
 
-        val memoryTotal = number(Regex("""(?m)^MemTotal:\\s*(\\d+)\\s*kB"""))
-        val memoryAvailable = number(Regex("""(?m)^MemAvailable:\\s*(\\d+)\\s*kB"""))
-            ?: number(Regex("""(?m)^MemFree:\\s*(\\d+)\\s*kB"""))
+        val memoryTotal = number(Regex("""(?m)^MemTotal:\s*(\d+)\s*kB"""))
+        val memoryAvailable = number(Regex("""(?m)^MemAvailable:\s*(\d+)\s*kB"""))
+            ?: number(Regex("""(?m)^MemFree:\s*(\d+)\s*kB"""))
         val memoryPercent = if (memoryTotal != null && memoryTotal > 0 && memoryAvailable != null) {
             ((memoryAvailable * 100L) / memoryTotal).toInt().coerceIn(0, 100)
         } else null
 
-        val dataUsedPercent = Regex("""(?m)^.*\\s(\\d{1,3})%\\s+/data\\s*$""")
+        val dataUsedPercent = Regex("""(?m)^.*\s(\d{1,3})%\s+/data\s*$""")
             .find(diagnostics)?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?.takeIf { it in 0..100 }
 
-        val uptimeSeconds = Regex("""ВРЕМЯ РАБОТЫ\\s*\\n\\s*(\\d+(?:\\.\\d+)?)\\s+секунд""", RegexOption.IGNORE_CASE)
+        val uptimeSeconds = Regex("""ВРЕМЯ РАБОТЫ\s*\n\s*(\d+(?:\.\d+)?)\s+секунд""", RegexOption.IGNORE_CASE)
             .find(diagnostics)?.groupValues?.getOrNull(1)?.toDoubleOrNull()
         val uptimeDays = uptimeSeconds?.takeIf { it >= 0 }?.div(86400.0)?.toInt()
 
