@@ -840,7 +840,7 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
         }
 
         addText("device-info.txt", readTvDetails(adb))
-        addText("applications.txt", packages.joinToString("\\n"))
+        addText("applications.txt", packages.joinToString("\n"))
         packages.forEach { pkg ->
             try {
                 val paths = shellText(adb, "pm path $pkg").lineSequence()
@@ -2296,7 +2296,7 @@ fun TvInstallerApp() {
                                 value = launcherRemoteKeyMappings,
                                 onValueChange = { launcherRemoteKeyMappings = it },
                                 label = { Text("Назначения кнопок") },
-                                placeholder = { Text("KEYCODE_BUTTON_3:com.google.android.youtube.tv\\nhold:KEYCODE_BUTTON_8:org.xbmc.kodi\\nKEYCODE_PROG_RED:settings") },
+                                placeholder = { Text("KEYCODE_BUTTON_3:com.google.android.youtube.tv\nhold:KEYCODE_BUTTON_8:org.xbmc.kodi\nKEYCODE_PROG_RED:settings") },
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 3,
                                 maxLines = 8
