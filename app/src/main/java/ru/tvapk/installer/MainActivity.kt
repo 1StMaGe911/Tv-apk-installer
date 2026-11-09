@@ -3583,6 +3583,8 @@ fun TvInstallerApp() {
 
     var busy by remember { mutableStateOf(false) }
     var verifiedCatalog by remember { mutableStateOf<CleanYourTvTrust.VerifiedCatalog?>(null) }
+    var installedCatalogVersions by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var installedCatalogScanAt by remember { mutableStateOf("") }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var tvCompatibilityReport by remember { mutableStateOf("") }
     var packageDisableSupported by remember { mutableStateOf(false) }
@@ -5230,6 +5232,50 @@ fun TvInstallerApp() {
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Загрузить и проверить свежий каталог")
                             }
+                            OutlinedButton(
+                                enabled = !busy && verifiedCatalog != null,
+                                onClick = {
+                                    val host = ip.trim()
+                                    val adbPort = port.toIntOrNull()
+                                    if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
+                                        status = "Укажи IP и порт ADB телевизора"
+                                    } else {
+                                        runTask({
+                                            val catalog = verifiedCatalog
+                                                ?: throw Exception("Сначала проверь подписанный каталог")
+                                            connectWithRetry(context, host, adbPort) { adb ->
+                                                val installed = linkedMapOf<String, Long>()
+                                                catalog.modules.forEach { module ->
+                                                    val pathOutput = shellText(adb, "pm path ${module.packageName}")
+                                                    if (pathOutput.lineSequence().any { it.startsWith("package:") }) {
+                                                        val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                                        val code = Regex("versionCode=(\\d+)").find(details)
+                                                            ?.groupValues?.get(1)?.toLongOrNull()
+                                                            ?: throw Exception("Не удалось прочитать versionCode: ${module.packageName}")
+                                                        installed[module.packageName] = code
+                                                    }
+                                                }
+                                                activity.runOnUiThread {
+                                                    installedCatalogVersions = installed
+                                                    installedCatalogScanAt = java.time.Instant.now().toString()
+                                                }
+                                                "Сканирование завершено: установлено дополнений ${installed.size} из ${catalog.modules.size}. " +
+                                                    installed.entries.joinToString { "${it.key}: v${it.value}" }
+                                            }
+                                        })
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Сканировать установленные модули на ТВ")
+                            }
+                            if (installedCatalogScanAt.isNotBlank()) {
+                                Text(
+                                    "Последняя проверка устройства: $installedCatalogScanAt • обнаружено: ${installedCatalogVersions.size}",
+                                    color = TextMuted,
+                                    fontSize = 10.sp
+                                )
+                            }
                             verifiedCatalog?.let { catalog ->
                                 Text(
                                     "КАТАЛОГ ДОПОЛНЕНИЙ • версия ${catalog.sequence}",
@@ -5260,6 +5306,17 @@ fun TvInstallerApp() {
                                                 fontSize = 10.sp
                                             )
                                             Text(module.description, color = TextMuted, fontSize = 11.sp)
+                                            val installedCode = installedCatalogVersions[module.packageName]
+                                            val latestCode = latest?.versionCode
+                                            val updateAvailable = installedCode != null && latestCode != null && latestCode > installedCode
+                                            val installedLabel = when {
+                                                installedCode == null -> "Не установлено на ТВ"
+                                                updateAvailable -> "Установлена версия $installedCode • доступно обновление до $latestCode"
+                                                latestCode != null && installedCode == latestCode -> "Установлена актуальная версия $installedCode"
+                                                latestCode != null && installedCode > latestCode -> "На ТВ версия $installedCode новее каталога ($latestCode); установка заблокирована"
+                                                else -> "Установлена версия $installedCode"
+                                            }
+                                            Text(installedLabel, color = if (updateAvailable) Color(0xFFFFD98A) else TextMuted, fontSize = 11.sp)
                                             if (latest != null) {
                                                 Text(
                                                     "Версия ${latest.versionName} (код ${latest.versionCode}) • ${latest.size / 1024} КБ • min SDK ${latest.minSdk}",
@@ -5290,10 +5347,18 @@ fun TvInstallerApp() {
                                                     enabled = !busy && latest != null &&
                                                         (module.tier == "verified" || module.tier == "community") &&
                                                         latest?.revoked == false &&
-                                                        catalog.expiresAtMillis > System.currentTimeMillis(),
+                                                        catalog.expiresAtMillis > System.currentTimeMillis() &&
+                                                        (installedCode == null || latestCode != null && installedCode < latestCode),
                                                     onClick = { installCatalogModule(module) }
                                                 ) {
-                                                    Text("Проверить и установить")
+                                                    Text(
+                                                        when {
+                                                            installedCode == null -> "Проверить и установить"
+                                                            updateAvailable -> "Проверить и обновить"
+                                                            latestCode != null && installedCode >= latestCode -> "Уже актуально"
+                                                            else -> "Установить"
+                                                        }
+                                                    )
                                                 }
                                             }
                                             if (module.tier != "verified" && module.tier != "community") {
