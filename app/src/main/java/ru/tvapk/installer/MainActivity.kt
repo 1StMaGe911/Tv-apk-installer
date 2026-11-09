@@ -693,8 +693,7 @@ private fun disableLauncherRemoteMappings(adb: Dadb): String {
     config.remove("app_keys")
     config.remove("key_filter")
     val restart = writeLauncherConfig(adb, config)
-    val service = configureInputKeyService(adb, false)
-    return "Назначения кнопок очищены. $service $restart"
+    return "Назначения кнопок очищены. InputKeyService оставлен включённым для штатной кнопки TV/Input; при необходимости отключи его в настройках специальных возможностей. $restart"
 }
 
 private fun readTvDiagnostics(adb: Dadb): String {
