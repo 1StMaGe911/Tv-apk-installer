@@ -7596,6 +7596,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             disabledOnDevice = disabled
                                             selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                                             automationReport = report
+                                            // Continue directly to the existing explicit confirmation dialog.
+                                            pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                                         }
                                         report
                                     }
