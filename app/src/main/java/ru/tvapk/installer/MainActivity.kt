@@ -2361,12 +2361,13 @@ private fun restoreStockHomeAfterHandover(context: Context, adb: Dadb): String {
             "Запись переключения Home создана для другого телевизора или прошивки. Подключение проверено, откат остановлен."
         }
     } else {
-        // Legacy records from before 0.9.41 had no device fingerprint. Only allow their
-        // recovery when Clean Your TV is still the currently selected Home.
-        val currentHome = resolveHomeComponent(adb)
-        require(currentHome?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
-            "Старая запись Home не содержит отпечаток телевизора, а Clean Your TV сейчас не является главным экраном. Безопасный откат остановлен."
-        }
+        // A legacy handover has no device identity. The current Home name alone cannot
+        // prove that this is the same TV, so never replay its saved component automatically.
+        throw IllegalStateException(
+            "Старая запись переключения Home не содержит отпечаток телевизора. " +
+                "Автоматический откат заблокирован, чтобы не изменить другой ТВ. " +
+                "Выбери штатный домашний экран вручную в настройках Android."
+        )
     }
     require(stockPackage in KNOWN_STOCK_HOME_PACKAGES && stockComponent.startsWith("$stockPackage/")) {
         "Запись отката не прошла проверку безопасности. Ничего не изменено."
