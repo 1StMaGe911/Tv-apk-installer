@@ -2923,6 +2923,7 @@ fun TvInstallerApp() {
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
     var trackedAutoStartChanges by remember { mutableStateOf(runCatching { loadTrackedAutoStartChanges(context) }.getOrDefault(emptyList())) }
+    var trackedSystemSettingChanges by remember { mutableStateOf(runCatching { loadTrackedSystemSettingChanges(context) }.getOrDefault(emptyList())) }
     var pendingTrackedPackageRollback by remember { mutableStateOf(false) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
@@ -5881,8 +5882,8 @@ val actualAfterRestore = readDisabledPackages(adb)
                             }
                         }
                         Text("Журнал ручных изменений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                        Text("Запоминаются исходные и текущие состояния пакетов и компонентов автозапуска, изменённых вручную в соответствующих разделах. Очистка и другие системные настройки пока ведутся отдельно.", color = TextMuted, fontSize = 11.sp)
-                        Text("Записей пакетов: ${trackedPackageChanges.size} • автозапуск: ${trackedAutoStartChanges.size}", color = TextMain, fontSize = 12.sp)
+                        Text("Журнал хранит исходные и текущие состояния пакетов, автозапуска, системной заставки и InputKeyService. Перед откатом сравнивается фактическое значение; изменения пользователя не перезаписываются.", color = TextMuted, fontSize = 11.sp)
+                        Text("Пакеты: ${trackedPackageChanges.size} • автозапуск: ${trackedAutoStartChanges.size} • системные настройки: ${trackedSystemSettingChanges.size}", color = TextMain, fontSize = 12.sp)
                         trackedPackageChanges.take(8).forEach { entry ->
                             Text(
                                 "${entry.packageName}: ${if (entry.wasDisabled) "изначально отключён" else "изначально включён"} → ${if (entry.isDisabled) "сейчас отключён" else "сейчас включён"}",
@@ -5899,12 +5900,15 @@ val actualAfterRestore = readDisabledPackages(adb)
                             )
                         }
                         if (trackedAutoStartChanges.size > 8) Text("И ещё ${trackedAutoStartChanges.size - 8} записей автозапуска", color = TextMuted, fontSize = 11.sp)
+                        trackedSystemSettingChanges.take(8).forEach { entry -> Text("secure/${entry.key}: ${entry.wasValue ?: "отсутствовало"} → ${entry.isValue}", color = TextMuted, fontSize = 11.sp) }
+                        if (trackedSystemSettingChanges.size > 8) Text("И ещё ${trackedSystemSettingChanges.size - 8} записей системных настроек", color = TextMuted, fontSize = 11.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(enabled = !busy, onClick = {
                                 trackedPackageChanges = loadTrackedPackageChanges(context)
                                 trackedAutoStartChanges = loadTrackedAutoStartChanges(context)
+                                trackedSystemSettingChanges = loadTrackedSystemSettingChanges(context)
                             }) { Text("Обновить журнал") }
-                            OutlinedButton(enabled = !busy && (trackedPackageChanges.isNotEmpty() || trackedAutoStartChanges.isNotEmpty()), onClick = {
+                            OutlinedButton(enabled = !busy && (trackedPackageChanges.isNotEmpty() || trackedAutoStartChanges.isNotEmpty() || trackedSystemSettingChanges.isNotEmpty()), onClick = {
                                 pendingTrackedPackageRollback = true
                             }) { Text("Предпросмотр отката") }
                         }
@@ -5924,6 +5928,8 @@ val actualAfterRestore = readDisabledPackages(adb)
                                              Text("${entry.component}: вернуть состояние «${entry.wasState}»", fontSize = 11.sp)
                                          }
                                          if (trackedAutoStartChanges.size > 20) Text("Показаны первые 20 из ${trackedAutoStartChanges.size} записей автозапуска.", fontSize = 11.sp)
+                                          trackedSystemSettingChanges.take(20).forEach { entry -> Text("secure/${entry.key}: вернуть «${entry.wasValue ?: "отсутствовало"}»", fontSize = 11.sp) }
+                                          if (trackedSystemSettingChanges.size > 20) Text("Показаны первые 20 из ${trackedSystemSettingChanges.size} системных настроек.", fontSize = 11.sp)
                                     }
                                 },
                                 confirmButton = {
@@ -5937,11 +5943,12 @@ val actualAfterRestore = readDisabledPackages(adb)
                                             connectWithRetry(context, host, p) { adb ->
                                                 val packagesResult = rollbackTrackedPackageChanges(context, adb)
                                                 val autoStartResult = rollbackTrackedAutoStartChanges(context, adb)
-                                                "$packagesResult\n$autoStartResult"
+                                                val systemSettingsResult = rollbackTrackedSystemSettingChanges(context, adb)
+                                                "$packagesResult\n$autoStartResult\n$systemSettingsResult"
                                             }
                                         }, {
                                             runCatching { loadTrackedPackageChanges(context) }
-                                                .onSuccess { trackedPackageChanges = it; trackedAutoStartChanges = loadTrackedAutoStartChanges(context) }
+                                                .onSuccess { trackedPackageChanges = it; trackedAutoStartChanges = loadTrackedAutoStartChanges(context); trackedSystemSettingChanges = loadTrackedSystemSettingChanges(context) }
                                                 .onFailure { status = "Журнал не прочитан: ${errorText(it)}" }
                                         })
                                     }) { Text("Проверить и откатить") }
