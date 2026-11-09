@@ -5040,7 +5040,7 @@ fun TvInstallerApp() {
                                     "Подпись каталога Clean Your TV подтверждена. Последовательность: ${catalog.sequence}; модулей: ${catalog.modules.size}; доступно по уровню доверия: $usable; срок действия до: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. Подпись: ${catalog.trustedComment}"
                                 })
                             }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Проверить встроенный каталог (офлайн)")
+                                Text("Проверить сохранённый каталог (офлайн)")
                             }
                             OutlinedButton(enabled = !busy, onClick = {
                                 runTask({
