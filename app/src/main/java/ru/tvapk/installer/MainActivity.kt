@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.80"
+private const val APP_VERSION = "0.9.81"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -4298,9 +4298,30 @@ fun TvInstallerApp() {
                     "APK изменён или повреждён; экспорт отменён"
                 }
                 context.contentResolver.openOutputStream(destinationUri)?.use { output ->
-                    source.inputStream().use { input -> input.copyTo(output) }
+                    source.inputStream().buffered().use { input -> input.copyTo(output) }
+                    output.flush()
                 } ?: throw Exception("Не удалось сохранить APK")
-                "APK ${entry.packageName} versionCode ${entry.versionCode} экспортирован после проверки SHA-256"
+                // Read the saved document back: a successful write alone does not prove
+                // that a cloud/document provider stored the complete, unchanged APK.
+                val exportedDigest = MessageDigest.getInstance("SHA-256")
+                var exportedBytes = 0L
+                context.contentResolver.openInputStream(destinationUri)?.buffered()?.use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        exportedBytes += count
+                        require(exportedBytes <= entry.sizeBytes) {
+                            "Экспортированный APK больше исходной копии; проверка не пройдена"
+                        }
+                        exportedDigest.update(buffer, 0, count)
+                    }
+                } ?: throw Exception("Не удалось повторно прочитать сохранённый APK для проверки")
+                val exportedSha256 = exportedDigest.digest().joinToString("") { "%02x".format(it) }
+                require(exportedBytes == entry.sizeBytes && exportedSha256.equals(entry.sha256, true)) {
+                    "Проверка экспортированного APK не пройдена: размер или SHA-256 не совпадает"
+                }
+                "APK ${entry.packageName} versionCode ${entry.versionCode} экспортирован и повторно проверен по размеру и SHA-256"
             })
         }
     }
