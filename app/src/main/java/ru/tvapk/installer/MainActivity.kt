@@ -2268,64 +2268,53 @@ fun TvInstallerApp() {
     }
 
 
-    val cleanYourTvModulePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { sourceUri ->
-        if (sourceUri != null) {
-            val host = ip.trim()
-            val p = port.toIntOrNull()
-            if (host.isBlank() || p == null || p !in 1..65535) {
-                status = "Сначала укажи IP и порт ADB и подключись к телевизору"
-            } else {
-                runTask({
-                    val sourceApk = File(context.cacheDir, "cleanyourtv-source.apk")
-                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                        sourceApk.outputStream().use { output -> input.copyTo(output) }
-                    } ?: throw Exception("Не удалось прочитать исходный APK")
-                    fun extractBundled(entryName: String, outputName: String): File {
-                        val outputFile = File(context.cacheDir, outputName)
-                        var extracted = false
-                        java.util.zip.ZipInputStream(sourceApk.inputStream()).use { zip ->
-                            var entry = zip.nextEntry
-                            while (entry != null) {
-                                if (entry.name == entryName) {
-                                    outputFile.outputStream().use { output ->
-                                        val buffer = ByteArray(8192)
-                                        var total = 0
-                                        while (true) {
-                                            val count = zip.read(buffer)
-                                            if (count <= 0) break
-                                            total += count
-                                            if (total > 8 * 1024 * 1024) throw Exception("Модуль слишком большой")
-                                            output.write(buffer, 0, count)
-                                        }
-                                    }
-                                    extracted = true
-                                    break
-                                }
-                                zip.closeEntry()
-                                entry = zip.nextEntry
-                            }
-                        }
-                        if (!extracted || !outputFile.exists() || outputFile.length() < 1024) {
-                            throw Exception("В APK не найден модуль: $entryName")
-                        }
-                        return outputFile
+    val installCleanYourTvModules: () -> Unit = {
+        val host = ip.trim()
+        val p = port.toIntOrNull()
+        if (host.isBlank() || p == null || p !in 1..65535) {
+            status = "Сначала укажи IP и порт ADB и подключись к телевизору"
+        } else {
+            runTask({
+                fun copyPinnedModule(assetName: String, outputName: String, expectedSize: Long, expectedSha256: String): File {
+                    val outputFile = File(context.cacheDir, outputName)
+                    context.assets.open("cleanyourtv-modules/$assetName").use { input ->
+                        outputFile.outputStream().use { output -> input.copyTo(output) }
                     }
-                    val launcherApk = extractBundled("assets/bundled/cleanyourtv-launcher.apk", "cleanyourtv-launcher.apk")
-                    val curtainApk = extractBundled("assets/bundled/cleanyourtv-curtain.apk", "cleanyourtv-curtain.apk")
-                    connectWithRetry(context, host, p) { adb ->
-                        adb.install(launcherApk)
-                        adb.install(curtainApk)
-                        val launcher = shellText(adb, "pm path com.gathin.tvhome")
-                        val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
-                        if (!launcher.contains("package:") || !curtain.contains("package:")) {
-                            throw Exception("Проверка установки не пройдена. Launcher: $launcher; Curtain: $curtain")
-                        }
-                        "Модули установлены и проверены: Launcher и Curtain. Штатный экран телевизора не отключался."
+                    require(outputFile.length() == expectedSize) {
+                        "Размер модуля $assetName не совпадает с доверенным значением"
                     }
-                })
-            }
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(outputFile.readBytes())
+                        .joinToString("") { "%02x".format(it) }
+                    require(digest.equals(expectedSha256, ignoreCase = true)) {
+                        "Проверка SHA-256 не пройдена для $assetName. Установка отменена."
+                    }
+                    return outputFile
+                }
+
+                val launcherApk = copyPinnedModule(
+                    "cleanyourtv-launcher.apk",
+                    "cleanyourtv-launcher.apk",
+                    540541L,
+                    "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e"
+                )
+                val curtainApk = copyPinnedModule(
+                    "cleanyourtv-curtain.apk",
+                    "cleanyourtv-curtain.apk",
+                    65955L,
+                    "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e"
+                )
+                connectWithRetry(context, host, p) { adb ->
+                    adb.install(launcherApk)
+                    adb.install(curtainApk)
+                    val launcher = shellText(adb, "pm path com.gathin.tvhome")
+                    val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
+                    if (!launcher.contains("package:") || !curtain.contains("package:")) {
+                        throw Exception("Проверка установки не пройдена. Launcher: $launcher; Curtain: $curtain")
+                    }
+                    "Проверенные модули Clean Your TV установлены: Launcher и Curtain. SHA-256 обоих файлов подтверждён. Штатный экран телевизора не отключался."
+                }
+            })
         }
     }
 
@@ -2915,9 +2904,9 @@ fun TvInstallerApp() {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                            Text("Выбери исходный APK Clean Your TV 0.4.8. TV APK Installer извлечёт из него оригинальные модули Launcher и Curtain и установит их на подключённый Android TV.", color = TextMuted, fontSize = 12.sp)
-                            Button(enabled = !busy, onClick = { cleanYourTvModulePicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (busy) "Установка модулей..." else "Выбрать APK Clean Your TV и установить модули")
+                            Text("TV APK Installer уже содержит проверенные модули Clean Your TV. Приложение само проверит их контрольные суммы и установит Launcher и Curtain на подключённый Android TV — импортировать отдельный APK не нужно.", color = TextMuted, fontSize = 12.sp)
+                            Button(enabled = !busy, onClick = { installCleanYourTvModules() }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Установка модулей..." else "Установить / обновить модули автоматически")
                             }
                             OutlinedButton(enabled = !busy, onClick = {
                                 val host = ip.trim(); val p = port.toIntOrNull()
