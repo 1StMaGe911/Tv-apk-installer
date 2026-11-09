@@ -1605,30 +1605,66 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
         }
         return "Конфигурация Clean Your TV восстановлена. $wallpaperNote Коллекция ротации не менялась. $baseRestore"
     }
-    val staging = File(context.cacheDir, "launcher-wallpapers-restore")
-    if (staging.exists()) staging.deleteRecursively()
-    require(staging.mkdirs()) { "Не удалось подготовить коллекцию обоев для восстановления" }
-    val localFiles = try {
-        collectionBytes.forEach { (name, bytes) -> File(staging, name).writeBytes(bytes) }
-        val destination = File(context.filesDir, "launcher_wallpapers")
-        if (destination.exists()) require(destination.deleteRecursively()) { "Не удалось заменить локальную коллекцию обоев" }
-        if (!staging.renameTo(destination)) {
-            require(destination.mkdirs()) { "Не удалось создать локальную коллекцию обоев" }
-            staging.listFiles()?.forEach { file -> file.copyTo(File(destination, file.name), overwrite = true) }
-            staging.deleteRecursively()
-        }
-        destination.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
-    } catch (e: Exception) {
-        staging.deleteRecursively()
-        throw e
+    // Replace the phone-side collection transactionally. Keep the previous
+    // directory until the TV accepts the new collection; never delete the only copy.
+    val destination = File(context.filesDir, "launcher_wallpapers")
+    val staging = File(context.filesDir, "launcher-wallpapers-restore")
+    val previous = File(context.filesDir, "launcher-wallpapers-previous")
+    require(!previous.exists()) {
+        "Найдена незавершённая предыдущая операция с коллекцией обоев. Старую копию не трогаю; проверь папку данных приложения."
     }
-    val rotation = uploadWallpaperCollection(
-        adb,
-        localFiles,
-        config.optInt("wallpaper_rotation_minutes", 0),
-        config.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
-    )
-    return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation"
+    if (staging.exists()) require(staging.deleteRecursively()) {
+        "Не удалось очистить временную папку восстановления"
+    }
+    require(staging.mkdirs()) { "Не удалось подготовить коллекцию обоев для восстановления" }
+    var previousMoved = false
+    try {
+        collectionBytes.forEach { (name, bytes) ->
+            File(staging, name).writeBytes(bytes)
+        }
+        if (destination.exists()) {
+            require(destination.renameTo(previous)) {
+                "Не удалось сохранить прежнюю коллекцию обоев. Восстановление отменено."
+            }
+            previousMoved = true
+        }
+        require(staging.renameTo(destination)) {
+            "Не удалось активировать новую коллекцию обоев"
+        }
+        val localFiles = destination.listFiles()?.filter { it.isFile && allowedWallpaper.matches(it.name) }
+            ?.sortedBy { it.name } ?: emptyList()
+        val rotation = uploadWallpaperCollection(
+            adb,
+            localFiles,
+            config.optInt("wallpaper_rotation_minutes", 0),
+            config.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
+        )
+        if (previousMoved) previous.deleteRecursively()
+        return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation"
+    } catch (e: Exception) {
+        // Restore the old local collection if staging or TV upload failed.
+        if (destination.exists()) destination.deleteRecursively()
+        var tvRollbackSucceeded = false
+        if (previousMoved && previous.exists() && previous.renameTo(destination)) {
+            val oldFiles = destination.listFiles()
+                ?.filter { it.isFile && allowedWallpaper.matches(it.name) }
+                ?.sortedBy { it.name } ?: emptyList()
+            tvRollbackSucceeded = runCatching {
+                uploadWallpaperCollection(
+                    adb,
+                    oldFiles,
+                    config.optInt("wallpaper_rotation_minutes", 0),
+                    config.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
+                )
+            }.isSuccess
+        }
+        staging.deleteRecursively()
+        val rollbackNote = if (previousMoved) {
+            if (tvRollbackSucceeded) " Прежняя коллекция возвращена и на телефоне, и на телевизоре."
+            else " Прежняя коллекция возвращена на телефоне; проверь список обоев на телевизоре вручную."
+        } else ""
+        throw Exception("Не удалось завершить восстановление коллекции: ${errorText(e)}.$rollbackNote", e)
+    }
 }
 
 private fun applyLauncherHomeKeySettings(adb: Dadb, longPressHome: Boolean): String {
