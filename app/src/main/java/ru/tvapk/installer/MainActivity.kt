@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.8.2"
+private const val APP_VERSION = "0.8.3"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -346,10 +346,15 @@ private fun applyLauncherAppearance(
     }
     require(installed) { "Clean Your TV Launcher не установлен. Сначала установи модуль в разделе «Модули Clean Your TV»." }
 
-    val config = JSONObject()
+    // Keep the existing Launcher configuration so changing appearance does not
+    // erase dock pins, hidden apps, key mappings, wallpaper, or rotation settings.
+    val config = try {
+        readCurrentLauncherConfig(adb)
+    } catch (_: Exception) {
+        JSONObject()
+    }
+    config
         .put("background_color", "#080808")
-        .put("wallpaper", false)
-        .put("wallpaper_rotation_minutes", 0)
         .put("columns", columns.coerceIn(4, 8))
         .put("rows_below_dock", rowsBelowDock.coerceIn(0, 3))
         .put("dock_title", dockTitle)
