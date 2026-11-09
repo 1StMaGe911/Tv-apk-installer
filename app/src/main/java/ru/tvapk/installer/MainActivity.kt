@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.59"
+private const val APP_VERSION = "0.9.60"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1576,6 +1576,20 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
     val wallpaper = wallpaperBytes
     require(wallpaperState != "present" || wallpaper != null) { "В архиве отмечены обои, но wallpaper.jpg отсутствует" }
     require(wallpaperState != "absent" || wallpaper == null) { "Архив противоречив: состояние обоев отмечено как отсутствующее, но файл есть" }
+
+    // Preflight local recovery state before changing config or wallpaper on the TV.
+    val destination = File(context.filesDir, "launcher_wallpapers")
+    val staging = File(context.filesDir, "launcher-wallpapers-restore")
+    val previous = File(context.filesDir, "launcher-wallpapers-previous")
+    if (collectionBytes.isNotEmpty()) {
+        require(!previous.exists()) {
+            "Найдена незавершённая предыдущая операция с коллекцией обоев. Сначала проверь резервную папку; настройки телевизора не изменены."
+        }
+        if (staging.exists()) require(staging.deleteRecursively()) {
+            "Не удалось очистить временную папку восстановления. Настройки телевизора не изменены."
+        }
+    }
+
     val baseRestore = if (wallpaper == null) {
         if (wallpaperState == "absent") {
             try {
@@ -1607,15 +1621,6 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
     }
     // Replace the phone-side collection transactionally. Keep the previous
     // directory until the TV accepts the new collection; never delete the only copy.
-    val destination = File(context.filesDir, "launcher_wallpapers")
-    val staging = File(context.filesDir, "launcher-wallpapers-restore")
-    val previous = File(context.filesDir, "launcher-wallpapers-previous")
-    require(!previous.exists()) {
-        "Найдена незавершённая предыдущая операция с коллекцией обоев. Старую копию не трогаю; проверь папку данных приложения."
-    }
-    if (staging.exists()) require(staging.deleteRecursively()) {
-        "Не удалось очистить временную папку восстановления"
-    }
     require(staging.mkdirs()) { "Не удалось подготовить коллекцию обоев для восстановления" }
     var previousMoved = false
     try {
