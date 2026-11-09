@@ -7356,15 +7356,15 @@ val actualAfterRestore = readDisabledPackages(adb)
                             "Копии сохраняются автоматически, если откат установки не удался. Перед восстановлением требуется сверить издателя с доверенным каталогом.",
                             color = TextMuted, fontSize = 11.sp
                         )
-                        val cleanupCandidates = recoveryCleanupCandidates(recoveryApks, verifiedCatalog)
+                        val recoveryCleanupCandidates = recoveryCleanupCandidates(recoveryApks, verifiedCatalog)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "Можно безопасно удалить: ${cleanupCandidates.size} старых копий",
+                                "Можно безопасно удалить: ${recoveryCleanupCandidates.size} старых копий",
                                 color = TextMuted, fontSize = 10.sp
                             )
                             Spacer(Modifier.weight(1f))
                             TextButton(
-                                enabled = !busy && cleanupCandidates.isNotEmpty(),
+                                enabled = !busy && recoveryCleanupCandidates.isNotEmpty(),
                                 onClick = { pendingRecoveryCleanup = true }
                             ) { Text("Очистить старые") }
                         }
