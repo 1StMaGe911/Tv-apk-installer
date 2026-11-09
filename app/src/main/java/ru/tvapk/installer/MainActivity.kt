@@ -518,6 +518,9 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
     require(shellText(adb, "pm path $packageName").contains("package:")) {
         "Clean Your TV Launcher не установлен."
     }
+    require(dock.none { it in hidden }) {
+        "Одно приложение нельзя одновременно закрепить в доке и скрыть с главного экрана."
+    }
     val config = readCurrentLauncherConfig(adb)
     if (dock.isEmpty()) config.remove("dock_apps") else config.put("dock_apps", JSONArray(dock))
     if (hidden.isEmpty()) config.remove("hidden_apps") else config.put("hidden_apps", JSONArray(hidden))
