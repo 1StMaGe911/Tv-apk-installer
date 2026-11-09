@@ -1484,6 +1484,8 @@ fun TvInstallerApp() {
     var launcherClockGlow by remember { mutableStateOf(settings.getBoolean("launcher_clock_glow", true)) }
     var launcherBackOpensClock by remember { mutableStateOf(settings.getBoolean("launcher_back_opens_clock", false)) }
     var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
+    var launcherWallpaperRotationMinutes by remember { mutableStateOf(settings.getInt("launcher_wallpaper_rotation_minutes", 0).coerceIn(0, 120)) }
+    var launcherWallpaperOrder by remember { mutableStateOf(settings.getString("launcher_wallpaper_order", "shuffle") ?: "shuffle") }
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
     var pendingHomeKeyServiceEnable by remember { mutableStateOf(false) }
@@ -2454,6 +2456,8 @@ fun TvInstallerApp() {
                                                 launcherClockGlow = current.optBoolean("clock_glow", true)
                                                 launcherBackOpensClock = current.optBoolean("back_opens_clock", false)
                                                 launcherClockFormat = current.optString("clock_format", "system").takeIf { it in setOf("system", "12", "24") } ?: "system"
+                                                launcherWallpaperRotationMinutes = current.optInt("wallpaper_rotation_minutes", 0).coerceIn(0, 120)
+                                                launcherWallpaperOrder = current.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
                                                 launcherRemoteKeyMappings = current.optJSONArray("app_keys")?.let { array ->
                                                     (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString("\n")
                                                 } ?: ""
@@ -2467,6 +2471,8 @@ fun TvInstallerApp() {
                                                     .putBoolean("launcher_clock_glow", launcherClockGlow)
                                                     .putBoolean("launcher_back_opens_clock", launcherBackOpensClock)
                                                     .putString("launcher_clock_format", launcherClockFormat)
+                                                    .putInt("launcher_wallpaper_rotation_minutes", launcherWallpaperRotationMinutes)
+                                                    .putString("launcher_wallpaper_order", launcherWallpaperOrder)
                                                     .putString("launcher_remote_key_mappings", launcherRemoteKeyMappings)
                                                     .apply()
                                             }
