@@ -665,7 +665,7 @@ private fun configureInputKeyService(adb: Dadb, enabled: Boolean): String {
         val base = services.filterNot { it == component }
         val next = (base + component).distinct().joinToString(":")
         val command = if (wasEnabled) {
-            "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+            "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; sleep 1; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
         } else {
             "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
         }
