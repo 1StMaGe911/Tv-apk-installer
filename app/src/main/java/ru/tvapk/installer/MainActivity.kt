@@ -4343,12 +4343,6 @@ fun TvInstallerApp() {
                         rollbackDir.deleteRecursively()
                     }
 
-                    val repaired = installedBefore.size
-                    "Оба модуля Clean Your TV проверены и установлены. " +
-                        verification.joinToString("; ") +
-                        ". Android TV SDK: $deviceSdk. " +
-                        if (repaired == 2) "Выполнена переустановка для восстановления." else
-                            "Отсутствующие модули установлены, существующие обновлены/восстановлены."
                 }
             })
         }
