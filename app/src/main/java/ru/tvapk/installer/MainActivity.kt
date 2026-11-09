@@ -1672,8 +1672,12 @@ fun TvInstallerApp() {
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
+    var managedSystemDisabledPackages by remember { mutableStateOf(settings.getStringSet("managed_system_disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
     var restorePoint by remember { mutableStateOf(settings.getStringSet("restore_point_user_disabled", emptySet())?.toSet() ?: emptySet()) }
+    var restorePointManagedUserPackages by remember { mutableStateOf(settings.getStringSet("restore_point_managed_user_packages", emptySet())?.toSet() ?: emptySet()) }
+    var restorePointManagedSystemPackages by remember { mutableStateOf(settings.getStringSet("restore_point_managed_system_packages", emptySet())?.toSet() ?: emptySet()) }
+    var restorePointAutoStartComponents by remember { mutableStateOf(settings.getStringSet("restore_point_autostart_components", emptySet())?.toSet() ?: emptySet()) }
     var restorePointExists by remember { mutableStateOf(settings.getBoolean("restore_point_exists", false)) }
     var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
 
@@ -3744,15 +3748,25 @@ fun TvInstallerApp() {
                                     connectWithRetry(context, host, p) { adb ->
                                         val snapshot = readDisabledUserPackages(adb)
                                         val deviceFingerprint = readTvIdentity(adb)
+                                        val managedUsers = disabledPackages.toSet()
+                                        val managedSystems = managedSystemDisabledPackages.toSet()
+                                        val managedAutoStart = disabledAutoStart.toSet()
                                         activity.runOnUiThread {
                                             restorePoint = snapshot
+                                            restorePointManagedUserPackages = managedUsers
+                                            restorePointManagedSystemPackages = managedSystems
+                                            restorePointAutoStartComponents = managedAutoStart
                                             restorePointExists = true
                                             restorePointDeviceFingerprint = deviceFingerprint
-                                            settings.edit().putStringSet("restore_point_user_disabled", snapshot)
+                                            settings.edit()
+                                                .putStringSet("restore_point_user_disabled", snapshot)
+                                                .putStringSet("restore_point_managed_user_packages", managedUsers)
+                                                .putStringSet("restore_point_managed_system_packages", managedSystems)
+                                                .putStringSet("restore_point_autostart_components", managedAutoStart)
                                                 .putString("restore_point_device_fingerprint", deviceFingerprint)
                                                 .putBoolean("restore_point_exists", true).apply()
                                         }
-                                        "Точка восстановления создана. Отключённых пользовательских приложений: ${snapshot.size}"
+                                        "Точка создана. Отключено пользовательских: ${snapshot.size}; под управлением приложения: ${managedUsers.size + managedSystems.size}; автозапуск: ${managedAutoStart.size}"
                                     }
                                 })
                             }) { Text("Создать точку") }
@@ -3770,10 +3784,44 @@ fun TvInstallerApp() {
                                         val current = readDisabledUserPackages(adb)
                                         val toEnable = current - snapshot
                                         val toDisable = snapshot - current
+                                        val installed = readAllPackages(adb).toSet()
+                                        val currentManagedUsers = disabledPackages.toSet()
+                                        val currentManagedSystems = managedSystemDisabledPackages.toSet()
+                                        val currentManagedAutoStart = disabledAutoStart.toSet()
                                         val failures = mutableListOf<String>()
                                         toEnable.forEach { pkg -> try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) } }
                                         toDisable.forEach { pkg -> try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) } }
-                                        if (failures.isEmpty()) "Состояние пользовательских приложений восстановлено по точке"
+                                        (currentManagedUsers - restorePointManagedUserPackages).forEach { pkg ->
+                                            if (pkg in installed) try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                        }
+                                        (restorePointManagedUserPackages - currentManagedUsers).forEach { pkg ->
+                                            if (pkg in installed) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            else failures.add("${pkg} (не установлен)")
+                                        }
+                                        (currentManagedSystems - restorePointManagedSystemPackages).forEach { pkg ->
+                                            if (pkg in installed && !isProtectedSystemPackage(pkg)) try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                        }
+                                        (restorePointManagedSystemPackages - currentManagedSystems).forEach { pkg ->
+                                            if (pkg in installed && !isProtectedSystemPackage(pkg)) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            else if (pkg !in installed) failures.add("${pkg} (не установлен)")
+                                        }
+                                        (currentManagedAutoStart - restorePointAutoStartComponents).forEach { component ->
+                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, true) } catch (_: Exception) { failures.add(component) }
+                                        }
+                                        (restorePointAutoStartComponents - currentManagedAutoStart).forEach { component ->
+                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, false) } catch (_: Exception) { failures.add(component) }
+                                        }
+                                        activity.runOnUiThread {
+                                            disabledPackages = restorePointManagedUserPackages
+                                            managedSystemDisabledPackages = restorePointManagedSystemPackages
+                                            disabledAutoStart = restorePointAutoStartComponents
+                                            settings.edit()
+                                                .putStringSet("disabled_packages", disabledPackages)
+                                                .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
+                                                .putStringSet("disabled_autostart_components", disabledAutoStart)
+                                                .apply()
+                                        }
+                                        if (failures.isEmpty()) "Состояние приложений и автозапуска восстановлено по точке"
                                         else "Не удалось изменить: ${failures.joinToString()}"
                                     }
                                 })
