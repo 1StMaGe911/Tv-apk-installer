@@ -4173,13 +4173,13 @@ fun TvInstallerApp() {
                                                                     } else {
                                                                         failures.add(pkg + if (verifiedDisabled == null) " (не удалось проверить состояние)" else " (остался отключён)")
                                                                     }
-                                                                    val stillPending = rollbackPackages - restored.toSet()
-                                                                    val nextJournal = journal.copy(
-                                                                        completedPackages = stillPending,
-                                                                        inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending }
-                                                                    )
-                                                                    saveCleanupJournal(context, nextJournal)
                                                                 }
+                                                                val stillPending = rollbackPackages - restored.toSet()
+                                                                val nextJournal = journal.copy(
+                                                                    completedPackages = stillPending,
+                                                                    inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending }
+                                                                )
+                                                                saveCleanupJournal(context, nextJournal)
                                                             }
                                                             val remaining = rollbackPackages - restored.toSet()
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
