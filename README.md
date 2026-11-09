@@ -146,3 +146,7 @@ GitHub Actions запускается при push в ветку `main` или в
 ## Лицензии и благодарности
 
 Проект использует идеи и материалы Clean Your TV. Оригинальный проект: [udhaykumarbala/cleanyourtv-app](https://github.com/udhaykumarbala/cleanyourtv-app), лицензия MIT. При распространении производных компонентов сохраняйте соответствующие уведомления об авторстве и лицензиях; встроенные сторонние компоненты могут иметь собственные лицензии.
+
+### Catalog rollback certificate verification (0.9.76)
+
+Before a catalog-managed app update can replace an installed package, the installer now validates the pulled rollback APK's package name, version code, and single signing certificate. The certificate SHA-256 must match the signer fingerprint declared by the verified signed catalog. A backup with a missing, multiple, or unexpected signer is rejected before installation begins.
