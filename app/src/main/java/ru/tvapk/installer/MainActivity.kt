@@ -5040,7 +5040,16 @@ fun TvInstallerApp() {
                                     "Подпись каталога Clean Your TV подтверждена. Последовательность: ${catalog.sequence}; модулей: ${catalog.modules.size}; доступно по уровню доверия: $usable; срок действия до: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. Подпись: ${catalog.trustedComment}"
                                 })
                             }, modifier = Modifier.fillMaxWidth()) {
-                                Text("Проверить подпись каталога дополнений")
+                                Text("Проверить встроенный каталог (офлайн)")
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                runTask({
+                                    val catalog = CleanYourTvTrust.loadLatest(context)
+                                    val usable = catalog.modules.count { it.tier == "verified" || it.tier == "community" }
+                                    "Свежий каталог загружен с официального GitHub и проверен по цепочке minisign. Последовательность: ${catalog.sequence}; модулей: ${catalog.modules.size}; доступно по уровню доверия: $usable; действует до: ${java.time.Instant.ofEpochMilli(catalog.expiresAtMillis)}. Защита от отката сохранена."
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Загрузить и проверить свежий каталог")
                             }
 Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
                             Text("В APK встроены официальные Clean Your TV Launcher и Curtain из закреплённой версии 0.4.8. Перед установкой проверяются SHA-256, подпись разработчика, package name и совместимость Android TV. Перед обновлением сохраняются прежние APK; при ошибке приложение проверяет откат. Более новые версии модулей на телевизоре не заменяются более старыми. Импортировать оригинальный APK не нужно.", color = TextMuted, fontSize = 12.sp)
