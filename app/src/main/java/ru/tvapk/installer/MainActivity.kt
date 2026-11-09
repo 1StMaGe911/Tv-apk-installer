@@ -1111,6 +1111,63 @@ private fun requireTvStorageForApk(adb: Dadb, apkBytes: Long): String {
     return "Свободно ${availableKb / 1024} МБ на /data"
 }
 
+/** Ensures the package is visible to the Android TV primary user (user 0). */
+private fun ensurePackageInstalledForMainUser(adb: Dadb, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"))) {
+        "Некорректное имя пакета для проверки пользователя ТВ"
+    }
+    fun isInstalledForUserZero(): Boolean =
+        shellText(adb, "pm list packages --user 0 $packageName")
+            .lineSequence().any { it.trim() == "package:$packageName" }
+    if (!isInstalledForUserZero()) {
+        val response = shellText(adb, "cmd package install-existing --user 0 $packageName")
+        require(isInstalledForUserZero()) {
+            "Пакет $packageName найден в системе, но не установлен для основного пользователя ТВ (user 0). Ответ Android: $response"
+        }
+    }
+    return "$packageName доступен основному пользователю ТВ"
+}
+
+/** Reads the certificate from the APK pulled from the TV, not from the phone package manager. */
+private fun remoteInstalledApkSignerSha256(context: Context, adb: Dadb, packageName: String): String {
+    require(packageName.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+"))) {
+        "Некорректное имя пакета для проверки подписи"
+    }
+    val paths = shellText(adb, "pm path $packageName").lineSequence()
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.startsWith("/") && !it.contains("..") }.distinct().toList()
+    require(paths.size == 1) {
+        "Нельзя проверить подпись $packageName: ожидался один base APK на ТВ, найдено ${paths.size} файлов"
+    }
+    val directory = File(context.cacheDir, "remote-signature-check")
+    require(directory.exists() || directory.mkdirs()) { "Не удалось создать временную папку проверки подписи" }
+    val localApk = File(directory, "${packageName.substringAfterLast('.')}-${System.currentTimeMillis()}.apk")
+    try {
+        when (val pulled = adb.pull(localApk, paths.single())) {
+            is dadb.SyncResult.Success -> Unit
+            is dadb.SyncResult.Failure -> throw Exception("Не удалось прочитать установленный APK $packageName: $pulled")
+        }
+        require(localApk.isFile && localApk.length() in 1..(200L * 1024L * 1024L)) {
+            "Установленный APK $packageName не скачан полностью или имеет недопустимый размер"
+        }
+        @Suppress("DEPRECATION")
+        val flags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES else PackageManager.GET_SIGNATURES
+        val info = context.packageManager.getPackageArchiveInfo(localApk.absolutePath, flags)
+            ?: throw Exception("Android не смог прочитать APK, установленный на ТВ: $packageName")
+        require(info.packageName == packageName) {
+            "Скачанный с ТВ APK содержит пакет ${info.packageName}, ожидался $packageName"
+        }
+        @Suppress("DEPRECATION")
+        val signatures = if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners?.toList().orEmpty()
+            else info.signatures?.toList().orEmpty()
+        require(signatures.size == 1) { "Установленный на ТВ пакет $packageName должен иметь ровно один сертификат подписанта" }
+        return MessageDigest.getInstance("SHA-256").digest(signatures.single().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    } finally {
+        localApk.delete()
+    }
+}
+
 private fun applyLauncherAppearance(
     adb: Dadb,
     columns: Int,
@@ -4520,7 +4577,8 @@ fun TvInstallerApp() {
                     val versionName: String,
                     val versionCode: Long,
                     val minSdk: Int,
-                    val abis: Set<String>
+                    val abis: Set<String>,
+                    val signerSha256: String
                 )
 
                 // Проверяем оба APK полностью до первого изменения на телевизоре.
@@ -4606,7 +4664,8 @@ fun TvInstallerApp() {
                         packageInfo.versionName ?: "неизвестна",
                         versionCode,
                         packageInfo.applicationInfo?.minSdkVersion ?: 1,
-                        nativeAbis
+                        nativeAbis,
+                        expectedSignerSha256
                     )
                 }
 
@@ -4711,6 +4770,7 @@ fun TvInstallerApp() {
                                         "Установка ${module.packageName} не выполнена: ${result.reason}"
                                     )
                                 }
+                                ensurePackageInstalledForMainUser(adb, module.packageName)
                             }
 
                             val verification = modules.map { module ->
@@ -4724,7 +4784,12 @@ fun TvInstallerApp() {
                                 require(installedCode == module.versionCode) {
                                     "Версия ${module.packageName} после установки не совпадает с проверенным APK."
                                 }
-                                "${module.packageName}: ${module.versionName} (код ${module.versionCode})"
+                                val installedSigner = remoteInstalledApkSignerSha256(context, adb, module.packageName)
+                                require(installedSigner.equals(module.signerSha256, true)) {
+                                    "Подпись APK ${module.packageName}, установленного на телевизоре, не совпадает с закреплённым сертификатом."
+                                }
+                                ensurePackageInstalledForMainUser(adb, module.packageName)
+                                "${module.packageName}: ${module.versionName} (код ${module.versionCode}), подпись и user 0 проверены"
                             }
                             val installedBefore = previousStates.count { it.backupApk != null }
                             "Оба модуля Clean Your TV проверены и установлены. " +
@@ -4762,6 +4827,11 @@ fun TvInstallerApp() {
                                         require(restoredCode == previous.versionCode) {
                                             "После отката ожидался versionCode ${previous.versionCode}, получен $restoredCode."
                                         }
+                                        val restoredSigner = remoteInstalledApkSignerSha256(context, adb, previous.module.packageName)
+                                        require(restoredSigner.equals(previous.module.signerSha256, true)) {
+                                            "После отката подпись ${previous.module.packageName} не совпала с закреплённым сертификатом."
+                                        }
+                                        ensurePackageInstalledForMainUser(adb, previous.module.packageName)
                                     }
                                 } catch (rollbackError: Exception) {
                                     rollbackErrors += "${previous.module.packageName}: ${errorText(rollbackError)}"
@@ -4955,9 +5025,10 @@ fun TvInstallerApp() {
                             require(installedCode == version.versionCode) {
                                 "После установки обнаружена неожиданная версия: $installedCode"
                             }
-                            val installedSigner = installedSignerSha256(context, module.packageName)
+                            ensurePackageInstalledForMainUser(adb, module.packageName)
+                            val installedSigner = remoteInstalledApkSignerSha256(context, adb, module.packageName)
                             require(installedSigner.equals(version.signerSha256, true)) {
-                                "Сертификат установленного пакета после установки не совпадает с подписанным каталогом"
+                                "Сертификат APK, установленного на телевизоре, не совпадает с подписанным каталогом"
                             }
                             "${module.name} ${version.versionName} установлен. Пакет: ${module.packageName}; " +
                                 "versionCode: ${version.versionCode}; SHA-256 и сертификат проверены; " +
@@ -4982,9 +5053,10 @@ fun TvInstallerApp() {
                                     val restoredCode = Regex("versionCode=(\\d+)").find(restored)?.groupValues?.get(1)?.toLongOrNull()
                                     require(restoredCode == previousCode) { "Откат не восстановил прежнюю версию" }
                                     require(
-                                        installedSignerSha256(context, module.packageName)
+                                        remoteInstalledApkSignerSha256(context, adb, module.packageName)
                                             .equals(version.signerSha256, true)
-                                    ) { "Откат восстановил неожиданную подпись пакета" }
+                                    ) { "Откат восстановил неожиданную подпись пакета на телевизоре" }
+                                    ensurePackageInstalledForMainUser(adb, module.packageName)
                                 }
                             } catch (rollbackError: Exception) {
                                 val recovery = File(context.filesDir, "catalog-recovery-${System.currentTimeMillis()}")
