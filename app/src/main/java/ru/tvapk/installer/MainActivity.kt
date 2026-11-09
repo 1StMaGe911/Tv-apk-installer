@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.56"
+private const val APP_VERSION = "0.9.58"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -4699,11 +4699,19 @@ fun TvInstallerApp() {
                                 val host = ip.trim(); val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
                                 else runTask({ connectWithRetry(context, host, p) { adb ->
-                                    val launcher = shellText(adb, "pm path com.gathin.tvhome")
-                                    val curtain = shellText(adb, "pm path tv.cleanyour.curtain")
-                                    "Launcher: ${if (launcher.contains("package:")) "установлен" else "не найден"}; Curtain: ${if (curtain.contains("package:")) "установлен" else "не найден"}"
+                                    fun moduleVersion(packageName: String): String {
+                                        val pathResult = shellText(adb, "pm path $packageName")
+                                        if (!pathResult.contains("package:")) return "не установлен"
+                                        val details = shellText(adb, "dumpsys package $packageName")
+                                        val versionName = Regex("versionName=([^\\s]+)").find(details)?.groupValues?.get(1) ?: "неизвестна"
+                                        val versionCode = Regex("versionCode=(\\d+)").find(details)?.groupValues?.get(1)
+                                        return if (versionCode != null) "$versionName (код $versionCode)" else versionName
+                                    }
+                                    val launcherVersion = moduleVersion("com.gathin.tvhome")
+                                    val curtainVersion = moduleVersion("tv.cleanyour.curtain")
+                                    "Состояние модулей на телевизоре:\\nLauncher: $launcherVersion\\nCurtain: $curtainVersion"
                                 } })
-                            }, modifier = Modifier.fillMaxWidth()) { Text("Проверить установленные модули") }
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Проверить версии и состояние модулей") }
                             OutlinedButton(enabled = !busy, onClick = {
                                 val host = ip.trim(); val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
