@@ -6,6 +6,8 @@ import org.bouncycastle.math.ec.rfc8032.Ed25519
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
+import java.net.HttpURLConnection
+import java.net.URL
 import java.time.Instant
 import java.util.Base64
 import java.util.Locale
@@ -65,21 +67,110 @@ internal object CleanYourTvTrust {
     )
 
     fun loadBundled(context: Context): VerifiedCatalog {
-        val index = readAsset(context, "cleanyourtv-catalog/index.json", MAX_INDEX_BYTES)
-        val indexSig = readAsset(context, "cleanyourtv-catalog/index.json.minisig", MAX_SIGNATURE_BYTES)
-        val keys = readAsset(context, "cleanyourtv-catalog/keys.json", MAX_KEYS_BYTES)
-        val keysSig = readAsset(context, "cleanyourtv-catalog/keys.json.minisig", MAX_SIGNATURE_BYTES)
+        val bundle = CatalogBundle(
+            readAsset(context, "cleanyourtv-catalog/index.json", MAX_INDEX_BYTES),
+            readAsset(context, "cleanyourtv-catalog/index.json.minisig", MAX_SIGNATURE_BYTES),
+            readAsset(context, "cleanyourtv-catalog/keys.json", MAX_KEYS_BYTES),
+            readAsset(context, "cleanyourtv-catalog/keys.json.minisig", MAX_SIGNATURE_BYTES)
+        )
+        return verifyAndAccept(context, bundle)
+    }
+
+    /**
+     * Refreshes the signed catalog from the official upstream GitHub repository.
+     * GitHub's Contents API is used instead of raw URLs: each response is bounded,
+     * redirects are rejected, and the decoded bytes still have to pass the pinned
+     * minisign root -> keys.json -> index.json trust chain before acceptance.
+     */
+    fun loadLatest(context: Context): VerifiedCatalog {
+        val base = "android/platform/src/main/assets/bundled"
+        // Fetch the key document first; the index is never accepted without its root-signed key set.
+        val keys = fetchGitHubContent("$base/keys.json", MAX_KEYS_BYTES)
+        val keysSig = fetchGitHubContent("$base/keys.json.minisig", MAX_SIGNATURE_BYTES)
+        val index = fetchGitHubContent("$base/index.json", MAX_INDEX_BYTES)
+        val indexSig = fetchGitHubContent("$base/index.json.minisig", MAX_SIGNATURE_BYTES)
+        return verifyAndAccept(context, CatalogBundle(index, indexSig, keys, keysSig))
+    }
+
+    private data class CatalogBundle(
+        val index: ByteArray,
+        val indexSignature: ByteArray,
+        val keys: ByteArray,
+        val keysSignature: ByteArray
+    )
+
+    private fun verifyAndAccept(context: Context, bundle: CatalogBundle): VerifiedCatalog {
         val prefs = context.getSharedPreferences("cleanyourtv_catalog_trust", Context.MODE_PRIVATE)
         val lastIndex = prefs.getLong("accepted_index_sequence", 0L).takeIf { it > 0L }
         val lastKeys = prefs.getLong("accepted_keys_sequence", 0L).takeIf { it > 0L }
-        val verified = verify(index, indexSig, keys, keysSig, lastIndex, System.currentTimeMillis(), lastKeys)
-        // Persist high-water marks only after the complete chain of signatures and documents verifies.
-        prefs.edit()
+        val verified = verify(
+            bundle.index, bundle.indexSignature, bundle.keys, bundle.keysSignature,
+            lastIndex, System.currentTimeMillis(), lastKeys
+        )
+        val keysSequence = JSONObject(String(bundle.keys, Charsets.UTF_8)).getLong("sequence")
+        // High-water marks are committed together, only after both signatures and both documents verify.
+        require(prefs.edit()
             .putLong("accepted_index_sequence", verified.sequence)
-            .putLong("accepted_keys_sequence", JSONObject(String(keys, Charsets.UTF_8)).getLong("sequence"))
-            .commit()
-            .also { persisted -> require(persisted) { "Не удалось сохранить защиту от отката каталога" } }
+            .putLong("accepted_keys_sequence", keysSequence)
+            .commit()) { "Не удалось сохранить защиту от отката каталога" }
         return verified
+    }
+
+    private fun fetchGitHubContent(path: String, maxDecodedBytes: Int): ByteArray {
+        require(path.startsWith("android/platform/src/main/assets/bundled/") &&
+            path.substringAfterLast('/') in setOf("index.json", "index.json.minisig", "keys.json", "keys.json.minisig")) {
+            "Недопустимый путь к файлу каталога"
+        }
+        val endpoint = URL(
+            "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/contents/" +
+                path.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") } +
+                "?ref=main"
+        )
+        require(endpoint.protocol == "https" && endpoint.host == "api.github.com" && endpoint.port in setOf(-1, 443)) {
+            "Недопустимый адрес источника каталога"
+        }
+        val connection = (endpoint.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            instanceFollowRedirects = false
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            useCaches = false
+            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+            setRequestProperty("User-Agent", "TV-APK-Installer")
+            setRequestProperty("Accept-Encoding", "identity")
+        }
+        try {
+            val code = connection.responseCode
+            require(code == HttpURLConnection.HTTP_OK) {
+                "GitHub API вернул HTTP $code при загрузке ${path.substringAfterLast('/')}"
+            }
+            val maxResponse = maxDecodedBytes.toLong() * 2L + 64L * 1024L
+            val declared = connection.getHeaderFieldLong("Content-Length", -1L)
+            require(declared < 0L || declared <= maxResponse) { "Ответ GitHub API превышает допустимый размер" }
+            val response = connection.inputStream.use { input ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8192)
+                var total = 0L
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    require(total <= maxResponse) { "Ответ GitHub API превышает допустимый размер" }
+                    output.write(buffer, 0, count)
+                }
+                output.toByteArray()
+            }
+            val json = JSONObject(String(response, Charsets.UTF_8))
+            require(json.optString("encoding") == "base64") { "GitHub API вернул неподдерживаемый формат файла" }
+            require(json.optLong("size", -1L) in 0..maxDecodedBytes.toLong()) { "Файл каталога превышает допустимый размер" }
+            val encoded = json.getString("content")
+            val decoded = Base64.getMimeDecoder().decode(encoded)
+            require(decoded.isNotEmpty() && decoded.size <= maxDecodedBytes) { "Пустой файл или превышен размер каталога" }
+            return decoded
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun verify(
