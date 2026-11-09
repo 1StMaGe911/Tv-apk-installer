@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.84"
+private const val APP_VERSION = "0.9.85"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1087,6 +1087,28 @@ private fun shellText(adb: Dadb, command: String): String {
     val response = adb.shell(command)
     if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
     return response.output.trim()
+}
+
+/**
+ * Refuses an APK installation when Android TV has critically low /data space.
+ * Android's df reports Available in 1 KiB blocks; keep at least 200 MiB free
+ * and require room for roughly two copies of the incoming APK(s).
+ */
+private fun requireTvStorageForApk(adb: Dadb, apkBytes: Long): String {
+    require(apkBytes > 0L) { "Размер APK для проверки памяти некорректен" }
+    val output = shellText(adb, "df -k /data")
+    val dataLine = output.lineSequence().lastOrNull { it.trim().endsWith("/data") }
+        ?: throw Exception("Телевизор не сообщил свободное место раздела /data: $output")
+    val fields = dataLine.trim().split(Regex("\\s+"))
+    require(fields.size >= 5) { "Не удалось разобрать свободное место /data: $dataLine" }
+    val availableKb = fields[3].toLongOrNull()
+        ?: throw Exception("Телевизор сообщил некорректный объём свободной памяти: $dataLine")
+    val requiredKb = maxOf(200L * 1024L, (apkBytes * 2L + 1023L) / 1024L)
+    require(availableKb >= requiredKb) {
+        "Недостаточно свободного места на телевизоре: ${availableKb / 1024} МБ доступно, " +
+            "нужно не менее ${requiredKb / 1024} МБ. Освободи память на ТВ и повтори установку."
+    }
+    return "Свободно ${availableKb / 1024} МБ на /data"
 }
 
 private fun applyLauncherAppearance(
@@ -4625,6 +4647,7 @@ fun TvInstallerApp() {
                             abiIncompatible.joinToString { "${it.packageName} поддерживает ${it.abis.joinToString()} " } +
                             "(телевизор: ${deviceAbis.joinToString().ifBlank { "не определена" }})."
                     }
+                    val storageStatus = requireTvStorageForApk(adb, modules.sumOf { it.file.length() })
 
                     data class PreviousModuleState(
                         val module: VerifiedCleanModule,
@@ -4706,6 +4729,7 @@ fun TvInstallerApp() {
                             val installedBefore = previousStates.count { it.backupApk != null }
                             "Оба модуля Clean Your TV проверены и установлены. " +
                                 verification.joinToString("; ") +
+                                ". " + storageStatus +
                                 ". Android TV SDK: $deviceSdk; ABI: ${deviceAbis.joinToString().ifBlank { "не определена" }}. " +
                                 if (installedBefore == 2) "Обе прежние версии сохранены до успешной проверки." else
                                     "Отсутствующие модули установлены, существующие обновлены."
@@ -4862,6 +4886,7 @@ fun TvInstallerApp() {
                     require(apkAbis.isEmpty() || apkAbis.any { it in deviceAbis }) {
                         "Архитектура APK не подходит телевизору. APK: ${apkAbis.joinToString()}; ТВ: ${deviceAbis.joinToString()}"
                     }
+                    val storageStatus = requireTvStorageForApk(adb, apk.length())
 
                     val remote = shellText(adb, "pm path ${module.packageName}")
                         .lineSequence().map { it.removePrefix("package:").trim() }
@@ -4936,6 +4961,7 @@ fun TvInstallerApp() {
                             }
                             "${module.name} ${version.versionName} установлен. Пакет: ${module.packageName}; " +
                                 "versionCode: ${version.versionCode}; SHA-256 и сертификат проверены; " +
+                                storageStatus + "; " +
                                 "Android SDK: $deviceSdk; ABI: ${deviceAbis.joinToString()}"
                         } catch (installError: Exception) {
                             try {
@@ -5143,6 +5169,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.85 • Проверка свободной памяти ТВ перед установкой", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Перед установкой Clean Your TV и дополнений проверяется свободное место в /data. При критически малом объёме установка останавливается до изменения пакетов и объясняет, сколько памяти нужно освободить.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.83 • Выбор неотозванной версии дополнения", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Если самая новая версия APK отозвана в подписанном каталоге, приложение больше не блокирует весь модуль без необходимости: выбирается самая новая неотозванная версия. Если отозваны все версии, установка остаётся заблокированной.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
