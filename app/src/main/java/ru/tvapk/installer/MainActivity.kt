@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.46"
+private const val APP_VERSION = "0.9.47"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2931,7 +2931,7 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
         .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
     val fingerprint = field("Отпечаток")
 
-    return profiles.mapNotNull { profile ->
+    val exact = profiles.mapNotNull { profile ->
         val modelHit = profile.models.any { it.equals(model, ignoreCase = true) }
         val deviceHit = profile.devices.any { it.equals(device, ignoreCase = true) }
         val fingerprintHit = profile.fingerprintPrefix?.let { fingerprint.startsWith(it, ignoreCase = true) } == true
@@ -2951,6 +2951,43 @@ private fun matchTvModelProfile(details: String, profiles: List<TvModelProfile>)
         }
         Triple(score, profile, label)
     }.maxByOrNull { it.first }?.let { TvProfileMatch(it.second, it.third) }
+    if (exact != null) return exact
+
+    // Conservative fallback: only brands with upstream-reviewed fallback support.
+    // A package is suggested only when every profile for that brand lists it as
+    // ask=false with the same category. neverDisable is unioned across profiles.
+    val supportedBrands = listOf("Amazon", "Hisense", "Panasonic", "Philips", "Sony", "TCL", "Xiaomi", "XGIMI")
+    val normalizedManufacturer = manufacturer.lowercase().replace(Regex("[^a-z0-9]"), "")
+    val brand = supportedBrands.firstOrNull { candidate ->
+        val normalized = candidate.lowercase().replace(Regex("[^a-z0-9]"), "")
+        normalizedManufacturer.isNotBlank() && normalizedManufacturer.contains(normalized)
+    } ?: return null
+    val brandProfiles = profiles.filter { it.brand.equals(brand, ignoreCase = true) }
+    if (brandProfiles.isEmpty()) return null
+
+    val commonPackages = brandProfiles.first().packages.mapNotNull { (packageName, firstRule) ->
+        if (firstRule.ask) return@mapNotNull null
+        val agreed = brandProfiles.all { profile ->
+            profile.packages[packageName]?.let { !it.ask && it.category == firstRule.category } == true
+        }
+        if (agreed) packageName to firstRule else null
+    }.toMap()
+    val conservativeProfile = TvModelProfile(
+        id = "brand-fallback-${brand.lowercase()}",
+        platform = "Android TV / Fire TV — общий профиль бренда",
+        models = emptySet(),
+        devices = emptySet(),
+        brand = brand,
+        sdkMin = null,
+        sdkMax = null,
+        fingerprintPrefix = null,
+        neverDisable = brandProfiles.flatMap { it.neverDisable }.toSet(),
+        packages = commonPackages,
+        testedBy = "Общие правила всех ${brandProfiles.size} профилей бренда",
+        testedFirmware = "Разные модели и прошивки; применяется только пересечение",
+        rebootTested = false
+    )
+    return TvProfileMatch(conservativeProfile, "осторожный профиль бренда — только общие проверенные правила")
 }
 
 private fun tvProfileDisplayName(id: String): String = id
