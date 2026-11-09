@@ -4396,6 +4396,177 @@ fun TvInstallerApp() {
         }
     }
 
+    val installCatalogModule: (CleanYourTvTrust.CatalogModule) -> Unit = { selectedModule ->
+        val host = ip.trim()
+        val adbPort = port.toIntOrNull()
+        if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
+            status = "Сначала укажи IP и порт ADB и подключись к телевизору"
+        } else {
+            runTask({
+                val catalog = verifiedCatalog ?: CleanYourTvTrust.loadBundled(context)
+                require(catalog.expiresAtMillis > System.currentTimeMillis()) {
+                    "Подписанный каталог истёк. Сначала загрузи свежий каталог."
+                }
+                val module = catalog.modules.firstOrNull { it.id == selectedModule.id }
+                    ?: throw Exception("Модуль отсутствует в проверенном каталоге")
+                require(module.packageName == selectedModule.packageName) { "Package name модуля изменился" }
+                require(module.tier == "verified" || module.tier == "community") {
+                    "Этот модуль нельзя устанавливать: уровень доверия ${module.tier}"
+                }
+                val version = module.versions.firstOrNull()
+                    ?: throw Exception("У модуля нет доступных версий")
+                require(!version.revoked) { "Эта версия APK отозвана в подписанном каталоге" }
+
+                val apk = CatalogArtifactDownloader.download(context, version) { received, total ->
+                    if (received == total || received % (512L * 1024L) < 64L * 1024L) {
+                        activity.runOnUiThread {
+                            status = "Загрузка ${module.name}: ${received / 1024} / ${total / 1024} КБ"
+                        }
+                    }
+                }
+                require(apk.isFile && apk.length() == version.size) { "Загруженный APK не прошёл проверку размера" }
+                @Suppress("DEPRECATION")
+                val archiveFlags = if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+                    else PackageManager.GET_SIGNATURES
+                val packageInfo = context.packageManager.getPackageArchiveInfo(
+                    apk.absolutePath, archiveFlags or PackageManager.GET_PERMISSIONS
+                ) ?: throw Exception("Android не смог прочитать загруженный APK")
+                require(packageInfo.packageName == module.packageName) {
+                    "APK содержит пакет ${packageInfo.packageName}, ожидался ${module.packageName}"
+                }
+                @Suppress("DEPRECATION")
+                val signatures = if (Build.VERSION.SDK_INT >= 28) {
+                    packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                } else packageInfo.signatures?.toList().orEmpty()
+                val signerDigests = signatures.map { signature ->
+                    MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                        .joinToString("") { "%02x".format(it) }
+                }
+                require(signerDigests.any { it.equals(version.signerSha256, ignoreCase = true) }) {
+                    "Сертификат подписанта APK не совпадает с подписанным каталогом"
+                }
+                @Suppress("DEPRECATION")
+                val archiveVersionCode = if (Build.VERSION.SDK_INT >= 28) packageInfo.longVersionCode
+                    else packageInfo.versionCode.toLong()
+                require(archiveVersionCode == version.versionCode) { "versionCode APK не совпадает с каталогом" }
+                val archiveMinSdk = packageInfo.applicationInfo?.minSdkVersion ?: 1
+                require(archiveMinSdk <= version.minSdk) {
+                    "APK требует Android SDK ${archiveMinSdk}, каталог заявляет ${version.minSdk}. Установка отменена."
+                }
+                val catalogPermissions = version.permissions.map { it.first }.toSet()
+                val apkPermissions = packageInfo.requestedPermissions?.toSet().orEmpty()
+                val undeclaredPermissions = apkPermissions - catalogPermissions
+                require(undeclaredPermissions.isEmpty()) {
+                    "APK запрашивает разрешения, не описанные в подписанном каталоге: ${undeclaredPermissions.joinToString()}"
+                }
+                val apkAbis = linkedSetOf<String>()
+                java.util.zip.ZipFile(apk).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val name = entries.nextElement().name
+                        if (name.startsWith("lib/")) {
+                            val abi = name.removePrefix("lib/").substringBefore('/')
+                            if (abi.isNotBlank() && abi != name) apkAbis += abi
+                        }
+                    }
+                }
+
+                connectWithRetry(context, host, adbPort) { adb ->
+                    val sdkText = shellText(adb, "getprop ro.build.version.sdk").trim()
+                    val deviceSdk = sdkText.toIntOrNull()
+                        ?: throw Exception("Не удалось определить Android SDK телевизора")
+                    require(deviceSdk >= version.minSdk && deviceSdk >= archiveMinSdk) {
+                        "Модулю требуется Android SDK ${maxOf(version.minSdk, archiveMinSdk)}, на ТВ SDK $deviceSdk"
+                    }
+                    val deviceAbis = shellText(adb, "getprop ro.product.cpu.abilist").trim()
+                        .ifBlank { shellText(adb, "getprop ro.product.cpu.abi").trim() }
+                        .split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                    require(apkAbis.isEmpty() || apkAbis.any { it in deviceAbis }) {
+                        "Архитектура APK не подходит телевизору. APK: ${apkAbis.joinToString()}; ТВ: ${deviceAbis.joinToString()}"
+                    }
+
+                    val remote = shellText(adb, "pm path ${module.packageName}")
+                        .lineSequence().map { it.removePrefix("package:").trim() }
+                        .filter { it.startsWith("/") && !it.contains("..") }.distinct().toList()
+                    require(remote.size <= 1) {
+                        "Установленный пакет состоит из нескольких split APK. Безопасное резервирование пока не поддерживается."
+                    }
+                    var previousCode: Long? = null
+                    var backup: File? = null
+                    val rollbackDir = File(context.cacheDir, "catalog-rollback-${System.currentTimeMillis()}")
+                    require(rollbackDir.mkdirs()) { "Не удалось создать папку отката" }
+                    var keepBackup = false
+                    try {
+                        if (remote.isNotEmpty()) {
+                            val details = shellText(adb, "dumpsys package ${module.packageName}")
+                            previousCode = Regex("versionCode=(\\\\d+)").find(details)?.groupValues?.get(1)?.toLongOrNull()
+                                ?: throw Exception("Не удалось определить текущую версию установленного пакета")
+                            require(previousCode!! <= version.versionCode) {
+                                "На телевизоре установлена более новая версия (код $previousCode). Откат запрещён."
+                            }
+                            backup = File(rollbackDir, "previous.apk")
+                            when (val pulled = adb.pull(backup!!, remote.single())) {
+                                is dadb.SyncResult.Success -> Unit
+                                is dadb.SyncResult.Failure -> throw Exception("Не удалось сохранить прежнюю версию: $pulled")
+                            }
+                            require(backup!!.isFile && backup!!.length() in 1..(200L * 1024L * 1024L)) {
+                                "Резервная копия установленного APK неполная"
+                            }
+                        }
+                        try {
+                            when (val result = adb.install(apk, "-r")) {
+                                is InstallResult.Success -> Unit
+                                is InstallResult.Failure -> throw Exception(result.reason)
+                            }
+                            val installedPath = shellText(adb, "pm path ${module.packageName}")
+                            require(installedPath.contains("package:")) { "После установки пакет не найден" }
+                            val installedDetails = shellText(adb, "dumpsys package ${module.packageName}")
+                            val installedCode = Regex("versionCode=(\\\\d+)").find(installedDetails)?.groupValues?.get(1)?.toLongOrNull()
+                            require(installedCode == version.versionCode) {
+                                "После установки обнаружена неожиданная версия: $installedCode"
+                            }
+                            "${module.name} ${version.versionName} установлен. Пакет: ${module.packageName}; " +
+                                "versionCode: ${version.versionCode}; SHA-256 и сертификат проверены; " +
+                                "Android SDK: $deviceSdk; ABI: ${deviceAbis.joinToString()}"
+                        } catch (installError: Exception) {
+                            try {
+                                if (backup == null) {
+                                    val result = shellText(adb, "pm uninstall ${module.packageName}")
+                                    require(result.contains("Success", true) || result.contains("not installed", true)) {
+                                        "Не удалось удалить новый пакет при откате: $result"
+                                    }
+                                    require(!shellText(adb, "pm path ${module.packageName}").contains("package:")) {
+                                        "Новый пакет остался после отката"
+                                    }
+                                } else {
+                                    when (val result = adb.install(backup!!, "-r", "-d")) {
+                                        is InstallResult.Success -> Unit
+                                        is InstallResult.Failure -> throw Exception(result.reason)
+                                    }
+                                    val restored = shellText(adb, "dumpsys package ${module.packageName}")
+                                    val restoredCode = Regex("versionCode=(\\\\d+)").find(restored)?.groupValues?.get(1)?.toLongOrNull()
+                                    require(restoredCode == previousCode) { "Откат не восстановил прежнюю версию" }
+                                }
+                            } catch (rollbackError: Exception) {
+                                val recovery = File(context.filesDir, "catalog-recovery-${System.currentTimeMillis()}")
+                                if (rollbackDir.renameTo(recovery)) keepBackup = true
+                                throw Exception(
+                                    "Установка не завершилась: ${errorText(installError)}. " +
+                                        "Откат тоже не прошёл: ${errorText(rollbackError)}. " +
+                                        if (keepBackup) "Резервный APK сохранён: ${recovery.absolutePath}" else
+                                            "Резервная копия осталась в ${rollbackDir.absolutePath}"
+                                )
+                            }
+                            throw Exception("Установка не завершилась; исходное состояние восстановлено. Причина: ${errorText(installError)}")
+                        }
+                    } finally {
+                        if (!keepBackup) rollbackDir.deleteRecursively()
+                    }
+                }
+            })
+        }
+    }
+
     fun saveCurrentDevice() {
         val host = ip.trim()
         val p = port.toIntOrNull()
