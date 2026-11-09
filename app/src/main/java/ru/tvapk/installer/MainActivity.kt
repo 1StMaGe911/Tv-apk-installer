@@ -224,7 +224,7 @@ private fun loadCleanupJournal(context: Context): CleanupJournal? {
     } catch (_: Exception) { null }
 }
 
-private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
+private fun saveCleanupJournal(context: Context, journal: CleanupJournal): Boolean {
     val json = JSONObject()
         .put("deviceIdentity", journal.deviceIdentity)
         .put("host", journal.host)
@@ -236,11 +236,11 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
         .put("baselineDisabled", JSONArray(journal.baselineDisabledPackages))
         .put("schemaVersion", journal.schemaVersion)
         .put("restored", JSONArray(journal.restoredPackages))
-    prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
+    return prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
-private fun clearCleanupJournal(context: Context) {
-    prefs(context).edit().remove("cleanup_operation_journal").commit()
+private fun clearCleanupJournal(context: Context): Boolean {
+    return prefs(context).edit().remove("cleanup_operation_journal").commit()
 }
 
 private data class TrackedPackageChange(
@@ -7513,28 +7513,34 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     baselineDisabledPackages = baselineDisabled,
                                                     schemaVersion = 2
                                                 )
-                                                saveCleanupJournal(context, journal)
+                                                check(saveCleanupJournal(context, journal)) {
+                                                    "Не удалось надёжно сохранить журнал очистки. Изменения на ТВ не выполнялись."
+                                                }
                                                 activity.runOnUiThread { cleanupJournal = journal }
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
                                                 safeSelected.forEach { pkg ->
                                                     journal = journal.copy(inFlightPackage = pkg)
-                                                    saveCleanupJournal(context, journal)
+                                                    check(saveCleanupJournal(context, journal)) {
+                                                        "Не удалось сохранить этап операции для $pkg. Отключение отменено."
+                                                    }
                                                     try {
                                                         changePackageStateVerified(adb, pkg, false)
-                                                        disabledNow.add(pkg)
-                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
-                                                        saveCleanupJournal(context, journal)
                                                     } catch (_: Exception) {
-                                                        if (pkg in readDisabledPackages(adb)) disabledNow.add(pkg)
-                                                        else failures.add(pkg)
-                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
-                                                        saveCleanupJournal(context, journal)
+                                                        // The actual Package Manager state is checked immediately below.
+                                                    }
+                                                    val isDisabledAfterAttempt = pkg in readDisabledPackages(adb)
+                                                    if (isDisabledAfterAttempt) disabledNow.add(pkg) else failures.add(pkg)
+                                                    journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
+                                                    check(saveCleanupJournal(context, journal)) {
+                                                        "Не удалось надёжно сохранить результат для $pkg. Операция остановлена; журнал оставлен для восстановления."
                                                     }
                                                 }
                                                 if (failures.isEmpty()) {
                                                     appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
-                                                    clearCleanupJournal(context)
+                                                    check(clearCleanupJournal(context)) {
+                                                        "Очистка завершена, но не удалось удалить журнал операции. Он сохранён для безопасной повторной проверки."
+                                                    }
                                                     activity.runOnUiThread {
                                                         cleanupJournal = null
                                                         cleanupHistory = loadCleanupHistory(context)
