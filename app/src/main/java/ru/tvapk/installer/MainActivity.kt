@@ -2,7 +2,6 @@
 package ru.tvapk.installer
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.content.Intent
 import android.hardware.usb.UsbManager
@@ -418,8 +417,8 @@ private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<
 private fun prepareCustomWallpaper(context: Context, uri: Uri): File {
     val resolver = context.contentResolver
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        ?: throw Exception("Не удалось открыть изображение")
+    val boundsStream = resolver.openInputStream(uri) ?: throw Exception("Не удалось открыть изображение")
+    boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
     require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Файл не является корректным изображением" }
     require(bounds.outWidth <= 12000 && bounds.outHeight <= 12000) { "Изображение слишком большое по разрешению" }
     val sample = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 3840)
@@ -466,7 +465,7 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
     fun writeFile(fileName: String, remotePath: String) {
         val command =
             "rm -f $directory/$fileName 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1) && [ -z \"\$o\" ] || cp $remotePath $directory/$fileName; " +
+            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remotePath $directory/$fileName); " +
             "r=\$?; rm -f $remotePath; exit \$r"
         shellText(adb, command)
     }
