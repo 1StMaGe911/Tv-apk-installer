@@ -26,6 +26,18 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun automaticCacheTrimRequiresOptInAndAtLeastNinetyPercentUsage() {
+        assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(false, 95))
+        assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, null))
+        assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, 89))
+        assertTrue(TvAutomationEngine.shouldAutomaticallyTrimCache(true, 90))
+        assertTrue(TvAutomationEngine.shouldAutomaticallyTrimCache(true, 95))
+        assertTrue(TvAutomationEngine.shouldAutomaticallyTrimCache(true, 100))
+        assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, 101))
+        assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, -1))
+    }
+
+    @Test
     fun parsesMachineReadableDataStorageSnapshot() {
         val result = TvAutomationEngine.parseDataStorageSnapshot(
             "Filesystem 1K-blocks Used Available Use% Mounted on\n/dev/block/dm-1 16777216 15728640 1048576 94% /data"
