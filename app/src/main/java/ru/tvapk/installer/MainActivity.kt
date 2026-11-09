@@ -2311,6 +2311,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         prefs(context).edit()
             .remove("launcher_handover_stock_package")
             .remove("launcher_handover_stock_component")
+            .remove("launcher_handover_device_identity")
             .remove("launcher_handover_active")
             .apply()
         throw Exception("Новый Launcher не прошёл проверку запуска. Штатный экран не отключался. Ответ: $start")
