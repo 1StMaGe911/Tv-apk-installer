@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.35"
+private const val APP_VERSION = "0.9.36"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -133,6 +133,137 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
 private fun clearCleanupJournal(context: Context) {
     prefs(context).edit().remove("cleanup_operation_journal").commit()
 }
+
+private data class TrackedPackageChange(
+    val deviceIdentity: String,
+    val packageName: String,
+    val wasDisabled: Boolean,
+    val isDisabled: Boolean,
+    val changedAt: Long
+)
+
+private val trackedPackageNamePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+
+private fun loadTrackedPackageChanges(context: Context): List<TrackedPackageChange> {
+    val raw = prefs(context).getString("manual_package_change_journal", null) ?: return emptyList()
+    return try {
+        val array = JSONArray(raw)
+        require(array.length() <= 500) { "Журнал ручных изменений превышает допустимый размер" }
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val identity = item.optString("deviceIdentity")
+            val packageName = item.optString("packageName")
+            if (identity.isBlank() || !trackedPackageNamePattern.matches(packageName)) return@mapNotNull null
+            TrackedPackageChange(
+                deviceIdentity = identity,
+                packageName = packageName,
+                wasDisabled = item.optBoolean("wasDisabled"),
+                isDisabled = item.optBoolean("isDisabled"),
+                changedAt = item.optLong("changedAt", 0L)
+            )
+        }.distinctBy { it.deviceIdentity + "|" + it.packageName }.sortedByDescending { it.changedAt }
+    } catch (e: Exception) {
+        throw Exception("Не удалось прочитать журнал ручных изменений. Исходные данные сохранены; новые записи и откат заблокированы: ${e.message}", e)
+    }
+}
+
+private fun saveTrackedPackageChanges(context: Context, changes: List<TrackedPackageChange>) {
+    require(changes.size <= 500) { "Журнал достиг лимита в 500 записей" }
+    val array = JSONArray()
+    changes.distinctBy { it.deviceIdentity + "|" + it.packageName }
+        .sortedByDescending { it.changedAt }
+        .forEach { entry ->
+            array.put(JSONObject()
+                .put("deviceIdentity", entry.deviceIdentity)
+                .put("packageName", entry.packageName)
+                .put("wasDisabled", entry.wasDisabled)
+                .put("isDisabled", entry.isDisabled)
+                .put("changedAt", entry.changedAt))
+        }
+    check(prefs(context).edit().putString("manual_package_change_journal", array.toString()).commit()) {
+        "Не удалось сохранить журнал изменений на устройстве"
+    }
+}
+
+private fun recordTrackedPackageChange(
+    context: Context,
+    deviceIdentity: String,
+    packageName: String,
+    beforeDisabled: Boolean,
+    afterDisabled: Boolean
+) {
+    require(deviceIdentity.isNotBlank() && trackedPackageNamePattern.matches(packageName)) {
+        "Не удалось проверить идентификатор телевизора или пакета; запись не создана"
+    }
+    val current = loadTrackedPackageChanges(context).toMutableList()
+    val index = current.indexOfFirst { it.deviceIdentity == deviceIdentity && it.packageName == packageName }
+    val original = if (index >= 0) current[index].wasDisabled else beforeDisabled
+    current.removeAll { it.deviceIdentity == deviceIdentity && it.packageName == packageName }
+    if (original != afterDisabled) {
+        current.add(TrackedPackageChange(deviceIdentity, packageName, original, afterDisabled, System.currentTimeMillis()))
+    }
+    saveTrackedPackageChanges(context, current)
+}
+
+private fun changePackageStateTracked(
+    context: Context,
+    adb: Dadb,
+    packageName: String,
+    enabled: Boolean
+): String {
+    val identity = readTvIdentity(adb)
+    require(packageName in readAllPackages(adb)) { "Пакет $packageName не установлен; изменение отменено" }
+    val beforeDisabled = packageName in readDisabledPackages(adb)
+    val result = changePackageStateVerified(adb, packageName, enabled)
+    val afterDisabled = packageName in readDisabledPackages(adb)
+    recordTrackedPackageChange(context, identity, packageName, beforeDisabled, afterDisabled)
+    return result
+}
+
+private fun rollbackTrackedPackageChanges(context: Context, adb: Dadb): String {
+    val identity = readTvIdentity(adb)
+    val all = loadTrackedPackageChanges(context)
+    val candidates = all.filter { it.deviceIdentity == identity }
+    if (candidates.isEmpty()) {
+        val otherDevices = all.map { it.deviceIdentity }.distinct().size
+        return if (all.isEmpty()) "Журнал пуст: ручных изменений для отката нет."
+        else "Для этого телевизора записей нет. Сохранены записи других устройств: $otherDevices."
+    }
+    val installed = readAllPackages(adb).toSet()
+    var disabled = readDisabledPackages(adb)
+    val remaining = all.toMutableList()
+    var restored = 0
+    var alreadyOriginal = 0
+    var conflicts = 0
+    var missing = 0
+    var failed = 0
+    candidates.forEach { entry ->
+        when {
+            entry.packageName !in installed -> { missing++ }
+            (entry.packageName in disabled) == entry.wasDisabled -> {
+                remaining.removeAll { it.deviceIdentity == identity && it.packageName == entry.packageName }
+                alreadyOriginal++
+            }
+            (entry.packageName in disabled) != entry.isDisabled -> { conflicts++ }
+            else -> {
+                try {
+                    changePackageStateVerified(adb, entry.packageName, enabled = !entry.wasDisabled)
+                    disabled = readDisabledPackages(adb)
+                    require((entry.packageName in disabled) == entry.wasDisabled) {
+                        "Фактическое состояние пакета не совпало с исходным"
+                    }
+                    remaining.removeAll { it.deviceIdentity == identity && it.packageName == entry.packageName }
+                    restored++
+                } catch (_: Exception) {
+                    failed++
+                }
+            }
+        }
+        saveTrackedPackageChanges(context, remaining)
+    }
+    return "Откат ручных изменений завершён. Восстановлено: $restored; уже в исходном состоянии: $alreadyOriginal; конфликт состояния: $conflicts; пакет отсутствует: $missing; ошибка проверки/отката: $failed. Конфликтные и неудачные записи сохранены."
+}
+
 private data class CleanupHistoryEntry(
     val createdAt: Long,
     val deviceIdentity: String,
@@ -2549,6 +2680,8 @@ fun TvInstallerApp() {
     var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
+    var trackedPackageChanges by remember { mutableStateOf(loadTrackedPackageChanges(context)) }
+    var pendingTrackedPackageRollback by remember { mutableStateOf(false) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
@@ -5505,6 +5638,60 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 HorizontalDivider(color = Color.DarkGray)
                             }
                         }
+                        Text("Журнал ручных изменений пакетов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                        Text("Запоминаются исходное и текущее состояния пакетов, которые вручную включали или отключали в этом разделе. Очистка, автозапуск и другие настройки сюда пока не входят.", color = TextMuted, fontSize = 11.sp)
+                        Text("Записей: ${trackedPackageChanges.size}", color = TextMain, fontSize = 12.sp)
+                        trackedPackageChanges.take(8).forEach { entry ->
+                            Text(
+                                "${entry.packageName}: ${if (entry.wasDisabled) "изначально отключён" else "изначально включён"} → ${if (entry.isDisabled) "сейчас отключён" else "сейчас включён"}",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        if (trackedPackageChanges.size > 8) Text("И ещё ${trackedPackageChanges.size - 8} записей", color = TextMuted, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(enabled = !busy, onClick = {
+                                trackedPackageChanges = loadTrackedPackageChanges(context)
+                            }) { Text("Обновить журнал") }
+                            OutlinedButton(enabled = !busy && trackedPackageChanges.isNotEmpty(), onClick = {
+                                pendingTrackedPackageRollback = true
+                            }) { Text("Предпросмотр отката") }
+                        }
+                        if (pendingTrackedPackageRollback) {
+                            AlertDialog(
+                                onDismissRequest = { pendingTrackedPackageRollback = false },
+                                title = { Text("Откат ручных изменений") },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("Перед откатом приложение сверит модель и отпечаток прошивки телевизора, установку каждого пакета и его фактическое состояние.")
+                                        Text("Будут изменены только пакеты, состояние которых совпадает с последним записанным состоянием. Конфликты и отсутствующие пакеты останутся в журнале.")
+                                        trackedPackageChanges.take(20).forEach { entry ->
+                                            Text("${entry.packageName}: вернуть в состояние «${if (entry.wasDisabled) "отключён" else "включён"}»", fontSize = 11.sp)
+                                        }
+                                        if (trackedPackageChanges.size > 20) Text("Показаны первые 20 из ${trackedPackageChanges.size} записей.", fontSize = 11.sp)
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        pendingTrackedPackageRollback = false
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        if (host.isBlank() || p !in 1..65535) {
+                                            status = "Сначала укажи IP и порт ADB"
+                                        } else runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                rollbackTrackedPackageChanges(context, adb)
+                                            }
+                                        }, {
+                                            trackedPackageChanges = loadTrackedPackageChanges(context)
+                                        })
+                                    }) { Text("Проверить и откатить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingTrackedPackageRollback = false }) { Text("Отмена") }
+                                }
+                            )
+                        }
                         Text("Пользовательские приложения: ${userPackages.size}", color = GoldLight)
                         if (userPackages.isEmpty()) Text("Сначала выполни определение устройства. Системные пакеты здесь не показываются.", color = Color.LightGray, fontSize = 12.sp)
                         userPackages.filter { it.contains(packageFilter, ignoreCase = true) }.forEach { pkg ->
@@ -5532,7 +5719,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     OutlinedButton(enabled = !busy && pkg !in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
-                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateVerified(adb, pkg, false) } }, { result ->
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateTracked(context, adb, pkg, false) } }, { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 disabledPackages = disabledPackages + pkg
                                                 settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
@@ -5541,7 +5728,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                     }) { Text("Отключить") }
                                     OutlinedButton(enabled = !busy && pkg in disabledPackages, onClick = {
                                         val host = ip.trim(); val p = port.toIntOrNull() ?: 5555
-                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateVerified(adb, pkg, true) } }, { result ->
+                                        runTask({ connectWithRetry(context, host, p) { adb -> changePackageStateTracked(context, adb, pkg, true) } }, { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 disabledPackages = disabledPackages - pkg
                                                 settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
@@ -5691,7 +5878,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                     val p = port.toIntOrNull() ?: 5555
                                                     runTask({
                                                         connectWithRetry(context, host, p) { adb ->
-                                                            changePackageStateVerified(adb, pkg, true)
+                                                            changePackageStateTracked(context, adb, pkg, true)
                                                             "Системный пакет восстановлен: $pkg"
                                                         }
                                                     }, { result ->
@@ -5738,7 +5925,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 require(pkg !in (freshProfile?.neverDisable ?: emptySet())) {
                                                     "Профиль этой модели запрещает отключать $pkg. Команда отменена."
                                                 }
-                                                changePackageStateVerified(adb, pkg, false)
+                                                changePackageStateTracked(context, adb, pkg, false)
                                                 "Системный пакет отключён: $pkg"
                                             }
                                         }, { result ->
