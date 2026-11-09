@@ -1003,6 +1003,23 @@ private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int
     return "Загружено обоев: ${files.size}. Ротация: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}, порядок: ${if (order == "shuffle") "случайный" else "по порядку"}. $restart"
 }
 
+private fun clearWallpaperCollectionOnTv(adb: Dadb): String {
+    val packageName = "com.gathin.tvhome"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен."
+    }
+    val directory = "/sdcard/Android/data/$packageName/files"
+    try {
+        shellText(adb, "content delete --uri content://$packageName.theme/wallpapers")
+    } catch (_: Exception) {
+        shellText(adb, "rm -rf $directory/wallpapers 2>/dev/null; mkdir -p $directory/wallpapers")
+    }
+    val config = readCurrentLauncherConfig(adb)
+        .put("wallpaper_rotation_minutes", 0)
+    val restart = writeLauncherConfig(adb, config)
+    return "Коллекция ротации удалена с телевизора, автоматическая смена выключена. Копии на телефоне сохранены — их можно загрузить повторно. $restart"
+}
+
 private fun applyWallpaperRotationSettings(adb: Dadb, minutes: Int, order: String): String {
     require(order in setOf("sequential", "shuffle")) { "Неверный порядок обоев" }
     val config = readCurrentLauncherConfig(adb)
@@ -1559,6 +1576,7 @@ fun TvInstallerApp() {
     var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
     var launcherWallpaperRotationMinutes by remember { mutableStateOf(settings.getInt("launcher_wallpaper_rotation_minutes", 0).coerceIn(0, 120)) }
     var launcherWallpaperOrder by remember { mutableStateOf(settings.getString("launcher_wallpaper_order", "shuffle") ?: "shuffle") }
+    var pendingWallpaperCollectionClear by remember { mutableStateOf(false) }
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
     var pendingHomeKeyServiceEnable by remember { mutableStateOf(false) }
@@ -2056,6 +2074,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.2 • Управление коллекцией обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено безопасное удаление коллекции wallpapers с телевизора с подтверждением. Автоматическая ротация выключается, а локальные копии на телефоне сохраняются для повторной загрузки.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.1 • Настройка долгого нажатия Home", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена настройка home_long_press_home для HomeKeyService: можно направить длительное нажатие кнопки Home в Clean Your TV. Настройка включается отдельно и требует HomeKeyService.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2711,6 +2732,32 @@ fun TvInstallerApp() {
                                     }
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Повторно загрузить сохранённую коллекцию") }
+                            OutlinedButton(enabled = !busy, onClick = { pendingWallpaperCollectionClear = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Очистить коллекцию на телевизоре")
+                            }
+                            if (pendingWallpaperCollectionClear) {
+                                AlertDialog(
+                                    onDismissRequest = { pendingWallpaperCollectionClear = false },
+                                    title = { Text("Удалить коллекцию обоев с ТВ?") },
+                                    text = { Text("Будут удалены изображения из папки wallpapers на телевизоре и выключена автоматическая ротация. Копии изображений на телефоне останутся — их можно будет загрузить снова. Продолжить?") },
+                                    confirmButton = {
+                                        TextButton(enabled = !busy, onClick = {
+                                            val host = ip.trim()
+                                            val p = port.toIntOrNull()
+                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                status = "Проверь IP и порт ADB"
+                                                pendingWallpaperCollectionClear = false
+                                            } else {
+                                                pendingWallpaperCollectionClear = false
+                                                runTask({
+                                                    connectWithRetry(context, host, p) { adb -> clearWallpaperCollectionOnTv(adb) }
+                                                })
+                                            }
+                                        }) { Text("Удалить") }
+                                    },
+                                    dismissButton = { TextButton(onClick = { pendingWallpaperCollectionClear = false }) { Text("Отмена") } }
+                                )
+                            }
                             Text("Для ротации требуется коллекция изображений и интервал больше нуля. При повторной загрузке коллекция на телевизоре заменяется выбранной на телефоне.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ЧАСЫ И ЗАСТАВКА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Настрой часы на главном экране и системную заставку Clean Your TV. Авточасы появляются после бездействия, а системная заставка запускается по таймеру Android TV.", color = TextMuted, fontSize = 11.sp)
