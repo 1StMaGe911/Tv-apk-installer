@@ -125,6 +125,56 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
 private fun clearCleanupJournal(context: Context) {
     prefs(context).edit().remove("cleanup_operation_journal").commit()
 }
+private data class CleanupHistoryEntry(
+    val createdAt: Long,
+    val deviceIdentity: String,
+    val plannedCount: Int,
+    val changedPackages: List<String>,
+    val baselineDisabledCount: Int,
+    val outcome: String
+)
+
+private fun loadCleanupHistory(context: Context): List<CleanupHistoryEntry> {
+    return try {
+        val raw = prefs(context).getString("cleanup_operation_history", null) ?: return emptyList()
+        val array = JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val changed = item.optJSONArray("changed") ?: JSONArray()
+            CleanupHistoryEntry(
+                createdAt = item.optLong("createdAt"),
+                deviceIdentity = item.optString("deviceIdentity"),
+                plannedCount = item.optInt("plannedCount"),
+                changedPackages = (0 until changed.length()).map { changed.optString(it) }.filter { it.isNotBlank() },
+                baselineDisabledCount = item.optInt("baselineDisabledCount"),
+                outcome = item.optString("outcome", "Завершено")
+            )
+        }.sortedByDescending { it.createdAt }
+    } catch (_: Exception) { emptyList() }
+}
+
+private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outcome: String, changed: List<String>) {
+    val history = JSONArray()
+    val existing = loadCleanupHistory(context).take(29)
+    (existing + CleanupHistoryEntry(
+        createdAt = journal.createdAt,
+        deviceIdentity = journal.deviceIdentity,
+        plannedCount = journal.plannedPackages.size,
+        changedPackages = changed.distinct(),
+        baselineDisabledCount = journal.baselineDisabledPackages.size,
+        outcome = outcome
+    )).forEach { entry ->
+        history.put(JSONObject()
+            .put("createdAt", entry.createdAt)
+            .put("deviceIdentity", entry.deviceIdentity)
+            .put("plannedCount", entry.plannedCount)
+            .put("changed", JSONArray(entry.changedPackages))
+            .put("baselineDisabledCount", entry.baselineDisabledCount)
+            .put("outcome", entry.outcome))
+    }
+    prefs(context).edit().putString("cleanup_operation_history", history.toString()).commit()
+}
+
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
@@ -2030,6 +2080,7 @@ fun TvInstallerApp() {
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
     var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
+    var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
     var profileCatalogExpanded by remember { mutableStateOf(false) }
