@@ -58,7 +58,7 @@ internal object TvAutomationEngine {
         val availableKb = match.groupValues[3].toLongOrNull() ?: return null
         val usedPercent = match.groupValues[4].toIntOrNull() ?: return null
         if (totalKb <= 0 || totalKb > Long.MAX_VALUE / 1024L || usedKb < 0 || availableKb < 0 || usedPercent !in 0..100) return null
-        if (usedKb > totalKb || availableKb > totalKb) return null
+        if (usedKb > totalKb || availableKb > totalKb || usedKb > totalKb - availableKb) return null
         return DataStorageSnapshot(totalKb * 1024L, usedKb * 1024L, availableKb * 1024L, usedPercent)
     }
 
@@ -81,8 +81,10 @@ internal object TvAutomationEngine {
         val memoryTotal = number(Regex("""(?m)^MemTotal:\s*(\d+)\s*kB"""))
         val memoryAvailable = number(Regex("""(?m)^MemAvailable:\s*(\d+)\s*kB"""))
             ?: number(Regex("""(?m)^MemFree:\s*(\d+)\s*kB"""))
-        val memoryPercent = if (memoryTotal != null && memoryTotal > 0 && memoryAvailable != null) {
-            ((memoryAvailable * 100L) / memoryTotal).toInt().coerceIn(0, 100)
+        val memoryPercent = if (memoryTotal != null && memoryTotal > 0 && memoryAvailable != null &&
+            memoryAvailable >= 0 && memoryAvailable <= memoryTotal
+        ) {
+            ((memoryAvailable.toDouble() / memoryTotal.toDouble()) * 100.0).toInt().coerceIn(0, 100)
         } else null
 
         val dataUsedPercent = Regex("""(?m)^.*\s(\d{1,3})%\s+/data\s*$""")
