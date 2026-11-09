@@ -4121,7 +4121,8 @@ fun TvInstallerApp() {
                     val packageName: String,
                     val versionName: String,
                     val versionCode: Long,
-                    val minSdk: Int
+                    val minSdk: Int,
+                    val abis: Set<String>
                 )
 
                 // Проверяем оба APK полностью до первого изменения на телевизоре.
@@ -4190,12 +4191,24 @@ fun TvInstallerApp() {
                         @Suppress("DEPRECATION")
                         packageInfo.versionCode.toLong()
                     }
+                    val nativeAbis = linkedSetOf<String>()
+                    java.util.zip.ZipFile(outputFile).use { apkZip ->
+                        val entries = apkZip.entries()
+                        while (entries.hasMoreElements()) {
+                            val entryName = entries.nextElement().name
+                            if (entryName.startsWith("lib/")) {
+                                val abi = entryName.removePrefix("lib/").substringBefore('/')
+                                if (abi.isNotBlank() && abi != entryName) nativeAbis += abi
+                            }
+                        }
+                    }
                     return VerifiedCleanModule(
                         outputFile,
                         expectedPackage,
                         packageInfo.versionName ?: "неизвестна",
                         versionCode,
-                        packageInfo.applicationInfo?.minSdkVersion ?: 1
+                        packageInfo.applicationInfo?.minSdkVersion ?: 1,
+                        nativeAbis
                     )
                 }
 
@@ -4226,6 +4239,15 @@ fun TvInstallerApp() {
                     require(incompatible.isEmpty()) {
                         "Эта версия Android TV слишком старая для модулей: " +
                             incompatible.joinToString { "${it.packageName} требует Android SDK ${it.minSdk}, на ТВ SDK $deviceSdk" }
+                    }
+                    val deviceAbiText = shellText(adb, "getprop ro.product.cpu.abilist").trim()
+                        .ifBlank { shellText(adb, "getprop ro.product.cpu.abi").trim() }
+                    val deviceAbis = deviceAbiText.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                    val abiIncompatible = modules.filter { it.abis.isNotEmpty() && it.abis.none { abi -> abi in deviceAbis } }
+                    require(abiIncompatible.isEmpty()) {
+                        "Архитектура ТВ не поддерживается модулями: " +
+                            abiIncompatible.joinToString { "${it.packageName} поддерживает ${it.abis.joinToString()} " } +
+                            "(телевизор: ${deviceAbis.joinToString().ifBlank { "не определена" }})."
                     }
 
                     data class PreviousModuleState(
@@ -4308,7 +4330,7 @@ fun TvInstallerApp() {
                             val installedBefore = previousStates.count { it.backupApk != null }
                             "Оба модуля Clean Your TV проверены и установлены. " +
                                 verification.joinToString("; ") +
-                                ". Android TV SDK: $deviceSdk. " +
+                                ". Android TV SDK: $deviceSdk; ABI: ${deviceAbis.joinToString().ifBlank { "не определена" }}. " +
                                 if (installedBefore == 2) "Обе прежние версии сохранены до успешной проверки." else
                                     "Отсутствующие модули установлены, существующие обновлены."
                         } catch (installError: Exception) {
