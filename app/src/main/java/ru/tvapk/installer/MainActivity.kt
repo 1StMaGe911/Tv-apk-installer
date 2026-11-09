@@ -4288,7 +4288,7 @@ fun TvInstallerApp() {
                 val source = entry.file.canonicalFile
                 val root = context.filesDir.canonicalFile
                 val parent = source.parentFile
-                require(parent?.parentFile == root &&
+                require(parent != null && parent.parentFile == root &&
                     parent.name == entry.folder &&
                     parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
                     source.isFile && source.extension.equals("apk", true)) {
