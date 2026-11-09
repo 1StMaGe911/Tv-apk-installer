@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.8.9"
+private const val APP_VERSION = "0.9.0"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2313,6 +2313,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.0 • Переносимый сценарий восстановления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен экспорт Bash-сценария для восстановления с компьютера через ADB. Сценарий содержит только изменения, отслеживаемые TV APK Installer, проверяет производителя, модель, устройство и отпечаток прошивки до выполнения команд, а ошибки показывает отдельно.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.9 • Быстрое восстановление системных изменений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена отдельная команда для восстановления всех системных пакетов и компонентов автозапуска, отключённых самим приложением. Перед действием показывается подтверждение; успешные элементы удаляются из списка ожидания, а ошибки остаются доступными для повторной попытки.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
