@@ -3103,7 +3103,7 @@ private fun matchTvModelProfile(
                 pkg !in named &&
                 packageSegments.none { safetyWords.containsMatchIn(it) || roleWords.containsMatchIn(it) } &&
                 tvStack.none { pkg == it || pkg.startsWith("$it.") } &&
-                facts[pkg]?.category in carefulCategories
+                facts[pkg]?.category?.let { it in carefulCategories } == true
         }
     } else emptyList()
 
