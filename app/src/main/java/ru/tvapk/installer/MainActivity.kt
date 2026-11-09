@@ -2325,6 +2325,7 @@ fun TvInstallerApp() {
     var restorePointSchemaVersion by remember { mutableStateOf(settings.getInt("restore_point_schema_version", 1)) }
     var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
     var pendingPortableRestoreScript by remember { mutableStateOf<String?>(null) }
+    var pendingPortableRestoreBundle by remember { mutableStateOf<ByteArray?>(null) }
 
 
     var usbMode by remember { mutableStateOf(false) }
@@ -2560,6 +2561,54 @@ fun TvInstallerApp() {
                 status = "Точка импортирована. При восстановлении будет проверена модель и прошивка телевизора."
             } catch (e: Exception) {
                 status = "Ошибка импорта точки: ${errorText(e)}"
+            }
+        }
+    }
+
+    val portableRestoreBundleExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destinationUri ->
+        val bundle = pendingPortableRestoreBundle
+        if (destinationUri != null && bundle != null) {
+            try {
+                context.contentResolver.openOutputStream(destinationUri)?.use { it.write(bundle) }
+                    ?: throw Exception("Не удалось создать ZIP-файл")
+                status = "ZIP-архив точки восстановления сохранён. Внутри есть JSON, Bash и PowerShell сценарии."
+            } catch (e: Exception) {
+                status = "Ошибка экспорта ZIP: ${errorText(e)}"
+            }
+        }
+        pendingPortableRestoreBundle = null
+    }
+
+    val portableRestoreBundleImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
+                    ?: throw Exception("Не удалось прочитать ZIP-файл")
+                val bundle = parsePortableRestoreBundleZip(bytes)
+                val point = bundle.point
+                restorePoint = point.userDisabled
+                restorePointManagedUserPackages = point.managedUsers
+                restorePointManagedSystemPackages = point.managedSystems
+                restorePointAutoStartComponents = point.autoStartComponents
+                restorePointDeviceFingerprint = point.fingerprint
+                restorePointSchemaVersion = 2
+                restorePointExists = true
+                settings.edit()
+                    .putStringSet("restore_point_user_disabled", point.userDisabled)
+                    .putStringSet("restore_point_managed_user_packages", point.managedUsers)
+                    .putStringSet("restore_point_managed_system_packages", point.managedSystems)
+                    .putStringSet("restore_point_autostart_components", point.autoStartComponents)
+                    .putString("restore_point_device_fingerprint", point.fingerprint)
+                    .putInt("restore_point_schema_version", 2)
+                    .putBoolean("restore_point_exists", true)
+                    .apply()
+                status = "ZIP проверен по SHA-256. Точка импортирована; модель и прошивка будут проверены перед восстановлением."
+            } catch (e: Exception) {
+                status = "Ошибка импорта ZIP: ${errorText(e)}"
             }
         }
     }
@@ -4868,6 +4917,41 @@ fun TvInstallerApp() {
                             ) { Text("Импорт точки JSON") }
                         }
                         Text("JSON-файл переносит саму точку между установками приложения. Импорт не меняет телевизор; при запуске восстановления отпечаток модели и прошивки сверяется с подключённым устройством.", color = TextMuted, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                enabled = !busy && restorePointExists && restorePointSchemaVersion >= 2 && !restorePointDeviceFingerprint.isNullOrBlank(),
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    try {
+                                        val fingerprint = restorePointDeviceFingerprint ?: throw Exception("Создай точку заново")
+                                        val json = buildRestorePointBackupJson(
+                                            fingerprint, restorePoint, restorePointManagedUserPackages,
+                                            restorePointManagedSystemPackages, restorePointAutoStartComponents
+                                        )
+                                        val bash = buildPortableRestoreScript(
+                                            fingerprint, disabledPackages, restorePointManagedUserPackages,
+                                            managedSystemDisabledPackages, restorePointManagedSystemPackages,
+                                            disabledAutoStart, restorePointAutoStartComponents
+                                        )
+                                        val powershell = buildPortableRestorePowerShell(
+                                            fingerprint, disabledPackages, restorePointManagedUserPackages,
+                                            managedSystemDisabledPackages, restorePointManagedSystemPackages,
+                                            disabledAutoStart, restorePointAutoStartComponents
+                                        )
+                                        pendingPortableRestoreBundle = buildPortableRestoreBundleZip(json, bash, powershell)
+                                        portableRestoreBundleExporter.launch("tv-apk-installer-restore-bundle.zip")
+                                    } catch (e: Exception) {
+                                        status = "Не удалось подготовить ZIP: ${errorText(e)}"
+                                    }
+                                }
+                            ) { Text("Экспорт ZIP-пакета") }
+                            OutlinedButton(
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f),
+                                onClick = { portableRestoreBundleImporter.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }
+                            ) { Text("Импорт ZIP-пакета") }
+                        }
+                        Text("ZIP содержит манифест, контрольные суммы SHA-256, снимок и сценарии для Bash и PowerShell. Архив проверяется перед импортом; сценарии не запускаются автоматически.", color = TextMuted, fontSize = 11.sp)
 
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
