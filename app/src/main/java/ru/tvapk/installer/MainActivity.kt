@@ -796,6 +796,36 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
     }
 }
 
+private fun enableHomeKeyService(adb: Dadb): String {
+    val packageName = "com.gathin.tvhome"
+    val component = "$packageName/.HomeKeyService"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен."
+    }
+    val declared = try { shellText(adb, "dumpsys package $packageName | grep -F 'HomeKeyService'") } catch (_: Exception) { "" }
+    require(declared.contains("HomeKeyService")) {
+        "В установленной версии Launcher нет HomeKeyService. Обнови модуль Clean Your TV."
+    }
+    try { shellText(adb, "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS") } catch (_: Exception) { }
+    try {
+        shellText(adb, "cmd appops set $packageName AUTO_START allow 2>/dev/null || true; cmd appops set $packageName APP_AUTO_START allow 2>/dev/null || true; appops write-settings 2>/dev/null || true")
+    } catch (_: Exception) { }
+    val current = try { shellText(adb, "settings get secure enabled_accessibility_services").trim() } catch (_: Exception) { "" }
+    val services = current.split(":")
+        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
+        .distinct()
+    val wasEnabled = component in services
+    val base = services.filterNot { it == component }
+    val next = (base + component).distinct().joinToString(":")
+    val command = if (wasEnabled) {
+        "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; sleep 1; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+    } else {
+        "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+    }
+    shellText(adb, command)
+    return "HomeKeyService включён. Он нужен только пультам, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home."
+}
+
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
         shellText(adb, command).ifBlank { "Недоступно" }
@@ -1342,6 +1372,7 @@ fun TvInstallerApp() {
     var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
+    var pendingHomeKeyServiceEnable by remember { mutableStateOf(false) }
     var pendingLauncherConfigExport by remember { mutableStateOf<String?>(null) }
     var pendingLauncherBackupFile by remember { mutableStateOf<File?>(null) }
     var pendingLauncherBackupHasWallpaper by remember { mutableStateOf(false) }
@@ -1810,6 +1841,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.8 • Поддержка Home / All Apps", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена отдельная опциональная активация HomeKeyService для пультов, которые отправляют KEYCODE_ALL_APPS вместо обычной кнопки Home. Включение требует подтверждения и не меняет остальные службы специальных возможностей.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.7 • Полная резервная копия Launcher", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлена ZIP-резервная копия config.json и текущего wallpaper.jpg, если файл доступен через ThemeProvider. Восстановление возвращает конфигурацию и активные обои; папка ротации пока не включена.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2565,6 +2599,32 @@ fun TvInstallerApp() {
                                     }
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Открыть настройки специальных возможностей") }
+                            OutlinedButton(enabled = !busy, onClick = { pendingHomeKeyServiceEnable = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Включить HomeKeyService для кнопки Home / All Apps")
+                            }
+                            if (pendingHomeKeyServiceEnable) {
+                                AlertDialog(
+                                    onDismissRequest = { pendingHomeKeyServiceEnable = false },
+                                    title = { Text("Включить HomeKeyService?") },
+                                    text = { Text("Дополнительная служба нужна некоторым пультам, например Xiaomi, которые отправляют KEYCODE_ALL_APPS вместо обычного Home. Она может изменить поведение кнопки Home. Включай её только если обычное назначение кнопок не срабатывает. Отключить службу можно в настройках специальных возможностей.") },
+                                    confirmButton = {
+                                        TextButton(enabled = !busy, onClick = {
+                                            val host = ip.trim()
+                                            val p = port.toIntOrNull()
+                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                status = "Проверь IP и порт ADB"
+                                                pendingHomeKeyServiceEnable = false
+                                            } else {
+                                                pendingHomeKeyServiceEnable = false
+                                                runTask({
+                                                    connectWithRetry(context, host, p) { adb -> enableHomeKeyService(adb) }
+                                                })
+                                            }
+                                        }) { Text("Включить") }
+                                    },
+                                    dismissButton = { TextButton(onClick = { pendingHomeKeyServiceEnable = false }) { Text("Отмена") } }
+                                )
+                            }
                             Text("InputKeyService получает только события нажатий кнопок пульта. На некоторых прошивках, включая отдельные версии TCL Android 12, фильтрация может влиять на удержание кнопок громкости. Если это произойдёт, отключи InputKeyService в настройках специальных возможностей.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             if (pendingRemoteKeyEnable) {
                                 AlertDialog(
