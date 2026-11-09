@@ -3702,10 +3702,16 @@ fun TvInstallerApp() {
                                                 }
                                                 activity.runOnUiThread {
                                                     if (disabledNow.isNotEmpty()) {
-                                                        disabledPackages = disabledPackages + disabledNow
+                                                        val userDisabledNow = disabledNow.filter { it in userPackages }.toSet()
+                                                        val systemDisabledNow = disabledNow.filter { it !in userPackages }.toSet()
+                                                        disabledPackages = disabledPackages + userDisabledNow
+                                                        managedSystemDisabledPackages = managedSystemDisabledPackages + systemDisabledNow
                                                         disabledOnDevice = disabledOnDevice + disabledNow
                                                         selectedCleanupPackages = selectedCleanupPackages - disabledNow.toSet()
-                                                        settings.edit().putStringSet("disabled_packages", disabledPackages).apply()
+                                                        settings.edit()
+                                                            .putStringSet("disabled_packages", disabledPackages)
+                                                            .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
+                                                            .apply()
                                                     }
                                                 }
                                                 "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
@@ -4000,7 +4006,11 @@ fun TvInstallerApp() {
                                                             "Системный пакет восстановлен: $pkg"
                                                         }
                                                     }, { result ->
-                                                        if (!result.startsWith("Ошибка")) disabledOnDevice = disabledOnDevice - pkg
+                                                        if (!result.startsWith("Ошибка")) {
+                                                    disabledOnDevice = disabledOnDevice - pkg
+                                                    managedSystemDisabledPackages = managedSystemDisabledPackages - pkg
+                                                    settings.edit().putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
+                                                }
                                                     })
                                                 }) { Text("Восстановить") }
                                             } else {
@@ -4035,7 +4045,11 @@ fun TvInstallerApp() {
                                                 "Системный пакет отключён: $pkg"
                                             }
                                         }, { result ->
-                                            if (!result.startsWith("Ошибка")) disabledOnDevice = disabledOnDevice + pkg
+                                            if (!result.startsWith("Ошибка")) {
+                                                disabledOnDevice = disabledOnDevice + pkg
+                                                managedSystemDisabledPackages = managedSystemDisabledPackages + pkg
+                                                settings.edit().putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
+                                            }
                                         })
                                     }) { Text("Отключить") }
                                 },
