@@ -543,7 +543,7 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
         val directory = "/sdcard/Android/data/$packageName/files"
         val command =
             "rm -f $directory/config.json 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \\"\$o\\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
+            "o=\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
             "r=\$?; rm -f $remote; exit \$r"
         shellText(adb, command)
         shellText(adb, "am force-stop --user 0 $packageName")
