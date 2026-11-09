@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.1"
+private const val APP_VERSION = "0.9.2"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1346,9 +1346,6 @@ private fun resolveHomeComponent(adb: Dadb, packageFilter: String? = null): Stri
     }
 }
 
-private fun savedStockHomePackage(context: Context): String? =
-    prefs(context).getString("launcher_handover_stock_package", null)
-
 private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
     val currentHome = resolveHomeComponent(adb)
         ?: throw Exception("Не удалось определить текущий домашний экран. Ничего не изменено.")
@@ -1395,6 +1392,11 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
             require(restored?.startsWith("$currentPackage/") == true) {
                 "Android вернул неожиданный Home: ${restored ?: "нет ответа"}"
             }
+            prefs(context).edit()
+                .remove("launcher_handover_stock_package")
+                .remove("launcher_handover_stock_component")
+                .remove("launcher_handover_active")
+                .apply()
             "Штатный Home восстановлен автоматически."
         } catch (rollbackError: Exception) {
             "Автоматический откат не подтверждён: ${errorText(rollbackError)}. Запись восстановления сохранена — повтори откат после подключения к телевизору."
@@ -2445,6 +2447,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.2 • Безопасное переключение домашнего экрана", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено проверяемое назначение Clean Your TV Launcher главным экраном: сначала тестируется запуск, сохраняется точный штатный Home, затем отключается только распознанный системный пакет и проверяется результат. При сбое выполняется автоматический возврат; отдельная кнопка позволяет восстановить штатный экран позже или после обрыва ADB.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.1 • Расширенная защита Android TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Расширен список критически важных пакетов Android и TV middleware по правилам Clean Your TV. Ручное отключение системного пакета теперь повторно проверяет защиту и профиль конкретной модели непосредственно перед ADB-командой; компоненты neverDisable заблокированы даже при ручном выборе.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2919,7 +2924,7 @@ fun TvInstallerApp() {
                                     }
                                 )
                             }
-                            Text("Безопасность: новый Launcher не назначается автоматически, а штатный экран не отключается. На части моделей замена домашнего экрана нарушает работу кнопок пульта, трансляции или запуск после перезагрузки. Для возврата выбери штатный Launcher в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("Автоматическое переключение работает только с распознанными штатными пакетами Google TV / Android TV / Xiaomi TV. Перед отключением проверяется запуск нового Launcher, исходный компонент сохраняется для отката, а результат назначения Home проверяется повторно. Если производитель использует неизвестный Launcher, автоматическое переключение заблокировано — используй системный выбор Home.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = { pendingModuleRemoval = true }, modifier = Modifier.fillMaxWidth()) { Text("Удалить модули Clean Your TV") }
                             Text("Удаление затронет только пакеты Clean Your TV для пользователя телевизора. Перед удалением выбери штатный домашний экран в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("Curtain устанавливается как компонент Launcher. Полный откат настроек, профили и каталог модулей оригинала требуют отдельной проверки совместимости и пока не считаются перенесёнными.", color = TextMuted, fontSize = 11.sp)
