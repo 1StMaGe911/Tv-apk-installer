@@ -3757,9 +3757,10 @@ fun TvInstallerApp() {
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
                                         val snapshot = readDisabledUserPackages(adb)
+                                        val actualDisabled = readDisabledPackages(adb)
                                         val deviceFingerprint = readTvIdentity(adb)
-                                        val managedUsers = disabledPackages.toSet()
-                                        val managedSystems = managedSystemDisabledPackages.toSet()
+                                        val managedUsers = disabledPackages.intersect(actualDisabled)
+                                        val managedSystems = managedSystemDisabledPackages.intersect(actualDisabled)
                                         val managedAutoStart = disabledAutoStart.toSet()
                                         activity.runOnUiThread {
                                             restorePoint = snapshot
@@ -3795,29 +3796,35 @@ fun TvInstallerApp() {
                                         require(currentFingerprint == savedFingerprint) {
                                             "Точка создана для другого телевизора или другой сборки прошивки. Восстановление остановлено; создай новую точку на этом устройстве."
                                         }
-                                        val current = readDisabledUserPackages(adb)
-                                        val toEnable = current - snapshot
-                                        val toDisable = snapshot - current
+                                        val currentUserDisabled = readDisabledUserPackages(adb)
+                                        val currentDisabledAll = readDisabledPackages(adb)
                                         val installed = readAllPackages(adb).toSet()
                                         val currentManagedUsers = disabledPackages.toSet()
                                         val currentManagedSystems = managedSystemDisabledPackages.toSet()
                                         val currentManagedAutoStart = disabledAutoStart.toSet()
                                         val failures = mutableListOf<String>()
-                                        toEnable.forEach { pkg -> try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) } }
-                                        toDisable.forEach { pkg -> try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) } }
-                                        (currentManagedUsers - restorePointManagedUserPackages).forEach { pkg ->
-                                            if (pkg in installed) try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                        val managedUserUniverse = currentManagedUsers + restorePointManagedUserPackages
+                                        managedUserUniverse.forEach { pkg ->
+                                            val shouldBeDisabled = pkg in restorePointManagedUserPackages
+                                            val isDisabledNow = pkg in currentUserDisabled
+                                            if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
+                                            else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
+                                                try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
+                                                try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                            }
                                         }
-                                        (restorePointManagedUserPackages - currentManagedUsers).forEach { pkg ->
-                                            if (pkg in installed) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
-                                            else failures.add("${pkg} (не установлен)")
-                                        }
-                                        (currentManagedSystems - restorePointManagedSystemPackages).forEach { pkg ->
-                                            if (pkg in installed && !isProtectedSystemPackage(pkg)) try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
-                                        }
-                                        (restorePointManagedSystemPackages - currentManagedSystems).forEach { pkg ->
-                                            if (pkg in installed && !isProtectedSystemPackage(pkg)) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
-                                            else if (pkg !in installed) failures.add("${pkg} (не установлен)")
+                                        val managedSystemUniverse = currentManagedSystems + restorePointManagedSystemPackages
+                                        managedSystemUniverse.forEach { pkg ->
+                                            val shouldBeDisabled = pkg in restorePointManagedSystemPackages
+                                            val isDisabledNow = pkg in currentDisabledAll
+                                            if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
+                                            else if (isProtectedSystemPackage(pkg)) failures.add("${pkg} (защищённый компонент, пропущен)")
+                                            else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
+                                                try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
+                                                try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                            }
                                         }
                                         (currentManagedAutoStart - restorePointAutoStartComponents).forEach { component ->
                                             if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, true) } catch (_: Exception) { failures.add(component) }
@@ -3825,18 +3832,22 @@ fun TvInstallerApp() {
                                         (restorePointAutoStartComponents - currentManagedAutoStart).forEach { component ->
                                             if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, false) } catch (_: Exception) { failures.add(component) }
                                         }
+                                        val actualAfterRestore = readDisabledPackages(adb)
                                         activity.runOnUiThread {
-                                            disabledPackages = restorePointManagedUserPackages
-                                            managedSystemDisabledPackages = restorePointManagedSystemPackages
-                                            disabledAutoStart = restorePointAutoStartComponents
-                                            settings.edit()
-                                                .putStringSet("disabled_packages", disabledPackages)
-                                                .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
-                                                .putStringSet("disabled_autostart_components", disabledAutoStart)
-                                                .apply()
+                                            disabledOnDevice = actualAfterRestore
+                                            if (failures.isEmpty()) {
+                                                disabledPackages = restorePointManagedUserPackages
+                                                managedSystemDisabledPackages = restorePointManagedSystemPackages
+                                                disabledAutoStart = restorePointAutoStartComponents
+                                                settings.edit()
+                                                    .putStringSet("disabled_packages", disabledPackages)
+                                                    .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
+                                                    .putStringSet("disabled_autostart_components", disabledAutoStart)
+                                                    .apply()
+                                            }
                                         }
                                         if (failures.isEmpty()) "Состояние приложений и автозапуска восстановлено по точке"
-                                        else "Не удалось изменить: ${failures.joinToString()}"
+                                        else "Восстановление выполнено частично. Можно повторить; не удалось: ${failures.joinToString()}"
                                     }
                                 })
                             }) { Text("Восстановить точку") }
