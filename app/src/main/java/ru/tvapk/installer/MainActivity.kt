@@ -1314,6 +1314,86 @@ private fun readTvIdentity(adb: Dadb): String {
 private fun shellSingleQuote(value: String): String =
     "'" + value.replace("'", "'\\''") + "'"
 
+private data class PortableRestorePoint(
+    val fingerprint: String,
+    val userDisabled: Set<String>,
+    val managedUsers: Set<String>,
+    val managedSystems: Set<String>,
+    val autoStartComponents: Set<String>
+)
+
+private fun buildRestorePointBackupJson(
+    fingerprint: String,
+    userDisabled: Set<String>,
+    managedUsers: Set<String>,
+    managedSystems: Set<String>,
+    autoStartComponents: Set<String>
+): String {
+    val identity = fingerprint.split("|")
+    require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) {
+        "В точке нет полной идентификации телевизора"
+    }
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    require(userDisabled.size <= 5000 && managedUsers.size <= 5000 && managedSystems.size <= 5000 && autoStartComponents.size <= 5000) {
+        "Слишком много записей в точке восстановления"
+    }
+    require((userDisabled + managedUsers + managedSystems).all { packagePattern.matches(it) }) {
+        "В точке есть некорректное имя пакета"
+    }
+    require(managedSystems.none { isProtectedSystemPackage(it) }) {
+        "Точка содержит защищённый системный пакет"
+    }
+    require(autoStartComponents.all { componentPattern.matches(it) }) {
+        "В точке есть некорректный компонент автозапуска"
+    }
+    return JSONObject()
+        .put("format", "tv-apk-installer-restore-point")
+        .put("schemaVersion", 2)
+        .put("exportedAt", System.currentTimeMillis())
+        .put("deviceFingerprint", fingerprint)
+        .put("userDisabledPackages", JSONArray(userDisabled.sorted()))
+        .put("managedUserPackages", JSONArray(managedUsers.sorted()))
+        .put("managedSystemPackages", JSONArray(managedSystems.sorted()))
+        .put("autoStartComponents", JSONArray(autoStartComponents.sorted()))
+        .toString(2)
+}
+
+private fun parseRestorePointBackup(jsonText: String): PortableRestorePoint {
+    require(jsonText.length <= 2_000_000) { "Файл точки восстановления слишком большой" }
+    val root = JSONObject(jsonText)
+    require(root.optString("format") == "tv-apk-installer-restore-point") {
+        "Это не файл точки восстановления TV APK Installer"
+    }
+    require(root.optInt("schemaVersion") == 2) { "Неподдерживаемая версия точки восстановления" }
+    val fingerprint = root.optString("deviceFingerprint")
+    val identity = fingerprint.split("|")
+    require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) {
+        "В файле отсутствует полная идентификация телевизора"
+    }
+    fun readSet(key: String): Set<String> {
+        val array = root.getJSONArray(key)
+        require(array.length() <= 5000) { "Слишком много записей в разделе $key" }
+        return (0 until array.length()).map { array.getString(it) }.toSet()
+    }
+    val userDisabled = readSet("userDisabledPackages")
+    val managedUsers = readSet("managedUserPackages")
+    val managedSystems = readSet("managedSystemPackages")
+    val autoStart = readSet("autoStartComponents")
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    require((userDisabled + managedUsers + managedSystems).all { packagePattern.matches(it) }) {
+        "Файл содержит некорректное имя пакета"
+    }
+    require(managedSystems.none { isProtectedSystemPackage(it) }) {
+        "Файл содержит защищённый системный пакет"
+    }
+    require(autoStart.all { componentPattern.matches(it) }) {
+        "Файл содержит некорректный компонент автозапуска"
+    }
+    return PortableRestorePoint(fingerprint, userDisabled, managedUsers, managedSystems, autoStart)
+}
+
 private fun buildPortableRestoreScript(
     fingerprint: String,
     managedUsers: Set<String>,
@@ -2287,6 +2367,59 @@ fun TvInstallerApp() {
                 onFinished(result)
             }
         }.start()
+    }
+
+    val restorePointJsonExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                val json = buildRestorePointBackupJson(
+                    fingerprint = restorePointDeviceFingerprint ?: throw Exception("Создай точку заново"),
+                    userDisabled = restorePoint,
+                    managedUsers = restorePointManagedUserPackages,
+                    managedSystems = restorePointManagedSystemPackages,
+                    autoStartComponents = restorePointAutoStartComponents
+                )
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(json)
+                } ?: throw Exception("Не удалось создать файл")
+                status = "Точка восстановления экспортирована в JSON"
+            } catch (e: Exception) {
+                status = "Ошибка экспорта точки: ${errorText(e)}"
+            }
+        }
+    }
+
+    val restorePointJsonImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            try {
+                val json = context.contentResolver.openInputStream(sourceUri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    ?: throw Exception("Не удалось прочитать файл")
+                val point = parseRestorePointBackup(json)
+                restorePoint = point.userDisabled
+                restorePointManagedUserPackages = point.managedUsers
+                restorePointManagedSystemPackages = point.managedSystems
+                restorePointAutoStartComponents = point.autoStartComponents
+                restorePointDeviceFingerprint = point.fingerprint
+                restorePointSchemaVersion = 2
+                restorePointExists = true
+                settings.edit()
+                    .putStringSet("restore_point_user_disabled", point.userDisabled)
+                    .putStringSet("restore_point_managed_user_packages", point.managedUsers)
+                    .putStringSet("restore_point_managed_system_packages", point.managedSystems)
+                    .putStringSet("restore_point_autostart_components", point.autoStartComponents)
+                    .putString("restore_point_device_fingerprint", point.fingerprint)
+                    .putInt("restore_point_schema_version", 2)
+                    .putBoolean("restore_point_exists", true)
+                    .apply()
+                status = "Точка импортирована. При восстановлении будет проверена модель и прошивка телевизора."
+            } catch (e: Exception) {
+                status = "Ошибка импорта точки: ${errorText(e)}"
+            }
+        }
     }
 
     val portableRestoreScriptExporter = rememberLauncherForActivityResult(
@@ -4580,6 +4713,19 @@ fun TvInstallerApp() {
                             }
                         ) { Text("Экспортировать сценарий восстановления ADB") }
                         Text("Сценарий возвращает только изменения, отслеживаемые TV APK Installer, и проверяет модель и отпечаток прошивки перед командами. Для запуска на компьютере нужны Bash и Android platform-tools.", color = TextMuted, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                enabled = !busy && restorePointExists && restorePointSchemaVersion >= 2 && !restorePointDeviceFingerprint.isNullOrBlank(),
+                                modifier = Modifier.weight(1f),
+                                onClick = { restorePointJsonExporter.launch("tv-apk-installer-restore-point.json") }
+                            ) { Text("Экспорт точки JSON") }
+                            OutlinedButton(
+                                enabled = !busy,
+                                modifier = Modifier.weight(1f),
+                                onClick = { restorePointJsonImporter.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
+                            ) { Text("Импорт точки JSON") }
+                        }
+                        Text("JSON-файл переносит саму точку между установками приложения. Импорт не меняет телевизор; при запуске восстановления отпечаток модели и прошивки сверяется с подключённым устройством.", color = TextMuted, fontSize = 11.sp)
 
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
