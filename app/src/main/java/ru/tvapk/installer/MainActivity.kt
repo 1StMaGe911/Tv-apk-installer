@@ -7476,7 +7476,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val managedUsersSnapshot = managedUsersBeforeCleanup.intersect(baselineDisabledSet)
                                                 val managedSystemsSnapshot = managedSystemsBeforeCleanup.intersect(baselineDisabledSet)
                                                 val managedAutoStartSnapshot = managedAutoStartBeforeCleanup
-                                                settings.edit()
+                                                val restorePointSaved = settings.edit()
                                                     .putStringSet("restore_point_user_disabled", restoreUserSnapshot)
                                                     .putStringSet("restore_point_managed_user_packages", managedUsersSnapshot)
                                                     .putStringSet("restore_point_managed_system_packages", managedSystemsSnapshot)
@@ -7484,7 +7484,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     .putString("restore_point_device_fingerprint", deviceIdentity)
                                                     .putInt("restore_point_schema_version", 2)
                                                     .putBoolean("restore_point_exists", true)
-                                                    .apply()
+                                                    .commit()
+                                                require(restorePointSaved) {
+                                                    "Не удалось надёжно сохранить точку восстановления. Очистка отменена без изменений."
+                                                }
                                                 activity.runOnUiThread {
                                                     restorePoint = restoreUserSnapshot
                                                     restorePointManagedUserPackages = managedUsersSnapshot
