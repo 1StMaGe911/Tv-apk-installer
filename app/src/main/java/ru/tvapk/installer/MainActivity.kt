@@ -606,6 +606,97 @@ private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
     }
 }
 
+private fun parseLauncherRemoteMappings(raw: String): List<String> {
+    val entries = raw.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+    require(entries.size <= 32) { "Можно назначить не более 32 кнопок" }
+    val packagePattern = Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")
+    val actions = setOf("back", "home", "recents", "mute", "sleep", "screensaver", "settings", "wifi", "library", "ignore", "inputs")
+    fun validTarget(target: String): Boolean {
+        if (target.length > 256 || target.any { it.isWhitespace() }) return false
+        if (target in actions) return true
+        if (target.startsWith("input:")) return target.removePrefix("input:").matches(Regex("[A-Za-z0-9_./:-]+"))
+        if (target.startsWith("guide:")) return packagePattern.matches(target.removePrefix("guide:"))
+        if (packagePattern.matches(target)) return true
+        return target.matches(Regex("[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+"))
+    }
+    val invalid = entries.filter { entry ->
+        var value = entry
+        if (value.startsWith("hold:")) value = value.removePrefix("hold:")
+        else if (value.startsWith("front:")) value = value.removePrefix("front:")
+        if (value.startsWith("scan:")) {
+            val parts = value.split(":", limit = 3)
+            parts.size != 3 || parts[1].toIntOrNull()?.let { it <= 0 } != false || !validTarget(parts[2])
+        } else {
+            val parts = value.split(":", limit = 2)
+            parts.size != 2 ||
+                !(parts[0].matches(Regex("[0-9]{1,6}")) && parts[0].toIntOrNull()?.let { it > 0 } == true ||
+                    parts[0].matches(Regex("KEYCODE_[A-Z0-9_]+")) && parts[0] != "KEYCODE_UNKNOWN") ||
+                !validTarget(parts[1])
+        }
+    }
+    require(invalid.isEmpty()) {
+        "Неверная запись кнопки: ${invalid.take(3).joinToString()}. Проверь keycode и назначение."
+    }
+    return entries.distinct()
+}
+
+private fun configureInputKeyService(adb: Dadb, enabled: Boolean): String {
+    val packageName = "com.gathin.tvhome"
+    val component = "$packageName/.InputKeyService"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен."
+    }
+    if (enabled) {
+        val declared = try { shellText(adb, "dumpsys package $packageName | grep -F 'InputKeyService'") } catch (_: Exception) { "" }
+        require(declared.contains("InputKeyService")) {
+            "В установленной версии Launcher нет InputKeyService. Обнови модуль Clean Your TV."
+        }
+    }
+    val current = try { shellText(adb, "settings get secure enabled_accessibility_services").trim() } catch (_: Exception) { "" }
+    val services = current.split(":")
+        .filter { it.matches(Regex("[A-Za-z0-9_.$/]+")) }
+        .distinct()
+    val wasEnabled = component in services
+    if (enabled) {
+        try { shellText(adb, "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS") } catch (_: Exception) { }
+        try {
+            shellText(adb, "cmd appops set $packageName AUTO_START allow 2>/dev/null || true; cmd appops set $packageName APP_AUTO_START allow 2>/dev/null || true; appops write-settings 2>/dev/null || true")
+        } catch (_: Exception) { }
+        val base = services.filterNot { it == component }
+        val next = (base + component).distinct().joinToString(":")
+        val command = if (wasEnabled) {
+            "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+        } else {
+            "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+        }
+        shellText(adb, command)
+        return "Сервис обработки кнопок включён. Сохранённые назначения готовы к работе."
+    } else {
+        val next = services.filterNot { it == component }.joinToString(":")
+        shellText(adb, "settings put secure enabled_accessibility_services '$next'")
+        return "Сервис обработки кнопок отключён. Остальные службы специальных возможностей сохранены."
+    }
+}
+
+private fun applyLauncherRemoteMappings(adb: Dadb, raw: String): String {
+    val entries = parseLauncherRemoteMappings(raw)
+    val config = readCurrentLauncherConfig(adb)
+    if (entries.isEmpty()) config.remove("app_keys") else config.put("app_keys", JSONArray(entries))
+    config.put("key_filter", true)
+    val restart = writeLauncherConfig(adb, config)
+    val service = configureInputKeyService(adb, true)
+    return "Назначения кнопок сохранены: ${entries.size}. $service $restart"
+}
+
+private fun disableLauncherRemoteMappings(adb: Dadb): String {
+    val config = readCurrentLauncherConfig(adb)
+    config.remove("app_keys")
+    config.remove("key_filter")
+    val restart = writeLauncherConfig(adb, config)
+    val service = configureInputKeyService(adb, false)
+    return "Назначения кнопок очищены. $service $restart"
+}
+
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
         shellText(adb, command).ifBlank { "Недоступно" }
