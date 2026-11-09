@@ -5011,7 +5011,7 @@ fun TvInstallerApp() {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                            Text("TV APK Installer уже содержит проверенные модули Clean Your TV. Приложение само проверит их контрольные суммы и установит Launcher и Curtain на подключённый Android TV — импортировать отдельный APK не нужно.", color = TextMuted, fontSize = 12.sp)
+                            Text("В APK встроены официальные Clean Your TV Launcher и Curtain из закреплённой версии 0.4.8. Перед установкой проверяются SHA-256, подпись разработчика, package name и совместимость Android TV. Перед обновлением сохраняются прежние APK; при ошибке приложение проверяет откат. Более новые версии модулей на телевизоре не заменяются более старыми. Импортировать оригинальный APK не нужно.", color = TextMuted, fontSize = 12.sp)
                             Button(enabled = !busy, onClick = { installCleanYourTvModules() }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Установка модулей..." else "Установить / обновить модули автоматически")
                             }
