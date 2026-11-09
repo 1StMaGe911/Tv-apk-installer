@@ -1347,6 +1347,25 @@ private fun readTvDetails(adb: Dadb): String {
     }.trim()
 }
 
+private fun readTvCompatibilityReport(adb: Dadb): String {
+    fun probe(label: String, command: String, success: (String) -> Boolean): String {
+        val output = try { shellText(adb, command).trim() } catch (_: Exception) { "" }
+        return "$label: " + if (output.isNotBlank() && success(output)) "доступно" else "не подтверждено"
+    }
+    val sdk = try { shellText(adb, "getprop ro.build.version.sdk").trim().toIntOrNull() } catch (_: Exception) { null }
+    return buildString {
+        appendLine("ПРОВЕРКА СОВМЕСТИМОСТИ")
+        appendLine("Версия Android SDK: ${sdk?.toString() ?: "не определена"}")
+        appendLine(probe("Package Manager", "pm list packages", { it.contains("package:") || it.isEmpty() }))
+        appendLine(probe("Справка отключения пакетов", "pm help", { it.contains("disable", ignoreCase = true) }))
+        appendLine(probe("Команды cmd package", "cmd package help", { it.isNotBlank() && !it.contains("not found", true) }))
+        appendLine(probe("Системные настройки", "settings get secure android_id", { it.isNotBlank() }))
+        appendLine(probe("Сведения о питании", "dumpsys power", { it.contains("power", true) }))
+        appendLine()
+        append("Доступность команд не гарантирует поддержку каждой функции прошивкой. Перед изменением пакетов приложение дополнительно проверяет профиль модели и фактический результат.")
+    }
+}
+
 private fun sendTvKey(adb: Dadb, keyCode: Int): String {
     require(keyCode in 0..300) { "Недопустимый код клавиши" }
     return shellText(adb, "input keyevent $keyCode")
@@ -1973,6 +1992,7 @@ fun TvInstallerApp() {
 
     var busy by remember { mutableStateOf(false) }
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
+    var tvCompatibilityReport by remember { mutableStateOf("") }
     val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
@@ -4352,11 +4372,13 @@ fun TvInstallerApp() {
                             else runTask({
                                 connectWithRetry(context, host, p) { adb ->
                                     val details = readTvDetails(adb)
+                                    val compatibility = readTvCompatibilityReport(adb)
                                     val packages = readUserPackages(adb)
                                     val installed = readAllPackages(adb)
                                     val disabled = readDisabledPackages(adb)
                                     activity.runOnUiThread {
                                         tvDetails = details
+                                        tvCompatibilityReport = compatibility
                                         userPackages = packages
                                         allPackages = installed
                                         disabledOnDevice = disabled
@@ -4365,6 +4387,14 @@ fun TvInstallerApp() {
                                 }
                             })
                         }) { Text("Определить устройство и найти приложения") }
+                        if (tvCompatibilityReport.isNotBlank()) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Text("СОВМЕСТИМОСТЬ УСТРОЙСТВА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                    Text(tvCompatibilityReport, color = TextMuted, fontSize = 11.sp)
+                                }
+                            }
+                        }
                         OutlinedTextField(value = packageFilter, onValueChange = { packageFilter = it },
                             label = { Text("Поиск приложения по имени пакета") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 
