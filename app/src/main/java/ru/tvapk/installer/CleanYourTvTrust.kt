@@ -68,7 +68,16 @@ internal object CleanYourTvTrust {
         val indexSig = readAsset(context, "cleanyourtv-catalog/index.json.minisig", MAX_SIGNATURE_BYTES)
         val keys = readAsset(context, "cleanyourtv-catalog/keys.json", MAX_KEYS_BYTES)
         val keysSig = readAsset(context, "cleanyourtv-catalog/keys.json.minisig", MAX_SIGNATURE_BYTES)
-        return verify(index, indexSig, keys, keysSig, null, System.currentTimeMillis())
+        val prefs = context.getSharedPreferences("cleanyourtv_catalog_trust", Context.MODE_PRIVATE)
+        val lastIndex = prefs.getLong("accepted_index_sequence", 0L).takeIf { it > 0L }
+        val lastKeys = prefs.getLong("accepted_keys_sequence", 0L).takeIf { it > 0L }
+        val verified = verify(index, indexSig, keys, keysSig, lastIndex, System.currentTimeMillis(), lastKeys)
+        // Persist high-water marks only after the complete chain of signatures and documents verifies.
+        prefs.edit()
+            .putLong("accepted_index_sequence", verified.sequence)
+            .putLong("accepted_keys_sequence", JSONObject(String(keys, Charsets.UTF_8)).getLong("sequence"))
+            .apply()
+        verified
     }
 
     fun verify(
@@ -77,7 +86,8 @@ internal object CleanYourTvTrust {
         keysBytes: ByteArray,
         keysSignature: ByteArray,
         lastAcceptedSequence: Long?,
-        nowMillis: Long
+        nowMillis: Long,
+        lastAcceptedKeysSequence: Long? = null
     ): VerifiedCatalog {
         require(keysBytes.size <= MAX_KEYS_BYTES) { "Файл ключей каталога слишком большой" }
         val root = parsePublicKey(ROOT_KEY)
@@ -86,6 +96,9 @@ internal object CleanYourTvTrust {
         require(keysJson.getLong("schema") == 1L) { "Неподдерживаемая схема keys.json" }
         val keysSequence = keysJson.getLong("sequence")
         require(keysSequence >= BUNDLED_KEYS_SEQUENCE) { "Файл ключей старее встроенного доверенного состояния" }
+        require(lastAcceptedKeysSequence == null || keysSequence >= lastAcceptedKeysSequence) {
+            "Обнаружен откат файла ключей каталога на более старую версию"
+        }
         val active = mutableListOf<MiniKey>()
         val revokedKeys = mutableSetOf<String>()
         val seen = mutableSetOf<String>()
@@ -131,8 +144,10 @@ internal object CleanYourTvTrust {
         val revokedArray = rootJson.optJSONArray("revoked") ?: JSONArray()
         require(revokedArray.length() <= 5000) { "Слишком много записей отзыва" }
         for (i in 0 until revokedArray.length()) {
-            val digest = revokedArray.getJSONObject(i).getString("sha256")
+            val entry = revokedArray.getJSONObject(i)
+            val digest = entry.getString("sha256")
             require(hex64.matches(digest)) { "Некорректный SHA-256 в списке отзыва" }
+            if (entry.has("reason")) require(entry.getString("reason").length <= 200) { "Слишком длинная причина отзыва" }
             revoked += digest
         }
 
