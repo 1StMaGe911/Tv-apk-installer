@@ -1343,6 +1343,8 @@ fun TvInstallerApp() {
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
     var pendingLauncherConfigExport by remember { mutableStateOf<String?>(null) }
+    var pendingLauncherBackupFile by remember { mutableStateOf<File?>(null) }
+    var pendingLauncherBackupHasWallpaper by remember { mutableStateOf(false) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1490,6 +1492,47 @@ fun TvInstallerApp() {
                 connectWithRetry(context, host, p) { adb ->
                     val restart = writeLauncherConfig(adb, config)
                     "Конфигурация Clean Your TV восстановлена. $restart"
+                }
+            })
+        }
+    }
+
+    val launcherBackupExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destinationUri ->
+        val file = pendingLauncherBackupFile
+        if (destinationUri != null && file != null) {
+            try {
+                val output = context.contentResolver.openOutputStream(destinationUri)
+                    ?: throw Exception("Не удалось открыть ZIP-файл для записи")
+                file.inputStream().use { input -> output.use { input.copyTo(it) } }
+                status = if (pendingLauncherBackupHasWallpaper) {
+                    "Резервная копия сохранена: config.json и текущие обои."
+                } else {
+                    "Резервная копия сохранена: config.json. Обои не удалось прочитать с телевизора."
+                }
+            } catch (e: Exception) {
+                status = "Ошибка сохранения ZIP: ${errorText(e)}"
+            }
+        } else {
+            status = "Сохранение резервной копии отменено."
+        }
+        file?.delete()
+        pendingLauncherBackupFile = null
+        pendingLauncherBackupHasWallpaper = false
+    }
+
+    val launcherBackupImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            val host = ip.trim()
+            val p = port.toIntOrNull()
+            if (host.isBlank() || p == null || p !in 1..65535) {
+                status = "Проверь IP и порт ADB"
+            } else runTask({
+                connectWithRetry(context, host, p) { adb ->
+                    restoreLauncherBackup(context, sourceUri, adb)
                 }
             })
         }
@@ -1767,6 +1810,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.7 • Полная резервная копия Launcher", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена ZIP-резервная копия config.json и текущего wallpaper.jpg, если файл доступен через ThemeProvider. Восстановление возвращает конфигурацию и активные обои; папка ротации пока не включена.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.6 • Резервная копия конфигурации Launcher", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлены экспорт и восстановление config.json Clean Your TV через системный выбор файлов. Резервная копия включает настройки темы, дока, скрытых приложений, часов и назначений кнопок; изображения обоев сохраняются отдельно.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2434,6 +2480,35 @@ fun TvInstallerApp() {
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
                             Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("ПОЛНАЯ РЕЗЕРВНАЯ КОПИЯ LAUNCHER", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("ZIP содержит config.json и текущий wallpaper.jpg, если обои доступны через ThemeProvider. Папка ротации wallpapers пока не включена.", color = TextMuted, fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        val (archive, hasWallpaper) = exportLauncherBackup(context, adb)
+                                        activity.runOnUiThread {
+                                            pendingLauncherBackupFile = archive
+                                            pendingLauncherBackupHasWallpaper = hasWallpaper
+                                        }
+                                        if (hasWallpaper) "ZIP подготовлен: конфигурация и текущие обои."
+                                        else "ZIP подготовлен: конфигурация. Файл обоев не найден или недоступен."
+                                    }
+                                }, onFinished = { result ->
+                                    if (result.startsWith("Ошибка:")) {
+                                        status = result
+                                    } else {
+                                        status = "Выбери место для сохранения ZIP-резервной копии."
+                                        launcherBackupExporter.launch("cleanyourtv-backup.zip")
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Создать полную ZIP-копию") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                launcherBackupImporter.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Восстановить ZIP-копию") }
+                            Text("Восстановление заменит config.json и, если он есть в архиве, текущий wallpaper.jpg. Перед восстановлением сохрани текущую конфигурацию. Коллекция ротации обоев не включена.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("РЕЗЕРВНАЯ КОПИЯ CONFIG.JSON", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Экспорт сохраняет настройки темы, дока, скрытых приложений, часов и кнопок. Изображение обоев в этот JSON не входит — для него используй выбор обоев отдельно.", color = TextMuted, fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = {
