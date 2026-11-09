@@ -150,3 +150,12 @@ GitHub Actions запускается при push в ветку `main` или в
 ### Catalog rollback certificate verification (0.9.76)
 
 Before a catalog-managed app update can replace an installed package, the installer now validates the pulled rollback APK's package name, version code, and single signing certificate. The certificate SHA-256 must match the signer fingerprint declared by the verified signed catalog. A backup with a missing, multiple, or unexpected signer is rejected before installation begins.
+
+## 0.9.77 — аварийное восстановление модулей
+
+- Добавлен список аварийных APK, сохранённых после неудачного отката установки Clean Your TV или дополнения из подписанного каталога.
+- Перед восстановлением APK повторно разбирается, сверяются package name, versionCode и SHA-256 сертификата.
+- Для Clean Your TV используется закреплённый отпечаток издателя; для дополнений — сертификат конкретной версии из действующего подписанного каталога.
+- Проверяется расположение файла, размер и отсутствие split APK на целевом устройстве; после установки сверяется фактический versionCode.
+- Копии остаются на устройстве после восстановления; удаление требует отдельного подтверждения.
+- Если издатель или версия не подтверждены, восстановление блокируется.
