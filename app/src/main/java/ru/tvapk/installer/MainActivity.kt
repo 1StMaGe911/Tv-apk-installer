@@ -698,12 +698,10 @@ private fun disableLauncherRemoteMappings(adb: Dadb): String {
 }
 
 private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
-    val encoded = try {
-        shellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64")
-    } catch (_: Exception) {
-        try { shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64") }
-        catch (_: Exception) { "" }
-    }
+    val provider = try { shellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64") } catch (_: Exception) { "" }
+    val encoded = if (provider.isNotBlank()) provider else try {
+        shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64")
+    } catch (_: Exception) { "" }
     if (encoded.isBlank()) return null
     val compact = encoded.filterNot { it.isWhitespace() }
     if (compact.length > 16 * 1024 * 1024) throw Exception("Файл обоев слишком большой для резервной копии")
@@ -784,7 +782,7 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
     }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(wallpaper, 0, wallpaper.size, bounds)
-    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "wallpaper.jpg повреждён" }
+    require(bounds.outWidth > 0 && bounds.outHeight > 0 && bounds.outWidth <= 12000 && bounds.outHeight <= 12000) { "wallpaper.jpg повреждён или слишком большого разрешения" }
     val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
     val wallpaperFile = File.createTempFile("cleanyourtv-restore-", ".jpg", context.cacheDir)
     try {
