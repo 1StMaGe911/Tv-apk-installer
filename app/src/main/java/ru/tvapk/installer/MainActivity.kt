@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.8.4"
+private const val APP_VERSION = "0.8.5"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -749,6 +749,16 @@ private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
     return bytes
 }
 
+private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
+    val (archive, hasWallpaper, collectionCount) = exportLauncherBackup(context, adb)
+    try {
+        val destination = File(context.filesDir, "launcher-theme-rollback.zip")
+        archive.copyTo(destination, overwrite = true)
+        return "Автокопия прежнего оформления сохранена (${if (hasWallpaper) "с обоями" else "без файла обоев"}, коллекция: $collectionCount)."
+    } finally {
+        archive.delete()
+    }
+}
 private fun exportLauncherBackup(context: Context, adb: Dadb): Triple<File, Boolean, Int> {
     val config = readCurrentLauncherConfig(adb)
     val wallpaper = readLauncherWallpaper(adb)
@@ -784,6 +794,17 @@ private fun exportLauncherBackup(context: Context, adb: Dadb): Triple<File, Bool
 
 private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String {
     val input = context.contentResolver.openInputStream(uri) ?: throw Exception("Не удалось открыть ZIP-архив")
+    return restoreLauncherBackupFromStream(context, input, adb)
+}
+
+private fun restoreLauncherBackupFile(context: Context, file: File, adb: Dadb): String {
+    require(file.isFile && file.length() in 1..(64L * 1024L * 1024L)) {
+        "Автоматическая резервная копия оформления не найдена или повреждена"
+    }
+    return restoreLauncherBackupFromStream(context, file.inputStream(), adb)
+}
+
+private fun restoreLauncherBackupFromStream(context: Context, input: java.io.InputStream, adb: Dadb): String {
     var configBytes: ByteArray? = null
     var wallpaperBytes: ByteArray? = null
     val collectionBytes = linkedMapOf<String, ByteArray>()
@@ -3136,12 +3157,28 @@ fun TvInstallerApp() {
                                     } else runTask({
                                         val files = downloadCleanYourTvTheme(context, themeId)
                                         connectWithRetry(context, host, p) { adb ->
-                                            pushLauncherTheme(adb, themeId, files.first, files.second)
+                                            val snapshot = saveLauncherThemeRollback(context, adb)
+                                            "$snapshot ${pushLauncherTheme(adb, themeId, files.first, files.second)}"
                                         }
                                     })
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Применить тему: $label") }
                             }
                             Text("Для установки темы передаются config.json и wallpaper.jpg. Тема меняет визуальное оформление, сохраняя закреплённые и скрытые приложения, назначения кнопок, настройки часов и параметры ротации обоев.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                val snapshot = File(context.filesDir, "launcher-theme-rollback.zip")
+                                if (host.isBlank() || p == null || p !in 1..65535) {
+                                    status = "Проверь IP и порт ADB"
+                                } else if (!snapshot.isFile) {
+                                    status = "Автоматической копии пока нет. Сначала примени любую тему — копия создаётся перед её установкой."
+                                } else runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        restoreLauncherBackupFile(context, snapshot, adb)
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Вернуть оформление до последней темы") }
+                            Text("Перед каждой установкой темы приложение автоматически сохраняет полную ZIP-копию текущей конфигурации, обоев и доступной коллекции. Кнопка выше возвращает состояние до последней установленной темы.", color = TextMuted, fontSize = 11.sp)
                         }
                     }
                 }
