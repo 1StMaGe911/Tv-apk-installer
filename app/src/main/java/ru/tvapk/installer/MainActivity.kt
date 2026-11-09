@@ -714,9 +714,15 @@ private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
     return bytes
 }
 
-private fun exportLauncherBackup(context: Context, adb: Dadb): Pair<File, Boolean> {
+private fun exportLauncherBackup(context: Context, adb: Dadb): Triple<File, Boolean, Int> {
     val config = readCurrentLauncherConfig(adb)
     val wallpaper = readLauncherWallpaper(adb)
+    val collectionDir = File(context.filesDir, "launcher_wallpapers")
+    val allowed = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
+    val collection = collectionDir.listFiles()?.filter { file ->
+        file.isFile && allowed.matches(file.name) && file.length() in 64..(10 * 1024 * 1024).toLong()
+    }?.sortedBy { it.name }?.take(100) ?: emptyList()
+    require(collection.sumOf { it.length() } <= 50L * 1024 * 1024) { "Коллекция обоев на телефоне превышает 50 МБ" }
     val archive = File.createTempFile("cleanyourtv-backup-", ".zip", context.cacheDir)
     try {
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
@@ -728,8 +734,13 @@ private fun exportLauncherBackup(context: Context, adb: Dadb): Pair<File, Boolea
                 zip.write(wallpaper)
                 zip.closeEntry()
             }
+            collection.forEach { file ->
+                zip.putNextEntry(ZipEntry("wallpapers/${file.name}"))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
         }
-        return archive to (wallpaper != null)
+        return Triple(archive, wallpaper != null, collection.size)
     } catch (e: Exception) {
         archive.delete()
         throw e
@@ -740,7 +751,17 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
     val input = context.contentResolver.openInputStream(uri) ?: throw Exception("Не удалось открыть ZIP-архив")
     var configBytes: ByteArray? = null
     var wallpaperBytes: ByteArray? = null
+    val collectionBytes = linkedMapOf<String, ByteArray>()
     var totalBytes = 0
+    var collectionTotalBytes = 0
+    val allowedWallpaper = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
+    fun validateImage(bytes: ByteArray, label: String) {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        require(bounds.outWidth in 1..12000 && bounds.outHeight in 1..12000) {
+            "$label повреждён или имеет слишком большое разрешение"
+        }
+    }
     ZipInputStream(input).use { zip ->
         while (true) {
             val entry = zip.nextEntry ?: break
@@ -748,8 +769,15 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
                 zip.closeEntry()
                 continue
             }
-            require(entry.name == "config.json" || entry.name == "wallpaper.jpg") {
+            val collectionName = if (entry.name.startsWith("wallpapers/")) entry.name.removePrefix("wallpapers/") else null
+            require(entry.name == "config.json" || entry.name == "wallpaper.jpg" ||
+                (collectionName != null && allowedWallpaper.matches(collectionName))) {
                 "В архиве есть неподдерживаемый файл: ${entry.name}"
+            }
+            val maxEntrySize = when {
+                entry.name == "config.json" -> 1024 * 1024
+                entry.name == "wallpaper.jpg" -> 12 * 1024 * 1024
+                else -> 10 * 1024 * 1024
             }
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(8192)
@@ -759,42 +787,80 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
                 if (count < 0) break
                 entryBytes += count
                 totalBytes += count
-                require(totalBytes <= 13 * 1024 * 1024) { "Резервная копия превышает 13 МБ" }
+                require(entryBytes <= maxEntrySize && totalBytes <= 64 * 1024 * 1024) {
+                    "Резервная копия превышает допустимый размер"
+                }
                 output.write(buffer, 0, count)
             }
             val bytes = output.toByteArray()
-            if (entry.name == "config.json") {
-                require(configBytes == null) { "В архиве несколько файлов config.json" }
-                require(entryBytes in 2..(1024 * 1024)) { "Некорректный размер config.json" }
-                configBytes = bytes
-            } else {
-                require(wallpaperBytes == null) { "В архиве несколько файлов wallpaper.jpg" }
-                require(entryBytes in 64..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
-                wallpaperBytes = bytes
+            when {
+                entry.name == "config.json" -> {
+                    require(configBytes == null) { "В архиве несколько файлов config.json" }
+                    require(entryBytes in 2..(1024 * 1024)) { "Некорректный размер config.json" }
+                    configBytes = bytes
+                }
+                entry.name == "wallpaper.jpg" -> {
+                    require(wallpaperBytes == null) { "В архиве несколько файлов wallpaper.jpg" }
+                    require(entryBytes in 64..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
+                    validateImage(bytes, "wallpaper.jpg")
+                    wallpaperBytes = bytes
+                }
+                collectionName != null -> {
+                    require(collectionBytes.size < 100) { "В архиве больше 100 обоев" }
+                    require(collectionName !in collectionBytes) { "В архиве повторяется файл $collectionName" }
+                    require(entryBytes in 64..(10 * 1024 * 1024)) { "Некорректный размер $collectionName" }
+                    collectionTotalBytes += entryBytes
+                    require(collectionTotalBytes <= 50 * 1024 * 1024) { "Коллекция обоев в архиве больше 50 МБ" }
+                    validateImage(bytes, collectionName)
+                    collectionBytes[collectionName] = bytes
+                }
             }
             zip.closeEntry()
         }
     }
     val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))
     val wallpaper = wallpaperBytes
-    if (wallpaper == null) {
-        val restart = writeLauncherConfig(adb, config)
-        return "Конфигурация Clean Your TV восстановлена. В архиве не было wallpaper.jpg. $restart"
+    val baseRestore = if (wallpaper == null) {
+        writeLauncherConfig(adb, config)
+    } else {
+        val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
+        val wallpaperFile = File.createTempFile("cleanyourtv-restore-", ".jpg", context.cacheDir)
+        try {
+            configFile.writeText(config.toString(2), Charsets.UTF_8)
+            wallpaperFile.writeBytes(wallpaper)
+            pushLauncherTheme(adb, "backup", configFile, wallpaperFile)
+        } finally {
+            configFile.delete()
+            wallpaperFile.delete()
+        }
     }
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(wallpaper, 0, wallpaper.size, bounds)
-    require(bounds.outWidth > 0 && bounds.outHeight > 0 && bounds.outWidth <= 12000 && bounds.outHeight <= 12000) { "wallpaper.jpg повреждён или слишком большого разрешения" }
-    val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
-    val wallpaperFile = File.createTempFile("cleanyourtv-restore-", ".jpg", context.cacheDir)
-    try {
-        configFile.writeText(config.toString(2), Charsets.UTF_8)
-        wallpaperFile.writeBytes(wallpaper)
-        val restart = pushLauncherTheme(adb, "backup", configFile, wallpaperFile)
-        return "Конфигурация и текущие обои Clean Your TV восстановлены. $restart"
-    } finally {
-        configFile.delete()
-        wallpaperFile.delete()
+    if (collectionBytes.isEmpty()) {
+        return "Конфигурация Clean Your TV восстановлена. ${if (wallpaper == null) "Обои не входили в архив." else "Текущие обои восстановлены."} Коллекция ротации не менялась. $baseRestore"
     }
+    val staging = File(context.cacheDir, "launcher-wallpapers-restore")
+    if (staging.exists()) staging.deleteRecursively()
+    require(staging.mkdirs()) { "Не удалось подготовить коллекцию обоев для восстановления" }
+    val localFiles = try {
+        collectionBytes.forEach { (name, bytes) -> File(staging, name).writeBytes(bytes) }
+        val destination = File(context.filesDir, "launcher_wallpapers")
+        if (destination.exists()) require(destination.deleteRecursively()) { "Не удалось заменить локальную коллекцию обоев" }
+        if (!staging.renameTo(destination)) {
+            require(destination.mkdirs()) { "Не удалось создать локальную коллекцию обоев" }
+            staging.listFiles()?.forEach { file -> file.copyTo(File(destination, file.name), overwrite = true) }
+            staging.deleteRecursively()
+        }
+        destination.listFiles()?.filter { it.isFile }?.sortedBy { it.name } ?: emptyList()
+    } catch (e: Exception) {
+        staging.deleteRecursively()
+        throw e
+    }
+    val rotation = uploadWallpaperCollection(
+        adb,
+        localFiles,
+        config.optInt("wallpaper_rotation_minutes", 0),
+        config.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
+    )
+    return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation"
 }
 
 private fun enableHomeKeyService(adb: Dadb): String {
