@@ -2015,12 +2015,12 @@ fun TvInstallerApp() {
                                                 launcherDockPackages = dockText
                                                 launcherHiddenPackages = hiddenText
                                                 launcherFillDock = fill
-                                                launcherIdleClockMinutes = current.optInt("home_idle_clock_minutes", 0)
+                                                launcherIdleClockMinutes = current.optInt("home_idle_clock_minutes", 0).coerceIn(0, 60)
                                                 launcherClockWallpaper = current.optBoolean("clock_wallpaper", false)
-                                                launcherClockWallpaperDim = current.optInt("clock_wallpaper_dim", 50).toFloat()
+                                                launcherClockWallpaperDim = current.optInt("clock_wallpaper_dim", 50).coerceIn(0, 90).toFloat()
                                                 launcherClockGlow = current.optBoolean("clock_glow", true)
                                                 launcherBackOpensClock = current.optBoolean("back_opens_clock", false)
-                                                launcherClockFormat = current.optString("clock_format", "system")
+                                                launcherClockFormat = current.optString("clock_format", "system").takeIf { it in setOf("system", "12", "24") } ?: "system"
                                                 settings.edit()
                                                     .putString("launcher_dock_packages", dockText)
                                                     .putString("launcher_hidden_packages", hiddenText)
