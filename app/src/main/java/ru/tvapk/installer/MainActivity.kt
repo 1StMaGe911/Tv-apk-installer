@@ -1187,6 +1187,89 @@ private fun readTvIdentity(adb: Dadb): String {
     return listOf(manufacturer, model, device, fingerprint).joinToString("|")
 }
 
+private fun shellSingleQuote(value: String): String =
+    "'" + value.replace("'", "'\\''") + "'"
+
+private fun buildPortableRestoreScript(
+    fingerprint: String,
+    managedUsers: Set<String>,
+    snapshotUsers: Set<String>,
+    managedSystems: Set<String>,
+    snapshotSystems: Set<String>,
+    managedAutoStart: Set<String>,
+    snapshotAutoStart: Set<String>
+): String {
+    val identity = fingerprint.split("|")
+    require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) {
+        "В точке нет полной идентификации телевизора"
+    }
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    val userUniverse = managedUsers + snapshotUsers
+    val systemUniverse = managedSystems + snapshotSystems
+    val autoUniverse = managedAutoStart + snapshotAutoStart
+    require(userUniverse.all { packagePattern.matches(it) }) { "В списке пользовательских пакетов есть некорректное имя" }
+    require(systemUniverse.all { packagePattern.matches(it) && !isProtectedSystemPackage(it) }) {
+        "В списке системных пакетов есть защищённый или некорректный пакет"
+    }
+    require(autoUniverse.all { componentPattern.matches(it) }) { "В списке автозапуска есть некорректный компонент" }
+    require(userUniverse.isNotEmpty() || systemUniverse.isNotEmpty() || autoUniverse.isNotEmpty()) {
+        "В точке нет изменений TV APK Installer для экспорта"
+    }
+
+    return buildString {
+        appendLine("#!/usr/bin/env bash")
+        appendLine("# TV APK Installer portable restore script")
+        appendLine("# Restores only package/component states tracked by TV APK Installer.")
+        appendLine("# Requires Android platform-tools (adb), an authorized TV and Bash.")
+        appendLine("set -uo pipefail")
+        appendLine()
+        appendLine("command -v adb >/dev/null 2>&1 || { echo 'adb не найден: установи Android platform-tools.' >&2; exit 2; }")
+        appendLine("adb get-state >/dev/null 2>&1 || { echo 'Телевизор не подключён или не авторизован в ADB.' >&2; exit 2; }")
+        appendLine("actual_identity=$(printf '%s|%s|%s|%s' \\")
+        appendLine("  $(adb shell getprop ro.product.manufacturer | tr -d '\\r') \\")
+        appendLine("  $(adb shell getprop ro.product.model | tr -d '\\r') \\")
+        appendLine("  $(adb shell getprop ro.product.device | tr -d '\\r') \\")
+        appendLine("  $(adb shell getprop ro.build.fingerprint | tr -d '\\r'))")
+        appendLine("expected_identity=\${shellSingleQuote(fingerprint)}")
+        appendLine("if [[ $actual_identity != $expected_identity ]]; then")
+        appendLine("  echo 'ОШИБКА: модель или прошивка не совпадает с точкой восстановления. Ничего не изменено.' >&2")
+        appendLine("  exit 3")
+        appendLine("fi")
+        appendLine()
+        appendLine("failed=0")
+        appendLine("restore_state() {")
+        appendLine("  local target=$1 state=$2")
+        appendLine("  if [[ $state == disabled ]]; then")
+        appendLine("    adb shell pm disable-user --user 0 \"$target\" >/dev/null || { echo \"Не удалось отключить: $target\" >&2; failed=1; }")
+        appendLine("  else")
+        appendLine("    adb shell pm enable --user 0 \"$target\" >/dev/null || { echo \"Не удалось включить: $target\" >&2; failed=1; }")
+        appendLine("  fi")
+        appendLine("}")
+        appendLine()
+        appendLine("# Пользовательские приложения")
+        userUniverse.sorted().forEach { pkg ->
+            appendLine("restore_state \${shellSingleQuote(pkg)} \${if (pkg in snapshotUsers) "disabled" else "enabled"}")
+        }
+        appendLine()
+        appendLine("# Системные пакеты, отключённые самим приложением")
+        systemUniverse.sorted().forEach { pkg ->
+            appendLine("restore_state \${shellSingleQuote(pkg)} \${if (pkg in snapshotSystems) "disabled" else "enabled"}")
+        }
+        appendLine()
+        appendLine("# Компоненты автозапуска")
+        autoUniverse.sorted().forEach { component ->
+            appendLine("restore_state \${shellSingleQuote(component)} \${if (component in snapshotAutoStart) "disabled" else "enabled"}")
+        }
+        appendLine()
+        appendLine("if [[ $failed -ne 0 ]]; then")
+        appendLine("  echo 'Восстановление выполнено частично. Повтори скрипт после проверки ошибок.' >&2")
+        appendLine("  exit 1")
+        appendLine("fi")
+        appendLine("echo 'Готово: сохранённое состояние пакетов и автозапуска восстановлено.'")
+    }
+}
+
 private fun readTvDetails(adb: Dadb): String {
     fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
     fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
@@ -1682,6 +1765,7 @@ fun TvInstallerApp() {
     var restorePointExists by remember { mutableStateOf(settings.getBoolean("restore_point_exists", false)) }
     var restorePointSchemaVersion by remember { mutableStateOf(settings.getInt("restore_point_schema_version", 1)) }
     var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
+    var pendingPortableRestoreScript by remember { mutableStateOf<String?>(null) }
 
 
     var usbMode by remember { mutableStateOf(false) }
@@ -1833,6 +1917,23 @@ fun TvInstallerApp() {
                 onFinished(result)
             }
         }.start()
+    }
+
+    val portableRestoreScriptExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/x-shellscript")
+    ) { destinationUri ->
+        val script = pendingPortableRestoreScript
+        if (destinationUri != null && script != null) {
+            try {
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(script)
+                } ?: throw Exception("Не удалось создать файл")
+                status = "Переносимый сценарий восстановления сохранён."
+            } catch (e: Exception) {
+                status = "Ошибка экспорта сценария: \${errorText(e)}"
+            }
+        }
+        pendingPortableRestoreScript = null
     }
 
     val launcherConfigExporter = rememberLauncherForActivityResult(
@@ -3733,6 +3834,30 @@ fun TvInstallerApp() {
                                 }
                             )
                         }
+                        OutlinedButton(
+                            enabled = !busy && restorePointExists && restorePointSchemaVersion >= 2 && !restorePointDeviceFingerprint.isNullOrBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                try {
+                                    val fingerprint = restorePointDeviceFingerprint
+                                        ?: throw Exception("Создай точку восстановления заново")
+                                    pendingPortableRestoreScript = buildPortableRestoreScript(
+                                        fingerprint = fingerprint,
+                                        managedUsers = disabledPackages,
+                                        snapshotUsers = restorePointManagedUserPackages,
+                                        managedSystems = managedSystemDisabledPackages,
+                                        snapshotSystems = restorePointManagedSystemPackages,
+                                        managedAutoStart = disabledAutoStart,
+                                        snapshotAutoStart = restorePointAutoStartComponents
+                                    )
+                                    portableRestoreScriptExporter.launch("tv-apk-installer-restore.sh")
+                                } catch (e: Exception) {
+                                    status = "Не удалось подготовить сценарий: \${errorText(e)}"
+                                }
+                            }
+                        ) { Text("Экспортировать сценарий восстановления ADB") }
+                        Text("Сценарий возвращает только изменения, отслеживаемые TV APK Installer, и проверяет модель и отпечаток прошивки перед командами. Для запуска на компьютере нужны Bash и Android platform-tools.", color = TextMuted, fontSize = 11.sp)
+
                         Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                             val host = ip.trim(); val p = port.toIntOrNull()
                             if (host.isBlank() || p == null) status = "Сначала укажи IP и порт ADB"
