@@ -477,6 +477,82 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
     return "Тема «$themeName» передана на телевизор. Конфигурация и обои установлены, Launcher перезапущен. $restart"
 }
 
+private fun parseLauncherPackageList(raw: String): List<String> {
+    val entries = raw.split(Regex("[,;\\s]+")).map { it.trim() }.filter { it.isNotEmpty() }
+    require(entries.size <= 24) { "Можно закрепить или скрыть не более 24 приложений за один раз" }
+    val invalid = entries.filterNot { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+    require(invalid.isEmpty()) { "Неверный package name: ${invalid.take(3).joinToString()}" }
+    return entries.distinct()
+}
+
+private fun readLauncherApps(adb: Dadb): List<String> {
+    val output = shellText(adb, "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER")
+    val packages = output.lineSequence()
+        .map { it.trim().substringBefore("/") }
+        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
+        .distinct()
+        .sorted()
+        .toList()
+    require(packages.isNotEmpty()) { "Телевизор не вернул список приложений с TV-значком запуска" }
+    return packages
+}
+
+private fun readCurrentLauncherConfig(adb: Dadb): JSONObject {
+    val provider = try {
+        shellText(adb, "content read --uri content://com.gathin.tvhome.theme/config.json")
+    } catch (_: Exception) { "" }
+    if (provider.trim().startsWith("{")) {
+        try { return JSONObject(provider.trim()) } catch (_: Exception) { }
+    }
+    val legacy = try {
+        shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/config.json")
+    } catch (_: Exception) { "" }
+    if (legacy.trim().startsWith("{")) {
+        try { return JSONObject(legacy.trim()) } catch (_: Exception) { }
+    }
+    throw Exception("Не удалось прочитать текущий config.json Launcher. Ничего на телевизоре не изменено.")
+}
+
+private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<String>, fillDock: Boolean): String {
+    val packageName = "com.gathin.tvhome"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен."
+    }
+    val config = readCurrentLauncherConfig(adb)
+    if (dock.isEmpty()) config.remove("dock_apps") else config.put("dock_apps", JSONArray(dock))
+    if (hidden.isEmpty()) config.remove("hidden_apps") else config.put("hidden_apps", JSONArray(hidden))
+    config.put("fill_dock", fillDock)
+    val columns = config.optInt("columns", 4).coerceIn(1, 8)
+    if (dock.isNotEmpty()) {
+        config.put("rows_below_dock", ((dock.size + columns - 1) / columns - 1).coerceIn(0, 2))
+    }
+    val local = File(adb.hashCode().toString() + "-launcher-apps.json")
+    val safeFile = File.createTempFile("launcher-apps-", ".json")
+    safeFile.writeText(config.toString(2), Charsets.UTF_8)
+    val remote = "/data/local/tmp/launcher-apps-config.json"
+    try {
+        when (val result = adb.push(safeFile, remote)) {
+            is dadb.SyncResult.Success -> Unit
+            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать конфигурацию: $result")
+        }
+        val directory = "/sdcard/Android/data/$packageName/files"
+        val command =
+            "rm -f $directory/config.json 2>/dev/null; " +
+            "o=\\$(content write --uri content://$packageName.theme/config.json < $remote 2>&1) && [ -z \\"\\$o\\" ] || (mkdir -p $directory 2>/dev/null && cp $remote $directory/config.json); " +
+            "r=\\$?; rm -f $remote; exit \\$r"
+        shellText(adb, command)
+        shellText(adb, "am force-stop --user 0 $packageName")
+        val restart = try {
+            shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
+        } catch (_: Exception) {
+            shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
+        }
+        "Список приложений обновлён. В доке: ${dock.size}, скрыто с главного экрана: ${hidden.size}. Приложения не удалялись и не отключались. $restart"
+    } finally {
+        safeFile.delete()
+    }
+}
+
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
         shellText(adb, command).ifBlank { "Недоступно" }
@@ -1010,6 +1086,11 @@ fun TvInstallerApp() {
     var customWallpaperFile by remember { mutableStateOf<File?>(null) }
     var customWallpaperName by remember { mutableStateOf("Изображение не выбрано") }
     var customWallpaperDim by remember { mutableStateOf(0f) }
+    var launcherDockPackages by remember { mutableStateOf(settings.getString("launcher_dock_packages", "") ?: "") }
+    var launcherHiddenPackages by remember { mutableStateOf(settings.getString("launcher_hidden_packages", "") ?: "") }
+    var launcherAvailablePackages by remember { mutableStateOf(emptyList<String>()) }
+    var launcherFillDock by remember { mutableStateOf(settings.getBoolean("launcher_fill_dock", false)) }
+    var launcherAppFilter by remember { mutableStateOf("") }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1394,6 +1475,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.3 • Управление доком и приложениями", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлено чтение TV-приложений, выбор приложений в док, скрытие плиток на главном экране и настройка заполнения свободных мест. Изменения записываются в текущий config.json без удаления или отключения приложений.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.2 • Собственные обои и ThemeProvider", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен выбор изображения из галереи, подготовка обоев с ограничением разрешения и размера, настройка затемнения и применение через ThemeProvider Clean Your TV. Исправлена передача только поддерживаемых файлов config.json и wallpaper.jpg.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1846,6 +1930,89 @@ fun TvInstallerApp() {
                                 Text(if (busy) "Применение..." else "Применить мои обои")
                             }
                             Text("Собственные обои используют оформление Cinema как основу. Для возврата к готовому оформлению выбери любую готовую тему ниже.", color = TextMuted, fontSize = 11.sp)
+                            Text("ПРИЛОЖЕНИЯ И ДОК", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Настрой порядок приложений в доке и скрой ненужные плитки только на главном экране Clean Your TV. Приложения не удаляются и не отключаются.", color = TextMuted, fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb ->
+                                        val found = readLauncherApps(adb)
+                                        activity.runOnUiThread { launcherAvailablePackages = found }
+                                        "Найдено приложений с TV-запуском: ${found.size}"
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Загрузить приложения с телевизора") }
+                            OutlinedTextField(
+                                value = launcherAppFilter,
+                                onValueChange = { launcherAppFilter = it },
+                                label = { Text("Поиск приложения") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            if (launcherAvailablePackages.isNotEmpty()) {
+                                Text("Найденные приложения • нажми «В док» или «Скрыть»", color = TextMuted, fontSize = 11.sp)
+                                launcherAvailablePackages.filter { launcherAppFilter.isBlank() || it.contains(launcherAppFilter.trim(), ignoreCase = true) }.take(60).forEach { pkg ->
+                                    val dockSet = launcherDockPackages.split(Regex("[,;\\s]+")).filter { it.isNotBlank() }.toSet()
+                                    val hiddenSet = launcherHiddenPackages.split(Regex("[,;\\s]+")).filter { it.isNotBlank() }.toSet()
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                        Text(pkg, color = TextMain, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                        TextButton(onClick = {
+                                            val next = if (pkg in dockSet) dockSet - pkg else dockSet + pkg
+                                            launcherDockPackages = next.joinToString(", ")
+                                        }) { Text(if (pkg in dockSet) "Убрать" else "В док") }
+                                        TextButton(onClick = {
+                                            val next = if (pkg in hiddenSet) hiddenSet - pkg else hiddenSet + pkg
+                                            launcherHiddenPackages = next.joinToString(", ")
+                                        }) { Text(if (pkg in hiddenSet) "Показать" else "Скрыть") }
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = launcherDockPackages,
+                                onValueChange = { launcherDockPackages = it },
+                                label = { Text("Порядок дока — package names через запятую") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 4
+                            )
+                            OutlinedTextField(
+                                value = launcherHiddenPackages,
+                                onValueChange = { launcherHiddenPackages = it },
+                                label = { Text("Скрытые приложения — package names") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 4
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Заполнять свободные места дока", color = TextMain)
+                                    Text("Свободные слоты займут приложения из общей сетки", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherFillDock, onCheckedChange = { launcherFillDock = it })
+                            }
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) {
+                                    status = "Проверь IP и порт ADB"
+                                } else {
+                                    val dock = try { parseLauncherPackageList(launcherDockPackages) } catch (e: Exception) { status = errorText(e); return@Button }
+                                    val hidden = try { parseLauncherPackageList(launcherHiddenPackages) } catch (e: Exception) { status = errorText(e); return@Button }
+                                    settings.edit()
+                                        .putString("launcher_dock_packages", launcherDockPackages)
+                                        .putString("launcher_hidden_packages", launcherHiddenPackages)
+                                        .putBoolean("launcher_fill_dock", launcherFillDock)
+                                        .apply()
+                                    runTask({
+                                        connectWithRetry(context, host, p) { adb ->
+                                            applyLauncherAppLists(adb, dock, hidden, launcherFillDock)
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Применение..." else "Применить док и список приложений") }
+                            Text("Список сохраняется в текущей конфигурации Launcher. Чтобы вернуть обычный док, очисти поле дока; чтобы показать все плитки, очисти поле скрытых приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
                             listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
