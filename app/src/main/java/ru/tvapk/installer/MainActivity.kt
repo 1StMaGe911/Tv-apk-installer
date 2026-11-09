@@ -3534,7 +3534,7 @@ fun TvInstallerApp() {
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
                         if (selectedCleanupPackages.isNotEmpty()) {
                             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && it !in disabledOnDevice && (packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true) }
+                                pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && it !in disabledOnDevice && activeProfile?.packages?.get(it)?.ask == false && it !in (activeProfile?.neverDisable ?: emptySet()) }
                             }) { Text("Отключить выбранные (${selectedCleanupPackages.size})") }
                         }
                         cleanupCandidates.forEach { candidate ->
@@ -3550,7 +3550,7 @@ fun TvInstallerApp() {
                                             selectedCleanupPackages = if (checked) selectedCleanupPackages + candidate
                                             else selectedCleanupPackages - candidate
                                         },
-                                        enabled = !busy && candidate !in disabledOnDevice
+                                        enabled = !busy && candidate !in disabledOnDevice && profileRule?.ask == false && candidate !in (activeProfile?.neverDisable ?: emptySet())
                                     )
                                 } else {
                                     Spacer(Modifier.width(48.dp))
@@ -3568,7 +3568,7 @@ fun TvInstallerApp() {
                                 }
                             }
                         }
-                        if (cleanupCandidates.isNotEmpty()) Text("Отмечай только знакомые тебе компоненты. Отключение не удаляет пакет, но может повлиять на функции телевизора. Неизвестные совпадения по названию нельзя выбрать.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                        if (cleanupCandidates.isNotEmpty()) Text("Для пакетного отключения доступны только компоненты, отмеченные в точном профиле модели как проверенные (ask=false). Остальные рекомендации остаются справочными: их нельзя отключить этой кнопкой. Отключение не удаляет пакет, но может повлиять на функции телевизора.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (pendingCleanupPackages.isNotEmpty()) {
                             AlertDialog(
                                 onDismissRequest = { pendingCleanupPackages = emptyList() },
@@ -3593,7 +3593,7 @@ fun TvInstallerApp() {
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
                                                     pkg in installed && pkg !in alreadyDisabled && pkg in freshCandidates &&
-                                                        (packageFacts.containsKey(pkg) || freshProfile?.packages?.containsKey(pkg) == true) &&
+                                                        freshProfile?.packages?.get(pkg)?.ask == false &&
                                                         !isProtectedSystemPackage(pkg) && pkg !in (freshProfile?.neverDisable ?: emptySet())
                                                 }
                                                 require(safeSelected.size == selected.size) {
