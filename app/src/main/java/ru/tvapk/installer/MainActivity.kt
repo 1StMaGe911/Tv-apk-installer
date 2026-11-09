@@ -1766,6 +1766,24 @@ private fun openTvAppInfo(adb: Dadb, packageName: String): String {
     return shellText(adb, "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$packageName")
 }
 
+private fun listUndoBackups(context: Context): List<File> {
+    val dir = File(context.filesDir, "backups")
+    return dir.listFiles()?.filter { file ->
+        file.isFile && file.length() > 0L &&
+            file.name.matches(Regex("undo-[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+-\\d+\\.zip"))
+    }?.sortedByDescending { it.lastModified() } ?: emptyList()
+}
+
+private fun undoBackupPackage(file: File): String =
+    file.name.removePrefix("undo-").substringBeforeLast("-")
+
+private fun undoBackupDate(file: File): String {
+    val timestamp = file.name.removeSuffix(".zip").substringAfterLast("-").toLongOrNull()
+        ?: file.lastModified()
+    return java.text.SimpleDateFormat("dd.MM.yyyy HH:mm:ss", java.util.Locale.getDefault())
+        .format(java.util.Date(timestamp))
+}
+
 private fun uninstallUserApp(adb: Dadb, packageName: String, context: Context): String {
     require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     require(packageName in readUserPackages(adb)) { "Разрешено удалять только пользовательские приложения" }
@@ -2553,6 +2571,10 @@ fun TvInstallerApp() {
     var showCleanYourTv by remember { mutableStateOf(false) }
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
+    var localUndoBackups by remember { mutableStateOf(listUndoBackups(context)) }
+    var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
+    var pendingUndoBackupRestore by remember { mutableStateOf<File?>(null) }
+    var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
     var pendingModuleRemoval by remember { mutableStateOf(false) }
     var pendingLauncherHandover by remember { mutableStateOf(false) }
     var hasLauncherHandover by remember { mutableStateOf(settings.getString("launcher_handover_stock_package", null) != null) }
@@ -2979,6 +3001,21 @@ fun TvInstallerApp() {
                     customWallpaperName = name
                 }
                 "Изображение подготовлено: $name (${file.length() / 1024} КБ). Теперь можно применить его к Launcher."
+            })
+        }
+    }
+
+    val undoBackupExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destinationUri ->
+        val source = pendingUndoBackupExport
+        pendingUndoBackupExport = null
+        if (destinationUri != null && source != null) {
+            runTask({
+                context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                    source.inputStream().use { input -> input.copyTo(output) }
+                } ?: throw Exception("Не удалось экспортировать ZIP-файл")
+                "Резервная копия " + undoBackupPackage(source) + " экспортирована"
             })
         }
     }
@@ -5441,6 +5478,31 @@ val actualAfterRestore = readDisabledPackages(adb)
                             "В ZIP сохраняются APK пользовательских приложений (в том числе split APK), список пакетов и сведения об устройстве. Данные внутри приложений и системные настройки без root не копируются.",
                             color = Color(0xFFFFD98A), fontSize = 11.sp
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Локальные копии перед удалением", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { localUndoBackups = listUndoBackups(context) }) { Text("Обновить") }
+                        }
+                        if (localUndoBackups.isEmpty()) {
+                            Text("Локальных копий пока нет. При удалении пользовательского приложения APK автоматически сохраняются здесь.", color = TextMuted, fontSize = 11.sp)
+                        } else {
+                            Text("Сохранено копий: " + localUndoBackups.size, color = TextMuted, fontSize = 11.sp)
+                            localUndoBackups.forEach { backup ->
+                                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    Text(undoBackupPackage(backup), color = TextMain, fontSize = 12.sp)
+                                    Text(undoBackupDate(backup) + " • " + (backup.length() / 1024) + " КБ", color = TextMuted, fontSize = 10.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = { pendingUndoBackupRestore = backup }) { Text("Восстановить") }
+                                        OutlinedButton(enabled = !busy, modifier = Modifier.weight(1f), onClick = {
+                                            pendingUndoBackupExport = backup
+                                            undoBackupExporter.launch(backup.name)
+                                        }) { Text("Экспорт") }
+                                        OutlinedButton(enabled = !busy, onClick = { pendingUndoBackupDelete = backup }) { Text("Удалить") }
+                                    }
+                                }
+                                HorizontalDivider(color = Color.DarkGray)
+                            }
+                        }
                         Text("Пользовательские приложения: ${userPackages.size}", color = GoldLight)
                         if (userPackages.isEmpty()) Text("Сначала выполни определение устройства. Системные пакеты здесь не показываются.", color = Color.LightGray, fontSize = 12.sp)
                         userPackages.filter { it.contains(packageFilter, ignoreCase = true) }.forEach { pkg ->
@@ -5487,6 +5549,48 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 }
                             }
                             HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (pendingUndoBackupRestore != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingUndoBackupRestore = null },
+                                title = { Text("Восстановить приложение?") },
+                                text = { Text("Будет установлена копия APK приложения " + (pendingUndoBackupRestore?.let { undoBackupPackage(it) } ?: "") + ". Данные приложения не восстанавливаются. Архив останется сохранённым.") },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        val backup = pendingUndoBackupRestore ?: return@TextButton
+                                        pendingUndoBackupRestore = null
+                                        val host = ip.trim()
+                                        val p = port.toIntOrNull() ?: 5555
+                                        if (host.isBlank() || p !in 1..65535) status = "Сначала укажи IP и порт ADB"
+                                        else runTask({
+                                            connectWithRetry(context, host, p) { adb -> restoreTvBackup(adb, context, backup) }
+                                        })
+                                    }) { Text("Восстановить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingUndoBackupRestore = null }) { Text("Отмена") }
+                                }
+                            )
+                        }
+                        if (pendingUndoBackupDelete != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingUndoBackupDelete = null },
+                                title = { Text("Удалить резервную копию?") },
+                                text = { Text("Архив " + (pendingUndoBackupDelete?.name ?: "") + " будет удалён без возможности восстановления.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val backup = pendingUndoBackupDelete ?: return@TextButton
+                                        pendingUndoBackupDelete = null
+                                        if (backup.parentFile?.canonicalFile == File(context.filesDir, "backups").canonicalFile && backup.delete()) {
+                                            localUndoBackups = listUndoBackups(context)
+                                            status = "Резервная копия удалена"
+                                        } else status = "Ошибка: не удалось удалить резервную копию"
+                                    }) { Text("Удалить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingUndoBackupDelete = null }) { Text("Отмена") }
+                                }
+                            )
                         }
                         if (pendingRestoreUri != null) {
                             AlertDialog(
