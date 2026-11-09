@@ -1465,27 +1465,53 @@ private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String 
 }
 
 private fun isProtectedSystemPackage(packageName: String): Boolean {
+    // Core Android / TV middleware: upstream Clean Your TV recovery rules prohibit
+    // disabling these because a TV can lose setup, networking, package management or boot.
     val protected = setOf(
         "android",
+        "android.ext.services",
+        "android.ext.shared",
+        "com.android.sdksandbox",
+        "com.android.location.fused",
         "com.android.systemui",
+        "com.android.shell",
+        "com.android.phone",
         "com.android.settings",
+        "com.android.tv.settings",
         "com.android.providers.settings",
         "com.android.permissioncontroller",
         "com.android.packageinstaller",
-        "com.android.providers.media",
-        "com.android.providers.downloads",
+        "com.android.ext.services",
+        "com.android.ext.shared",
+        "com.android.modulemetadata",
+        "com.google.android.permissioncontroller",
+        "com.google.android.packageinstaller",
+        "com.google.android.ext.services",
+        "com.google.android.ext.shared",
+        "com.google.android.modulemetadata",
         "com.google.android.gms",
         "com.google.android.gsf",
         "com.google.android.gsf.login",
         "com.google.android.webview",
         "com.google.android.tvlauncher",
         "com.google.android.tv",
-        "com.android.tv.settings",
-        "com.android.vending"
+        "com.android.vending",
+        "com.cltv.mal",
+        "com.mediatek.tis",
+        "com.mediatek.tv.service",
+        "com.mediatek.tv.agent"
+    )
+    val allowedProviders = setOf(
+        "com.android.providers.calendar",
+        "com.android.providers.contacts",
+        "com.android.providers.userdictionary",
+        "com.android.providers.blockednumber"
     )
     return packageName in protected ||
+        (packageName.startsWith("com.android.providers.") && packageName !in allowedProviders) ||
         packageName.startsWith("com.android.systemui.") ||
-        packageName.startsWith("com.google.android.gms.")
+        packageName.startsWith("com.google.android.gms.") ||
+        packageName.startsWith("com.google.android.overlay.modules")
 }
 
 private fun detectTvProfile(details: String): String {
@@ -4147,12 +4173,13 @@ fun TvInstallerApp() {
                             .filter { it.contains(systemPackageFilter, ignoreCase = true) }
                             .take(150)
                             .forEach { pkg ->
-                                val protected = isProtectedSystemPackage(pkg)
+                                val protectedByProfile = pkg in (matchedTvProfile?.profile?.neverDisable ?: emptySet())
+                                val protected = isProtectedSystemPackage(pkg) || protectedByProfile
                                 val isDisabled = pkg in disabledOnDevice
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(pkg, fontSize = 12.sp, color = TextMain)
                                     if (protected) {
-                                        Text("Защищённый системный компонент", color = GoldLight, fontSize = 11.sp)
+                                        Text(if (protectedByProfile && !isProtectedSystemPackage(pkg)) "Защищённый компонент профиля этой модели" else "Критически важный системный компонент", color = GoldLight, fontSize = 11.sp)
                                     } else {
                                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             if (isDisabled) {
@@ -4200,6 +4227,14 @@ fun TvInstallerApp() {
                                         val p = port.toIntOrNull() ?: 5555
                                         runTask({
                                             connectWithRetry(context, host, p) { adb ->
+                                                require(!isProtectedSystemPackage(pkg)) {
+                                                    "Этот пакет относится к критически важным компонентам Android/TV и не может быть отключён."
+                                                }
+                                                val freshDetails = readTvDetails(adb)
+                                                val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles)?.profile
+                                                require(pkg !in (freshProfile?.neverDisable ?: emptySet())) {
+                                                    "Профиль этой модели запрещает отключать $pkg. Команда отменена."
+                                                }
                                                 changePackageState(adb, pkg, false)
                                                 "Системный пакет отключён: $pkg"
                                             }
