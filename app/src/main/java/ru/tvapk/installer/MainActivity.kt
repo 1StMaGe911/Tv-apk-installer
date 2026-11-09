@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.48"
+private const val APP_VERSION = "0.9.49"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2396,7 +2396,26 @@ private fun resolveHomeComponent(adb: Dadb, packageFilter: String? = null): Stri
     }
 }
 
+private fun isFireOsDevice(adb: Dadb): Boolean {
+    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    val manufacturer = prop("ro.product.manufacturer")
+    val brand = prop("ro.product.brand")
+    val model = prop("ro.product.model")
+    if (manufacturer.equals("Amazon", true) || brand.equals("Amazon", true) ||
+        model.startsWith("AFT", true)) return true
+    return try {
+        val packages = shellText(adb, "pm list packages")
+        packages.lineSequence().any {
+            it.trim() == "package:com.amazon.tv.launcher" ||
+                it.trim() == "package:com.amazon.firehomestarter"
+        }
+    } catch (_: Exception) { false }
+}
+
 private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
+    require(!isFireOsDevice(adb)) {
+        "Обнаружена Fire OS. Система Amazon защищает собственный домашний экран и игнорирует стандартную передачу Home. Автоматическое переключение заблокировано; штатный Launcher не будет отключён."
+    }
     val currentHome = resolveHomeComponent(adb)
         ?: throw Exception("Не удалось определить текущий домашний экран. Ничего не изменено.")
     val currentPackage = currentHome.substringBefore("/")
@@ -2780,7 +2799,10 @@ private fun isProtectedSystemPackage(packageName: String): Boolean {
         "com.cltv.mal",
         "com.mediatek.tis",
         "com.mediatek.tv.service",
-        "com.mediatek.tv.agent"
+        "com.mediatek.tv.agent",
+        // Fire OS protects its own Home apps; disabling either can leave the TV without a usable Home.
+        "com.amazon.tv.launcher",
+        "com.amazon.firehomestarter"
     )
     val allowedProviders = setOf(
         "com.android.providers.calendar",
