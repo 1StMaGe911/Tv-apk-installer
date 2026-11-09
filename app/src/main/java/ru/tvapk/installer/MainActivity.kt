@@ -80,7 +80,8 @@ private data class CleanupJournal(
     val port: Int,
     val plannedPackages: List<String>,
     val completedPackages: List<String>,
-    val createdAt: Long
+    val createdAt: Long,
+    val inFlightPackage: String? = null
 )
 
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
@@ -95,7 +96,8 @@ private fun loadCleanupJournal(context: Context): CleanupJournal? {
             port = json.optInt("port", 5555),
             plannedPackages = (0 until planned.length()).map { planned.optString(it) }.filter { it.isNotBlank() },
             completedPackages = (0 until completed.length()).map { completed.optString(it) }.filter { it.isNotBlank() },
-            createdAt = json.optLong("createdAt", 0L)
+            createdAt = json.optLong("createdAt", 0L),
+            inFlightPackage = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" }
         ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
     } catch (_: Exception) { null }
 }
@@ -108,6 +110,7 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
         .put("planned", JSONArray(journal.plannedPackages))
         .put("completed", JSONArray(journal.completedPackages))
         .put("createdAt", journal.createdAt)
+        .put("inFlightPackage", journal.inFlightPackage)
     prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
@@ -4068,9 +4071,9 @@ fun TvInstallerApp() {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("НЕЗАВЕРШЁННАЯ ОЧИСТКА", color = Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
-                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Успешно отключено: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
+                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Успешно отключено: ${journal.completedPackages.size + if (journal.inFlightPackage != null) 1 else 0} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
                                     Text("Восстановление разрешено только на исходном телевизоре (проверяется производитель, модель, устройство и отпечаток прошивки).", color = TextMuted, fontSize = 11.sp)
-                                    OutlinedButton(enabled = !busy && journal.completedPackages.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = { pendingCleanupRollback = true }) {
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = { pendingCleanupRollback = true }) {
                                         Text("Откатить незавершённую очистку")
                                     }
                                     if (pendingCleanupRollback) {
@@ -4081,30 +4084,35 @@ fun TvInstallerApp() {
                                             confirmButton = {
                                                 TextButton(enabled = !busy, onClick = {
                                                     pendingCleanupRollback = false
-                                                    val host = ip.trim()
-                                                    val p = port.toIntOrNull()
-                                                    if (host.isBlank() || p == null || p !in 1..65535) {
-                                                        status = "Подключись к исходному телевизору по ADB"
+                                                    val host = journal.host
+                                                    val p = journal.port
+                                                    if (host.isBlank() || p !in 1..65535) {
+                                                        status = "В журнале нет корректного адреса исходного телевизора"
                                                     } else runTask({
                                                         connectWithRetry(context, host, p) { adb ->
                                                             require(readTvIdentity(adb) == journal.deviceIdentity) {
                                                                 "Это не тот телевизор, на котором началась очистка. Откат отменён."
                                                             }
                                                             val installed = readAllPackages(adb).toSet()
+                                                            val disabledNowOnTv = readDisabledPackages(adb)
+                                                            val rollbackPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv })).distinct()
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
-                                                            journal.completedPackages.forEach { pkg ->
+                                                            rollbackPackages.forEach { pkg ->
                                                                 if (pkg !in installed) failures.add("$pkg (пакет отсутствует)")
                                                                 else try {
-                                                                    changePackageState(adb, pkg, true)
+                                                                    if (pkg in disabledNowOnTv) changePackageState(adb, pkg, true)
                                                                     restored.add(pkg)
-                                                                    saveCleanupJournal(context, journal.copy(completedPackages = journal.completedPackages - restored.toSet()))
+                                                                    saveCleanupJournal(context, journal.copy(
+                                                                        completedPackages = rollbackPackages - restored.toSet(),
+                                                                        inFlightPackage = journal.inFlightPackage?.takeUnless { it in restored }
+                                                                    ))
                                                                 } catch (_: Exception) { failures.add(pkg) }
                                                             }
-                                                            val remaining = journal.completedPackages - restored.toSet()
+                                                            val remaining = rollbackPackages - restored.toSet()
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
-                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(completedPackages = remaining)
+                                                                cleanupJournal = if (remaining.isEmpty()) null else journal.copy(completedPackages = remaining, inFlightPackage = journal.inFlightPackage?.takeIf { it in remaining })
                                                                 disabledOnDevice = actualDisabledAfterRestore
                                                                 disabledPackages = disabledPackages - restored.toSet()
                                                                 managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
@@ -4216,17 +4224,18 @@ fun TvInstallerApp() {
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
                                                 safeSelected.forEach { pkg ->
+                                                    journal = journal.copy(inFlightPackage = pkg)
+                                                    saveCleanupJournal(context, journal)
                                                     try {
                                                         changePackageState(adb, pkg, false)
                                                         disabledNow.add(pkg)
-                                                        journal = journal.copy(completedPackages = disabledNow.toList())
+                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
                                                         saveCleanupJournal(context, journal)
                                                     } catch (_: Exception) {
-                                                        if (pkg in readDisabledPackages(adb)) {
-                                                            disabledNow.add(pkg)
-                                                            journal = journal.copy(completedPackages = disabledNow.toList())
-                                                            saveCleanupJournal(context, journal)
-                                                        } else failures.add(pkg)
+                                                        if (pkg in readDisabledPackages(adb)) disabledNow.add(pkg)
+                                                        else failures.add(pkg)
+                                                        journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
+                                                        saveCleanupJournal(context, journal)
                                                     }
                                                 }
                                                 if (failures.isEmpty()) {
