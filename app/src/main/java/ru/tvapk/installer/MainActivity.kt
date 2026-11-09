@@ -471,8 +471,8 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
             "r=\$?; rm -f $remotePath; exit \$r"
         shellText(adb, command)
     }
-    writeFile("config.json", remoteConfig)
     writeFile("wallpaper.jpg", remoteWallpaper)
+    writeFile("config.json", remoteConfig)
     shellText(adb, "am force-stop --user 0 $packageName")
     val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
     return "Тема «$themeName» передана на телевизор. Конфигурация и обои установлены, Launcher перезапущен. $restart"
@@ -706,7 +706,7 @@ private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
     val compact = encoded.filterNot { it.isWhitespace() }
     if (compact.length > 16 * 1024 * 1024) throw Exception("Файл обоев слишком большой для резервной копии")
     val bytes = try { Base64.decode(compact, Base64.DEFAULT) } catch (_: Exception) { return null }
-    if (bytes.size !in 1024..(12 * 1024 * 1024)) return null
+    if (bytes.size !in 64..(12 * 1024 * 1024)) return null
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 12000 || bounds.outHeight > 12000) return null
@@ -768,7 +768,7 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
                 configBytes = bytes
             } else {
                 require(wallpaperBytes == null) { "В архиве несколько файлов wallpaper.jpg" }
-                require(entryBytes in 1024..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
+                require(entryBytes in 64..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
                 wallpaperBytes = bytes
             }
             zip.closeEntry()
