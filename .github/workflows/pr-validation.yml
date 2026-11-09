@@ -1,0 +1,27 @@
+name: Проверка Pull Request
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Установить Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-disabled: false
+      - name: Выполнить модульные тесты и компиляцию приложения
+        run: gradle :app:testDebugUnitTest --no-daemon
