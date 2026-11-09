@@ -47,7 +47,7 @@ internal object CatalogArtifactDownloader {
 
         repeat(MAX_ATTEMPTS) { attempt ->
             var offset = partial.length()
-            var etag = etagFile.takeIf { it.isFile }?.readText()?.take(512)?.takeIf { it.isNotBlank() }
+            var etag = etagFile.takeIf { it.isFile && it.length() in 1..512 }?.readText()?.takeIf { it.isNotBlank() }
             if (offset > version.size || (offset > 0L && etag == null)) {
                 partial.delete()
                 etagFile.delete()
@@ -79,10 +79,11 @@ internal object CatalogArtifactDownloader {
                 if (append) {
                     val range = response.getHeaderField("Content-Range") ?: ""
                     val match = Regex("^bytes (\\d+)-(\\d+)/(\\d+)$").matchEntire(range)
-                        ?: throw IOException("Сервер вернул некорректный Content-Range")
-                    require(match.groupValues[1].toLong() == offset &&
-                        match.groupValues[3].toLong() == version.size) {
-                        "Сервер продолжил загрузку не с того места или изменил размер файла"
+                    if (match == null || match.groupValues[1].toLong() != offset ||
+                        match.groupValues[3].toLong() != version.size) {
+                        partial.delete()
+                        etagFile.delete()
+                        throw IOException("Сервер продолжил загрузку не с того места или изменил размер файла")
                     }
                 } else if (offset > 0L) {
                     // Server ignored Range or If-Range no longer matches: start from byte zero.
@@ -103,8 +104,10 @@ internal object CatalogArtifactDownloader {
                     if (responseEtag != null) etagFile.writeText(responseEtag)
                     else etagFile.delete()
                 } else {
-                    require(responseEtag == null || responseEtag == etag) {
-                        "ETag изменился во время возобновления загрузки"
+                    if (responseEtag != null && responseEtag != etag) {
+                        partial.delete()
+                        etagFile.delete()
+                        throw IOException("ETag изменился во время возобновления загрузки")
                     }
                 }
 
