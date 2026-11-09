@@ -2211,6 +2211,37 @@ fun TvInstallerApp() {
         }
     }
 
+    val cleanupHistoryExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                val archive = JSONArray().apply {
+                    cleanupHistory.forEach { entry ->
+                        put(JSONObject()
+                            .put("createdAt", entry.createdAt)
+                            .put("deviceIdentity", entry.deviceIdentity)
+                            .put("plannedCount", entry.plannedCount)
+                            .put("changedPackages", JSONArray(entry.changedPackages))
+                            .put("baselineDisabledCount", entry.baselineDisabledCount)
+                            .put("outcome", entry.outcome))
+                    }
+                }
+                val document = JSONObject()
+                    .put("format", "tv-apk-installer-cleanup-history")
+                    .put("version", 1)
+                    .put("exportedAt", System.currentTimeMillis())
+                    .put("operations", archive)
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(document.toString(2))
+                } ?: throw Exception("Не удалось создать файл")
+                status = "История очистки экспортирована (${cleanupHistory.size} операций)"
+            } catch (e: Exception) {
+                status = "Ошибка экспорта истории: ${errorText(e)}"
+            }
+        }
+    }
+
     val settingsBackupImporter = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { sourceUri ->
@@ -4277,7 +4308,12 @@ fun TvInstallerApp() {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("ИСТОРИЯ ОЧИСТКИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                    cleanupHistory.take(10).forEach { entry ->
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        onClick = { cleanupHistoryExporter.launch("tv-apk-cleanup-history.json") }
+                                    ) { Text("Экспортировать историю (JSON)") }
+                                    cleanupHistory.forEach { entry ->
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             Text(
                                                 "${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.outcome}",
