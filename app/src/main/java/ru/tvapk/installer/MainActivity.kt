@@ -7554,6 +7554,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         val details = readTvDetails(adb)
                                         // Collect read-only health diagnostics as part of the same automation pass.
                                         val diagnosticsSnapshot = readTvDiagnostics(adb)
+                                        val healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
                                         val compatibility = readTvCompatibilityReport(adb)
                                         val disableSupported = readPackageDisableCapability(adb)
                                         val users = readUserPackages(adb)
@@ -7583,6 +7584,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             appendLine()
                                             appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
                                             appendLine(diagnosticsSnapshot)
+                                            appendLine()
+                                            appendLine("ОЦЕНКА РЕСУРСОВ: ${healthAssessment.summary}")
+                                            healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
+                                            healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
+                                            healthAssessment.uptimeDays?.let { appendLine("Время без перезагрузки: $it дн.") }
+                                            healthAssessment.warnings.forEach { appendLine("⚠ $it") }
                                             appendLine("Уже отключено: ${disabled.size}")
                                             appendLine("Кандидатов по справочнику: ${plan.detectedCount}")
                                             appendLine("Безопасно разрешено точным профилем: ${plan.approvedCount}")
