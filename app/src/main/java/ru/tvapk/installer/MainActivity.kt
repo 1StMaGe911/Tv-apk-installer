@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.49"
+private const val APP_VERSION = "0.9.50"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2244,6 +2244,14 @@ private fun readPackageDisableCapability(adb: Dadb): Boolean {
 }
 
 private fun readTvCompatibilityReport(adb: Dadb): String {
+    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    val manufacturer = prop("ro.product.manufacturer")
+    val brand = prop("ro.product.brand")
+    val packages = try { readAllPackages(adb).toSet() } catch (_: Exception) { emptySet() }
+    val hasGoogleTvHome = "com.google.android.apps.tv.launcherx" in packages
+    val isTcl = brand.equals("tcl", true) || manufacturer.equals("tcl", true)
+    val isTclChina = (isTcl || brand.equals("ffalcon", true) || manufacturer.equals("ffalcon", true)) &&
+        "com.google.android.gms" !in packages
     fun probe(label: String, command: String, success: (String) -> Boolean): String {
         val output = try { shellText(adb, command).trim() } catch (_: Exception) { "" }
         return "$label: " + if (output.isNotBlank() && success(output)) "доступно" else "не подтверждено"
@@ -2253,6 +2261,16 @@ private fun readTvCompatibilityReport(adb: Dadb): String {
     return buildString {
         appendLine("ПРОВЕРКА СОВМЕСТИМОСТИ")
         appendLine("Версия Android SDK: ${sdk?.toString() ?: "не определена"}")
+        appendLine("Платформа: " + when {
+            isFireOsDevice(adb) -> "Amazon Fire OS — автоматическая передача Home заблокирована"
+            isTclChina -> "TCL/FFalcon China без Google Mobile Services — автоматическая передача Home заблокирована"
+            else -> "Android TV / Google TV"
+        })
+        if (isTcl && hasGoogleTvHome) {
+            appendLine("Пульт TCL Google TV: кнопки Settings, Netflix и YouTube могут быть привязаны к штатному Google TV Home. Проверь их работу перед переключением.")
+        } else if (hasGoogleTvHome) {
+            appendLine("Пульт Google TV: кнопка Settings может открывать панель штатного Home и перестать работать после его замены.")
+        }
         appendLine(probe("Package Manager", "pm list packages", { it.contains("package:") }))
         appendLine("Отключение пакетов с проверкой результата: " + if (packageDisable) "поддерживается" else "не подтверждено — пакетная очистка заблокирована")
         appendLine(probe("Команды cmd package", "cmd package help", { it.isNotBlank() && !it.contains("not found", true) }))
@@ -2409,12 +2427,34 @@ private fun isFireOsDevice(adb: Dadb): Boolean {
             it.trim() == "package:com.amazon.tv.launcher" ||
                 it.trim() == "package:com.amazon.firehomestarter"
         }
+    } catch (_: Exception) { false } ||
+        resolveHomeComponent(adb)?.substringBefore("/") in setOf(
+            "com.amazon.tv.launcher", "com.amazon.firehomestarter"
+        )
+}
+
+private fun isTclChinaDevice(adb: Dadb): Boolean {
+    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    val brand = prop("ro.product.brand")
+    val manufacturer = prop("ro.product.manufacturer")
+    val tclFamily = setOf("tcl", "ffalcon").any {
+        it.equals(brand, true) || it.equals(manufacturer, true)
+    }
+    if (!tclFamily) return false
+    // Upstream distinguishes TCL_CN firmware by the absence of Google Mobile Services.
+    // If Package Manager cannot be queried, do not guess that this is a China firmware.
+    return try {
+        shellText(adb, "pm list packages").lineSequence()
+            .none { it.trim() == "package:com.google.android.gms" }
     } catch (_: Exception) { false }
 }
 
 private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
     require(!isFireOsDevice(adb)) {
         "Обнаружена Fire OS. Система Amazon защищает собственный домашний экран и игнорирует стандартную передачу Home. Автоматическое переключение заблокировано; штатный Launcher не будет отключён."
+    }
+    require(!isTclChinaDevice(adb)) {
+        "Обнаружена китайская прошивка TCL/FFalcon без Google Mobile Services. По правилам Clean Your TV такая система не поддерживает безопасную передачу Home. Штатный экран оставлен без изменений."
     }
     val currentHome = resolveHomeComponent(adb)
         ?: throw Exception("Не удалось определить текущий домашний экран. Ничего не изменено.")
