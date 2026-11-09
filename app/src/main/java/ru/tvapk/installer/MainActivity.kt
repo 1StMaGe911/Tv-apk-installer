@@ -2497,10 +2497,10 @@ fun TvInstallerApp() {
                     require(packageInfo.packageName == expectedPackage) {
                         "Неверный package name у $assetName: ${packageInfo.packageName}"
                     }
+                    @Suppress("DEPRECATION")
                     val signatures = if (Build.VERSION.SDK_INT >= 28) {
                         packageInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
                     } else {
-                        @Suppress("DEPRECATION")
                         packageInfo.signatures?.toList().orEmpty()
                     }
                     val signerDigests = signatures.map { signature ->
