@@ -2441,6 +2441,87 @@ private data class RecoveryApkEntry(
     val sizeBytes: Long
 )
 
+private const val CLEAN_YOUR_TV_RECOVERY_SIGNER =
+    "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
+
+private fun expectedRecoverySigner(
+    entry: RecoveryApkEntry,
+    catalog: CleanYourTvTrust.VerifiedCatalog?
+): String? {
+    if (entry.folder.startsWith("cleanyourtv-recovery-")) {
+        return if (entry.packageName == "com.gathin.tvhome" ||
+            entry.packageName == "tv.cleanyour.curtain"
+        ) CLEAN_YOUR_TV_RECOVERY_SIGNER else null
+    }
+    if (!entry.folder.startsWith("catalog-recovery-") || catalog == null ||
+        catalog.expiresAtMillis <= System.currentTimeMillis()
+    ) return null
+    val module = catalog.modules.singleOrNull { it.packageName == entry.packageName } ?: return null
+    if (module.type != "app" || module.tier !in setOf("verified", "community")) return null
+    return module.versions.singleOrNull { it.versionCode == entry.versionCode && !it.revoked }?.signerSha256
+}
+
+private fun restoreRecoveryApk(
+    context: Context,
+    adb: Dadb,
+    entry: RecoveryApkEntry,
+    catalog: CleanYourTvTrust.VerifiedCatalog?
+): String {
+    val root = context.filesDir.canonicalFile
+    val file = entry.file.canonicalFile
+    val folder = file.parentFile
+    require(folder?.parentFile == root &&
+        folder.name == entry.folder &&
+        folder.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
+        file.isFile && file.extension.equals("apk", true) &&
+        file.length() in 1..(200L * 1024L * 1024L)
+    ) { "Путь или размер аварийной копии не прошёл проверку" }
+
+    val info = context.packageManager.getPackageArchiveInfo(
+        file.absolutePath,
+        if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+        else PackageManager.GET_SIGNATURES
+    ) ?: throw Exception("APK повреждён или не читается")
+    require(info.packageName == entry.packageName) { "Имя пакета изменилось после сканирования" }
+    @Suppress("DEPRECATION")
+    val signatures = if (Build.VERSION.SDK_INT >= 28) {
+        info.signingInfo?.apkContentsSigners?.toList().orEmpty()
+    } else info.signatures?.toList().orEmpty()
+    require(signatures.size == 1) { "У APK должен быть ровно один сертификат подписанта" }
+    val signer = MessageDigest.getInstance("SHA-256").digest(signatures.single().toByteArray())
+        .joinToString("") { "%02x".format(it) }
+    @Suppress("DEPRECATION")
+    val versionCode = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    require(versionCode == entry.versionCode && signer.equals(entry.signerSha256, true)) {
+        "Сведения APK изменились после сканирования"
+    }
+
+    val expected = expectedRecoverySigner(entry, catalog)
+        ?: throw Exception("Издатель этой копии не подтверждён действующим доверенным каталогом или закреплённой подписью Clean Your TV")
+    require(signer.equals(expected, true)) {
+        "Сертификат APK не совпадает с доверенным сертификатом издателя. Установка запрещена."
+    }
+
+    val remote = shellText(adb, "pm path " + entry.packageName)
+        .lineSequence().map { it.removePrefix("package:").trim() }
+        .filter { it.startsWith("/") && !it.contains("..") }.distinct().toList()
+    require(remote.size <= 1) { "Установленный пакет состоит из split APK; безопасный аварийный откат невозможен." }
+    val args = if (remote.isEmpty()) emptyArray() else arrayOf("-r", "-d")
+    when (val result = adb.install(file, *args)) {
+        is InstallResult.Success -> Unit
+        is InstallResult.Failure -> throw Exception("ADB отклонил восстановление: " + result.reason)
+    }
+    val installedPath = shellText(adb, "pm path " + entry.packageName)
+    require(installedPath.contains("package:")) { "После восстановления пакет не найден на телевизоре" }
+    val details = shellText(adb, "dumpsys package " + entry.packageName)
+    val installedCode = Regex("versionCode=(\\d+)").find(details)?.groupValues?.get(1)?.toLongOrNull()
+    require(installedCode == entry.versionCode) {
+        "После восстановления ожидался versionCode " + entry.versionCode + ", получен " + installedCode
+    }
+    return "Восстановлена доверенная копия " + entry.packageName +
+        ", versionCode " + entry.versionCode + ". APK оставлен в аварийном архиве."
+}
+
 private fun listRecoveryApks(context: Context): List<RecoveryApkEntry> {
     val root = context.filesDir.canonicalFile
     val dirs = root.listFiles()?.filter { dir ->
@@ -3678,6 +3759,7 @@ fun TvInstallerApp() {
     var localUndoBackups by remember { mutableStateOf(listUndoBackups(context)) }
     var recoveryApks by remember { mutableStateOf(listRecoveryApks(context)) }
     var pendingRecoveryDelete by remember { mutableStateOf<File?>(null) }
+    var pendingRecoveryRestore by remember { mutableStateOf<RecoveryApkEntry?>(null) }
     var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupRestore by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
@@ -7265,11 +7347,18 @@ val actualAfterRestore = readDisabledPackages(adb)
                                         color = TextMuted, fontSize = 10.sp
                                     )
                                     Text("SHA-256 сертификата: ${entry.signerSha256}", color = TextMuted, fontSize = 9.sp)
-                                    Text("Восстановление пока заблокировано до проверки издателя.", color = Color(0xFFFFD98A), fontSize = 10.sp)
-                                    OutlinedButton(
-                                        enabled = !busy,
-                                        onClick = { pendingRecoveryDelete = entry.file }
-                                    ) { Text("Удалить копию") }
+                                    Text("Издатель будет повторно проверен перед установкой.", color = TextMuted, fontSize = 10.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { pendingRecoveryRestore = entry }
+                                        ) { Text("Восстановить") }
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            onClick = { pendingRecoveryDelete = entry.file }
+                                        ) { Text("Удалить") }
+                                    }
                                 }
                                 HorizontalDivider(color = Color.DarkGray)
                             }
@@ -7429,6 +7518,41 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 }
                             }
                             HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (pendingRecoveryRestore != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingRecoveryRestore = null },
+                                title = { Text("Аварийное восстановление APK") },
+                                text = {
+                                    Text(
+                                        "Будет установлена копия " + pendingRecoveryRestore?.packageName +
+                                            " (versionCode " + pendingRecoveryRestore?.versionCode + "). Перед установкой приложение заново проверит APK, сертификат издателя и пакет. Android также проверит совместимость подписи с уже установленным приложением. Данные приложения не восстанавливаются; аварийная копия останется на устройстве."
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        val entry = pendingRecoveryRestore ?: return@TextButton
+                                        pendingRecoveryRestore = null
+                                        val host = ip.trim()
+                                        val adbPort = port.toIntOrNull()
+                                        if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
+                                            status = "Сначала укажи IP и порт ADB и подключись к телевизору"
+                                        } else runTask({
+                                            val catalog = if (entry.folder.startsWith("catalog-recovery-")) {
+                                                verifiedCatalog ?: CleanYourTvTrust.loadBundled(context)
+                                            } else verifiedCatalog
+                                            connectWithRetry(context, host, adbPort) { adb ->
+                                                restoreRecoveryApk(context, adb, entry, catalog)
+                                            }
+                                        }, {
+                                            recoveryApks = listRecoveryApks(context)
+                                        })
+                                    }) { Text("Проверить и восстановить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingRecoveryRestore = null }) { Text("Отмена") }
+                                }
+                            )
                         }
                         if (pendingRecoveryDelete != null) {
                             AlertDialog(
