@@ -83,20 +83,22 @@ private data class CleanupJournal(
     val createdAt: Long
 )
 
-private fun loadCleanupJournal(context: Context): CleanupJournal? = try {
-    val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return null
-    val json = JSONObject(raw)
-    val planned = json.optJSONArray("planned") ?: JSONArray()
-    val completed = json.optJSONArray("completed") ?: JSONArray()
-    CleanupJournal(
-        deviceIdentity = json.optString("deviceIdentity"),
-        host = json.optString("host"),
-        port = json.optInt("port", 5555),
-        plannedPackages = (0 until planned.length()).map { planned.optString(it) }.filter { it.isNotBlank() },
-        completedPackages = (0 until completed.length()).map { completed.optString(it) }.filter { it.isNotBlank() },
-        createdAt = json.optLong("createdAt", 0L)
-    ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
-} catch (_: Exception) { null }
+private fun loadCleanupJournal(context: Context): CleanupJournal? {
+    return try {
+        val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return null
+        val json = JSONObject(raw)
+        val planned = json.optJSONArray("planned") ?: JSONArray()
+        val completed = json.optJSONArray("completed") ?: JSONArray()
+        CleanupJournal(
+            deviceIdentity = json.optString("deviceIdentity"),
+            host = json.optString("host"),
+            port = json.optInt("port", 5555),
+            plannedPackages = (0 until planned.length()).map { planned.optString(it) }.filter { it.isNotBlank() },
+            completedPackages = (0 until completed.length()).map { completed.optString(it) }.filter { it.isNotBlank() },
+            createdAt = json.optLong("createdAt", 0L)
+        ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
+    } catch (_: Exception) { null }
+}
 
 private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
     val json = JSONObject()
@@ -4100,9 +4102,10 @@ fun TvInstallerApp() {
                                                                 } catch (_: Exception) { failures.add(pkg) }
                                                             }
                                                             val remaining = journal.completedPackages - restored.toSet()
+                                                            val actualDisabledAfterRestore = readDisabledPackages(adb)
                                                             activity.runOnUiThread {
                                                                 cleanupJournal = if (remaining.isEmpty()) null else journal.copy(completedPackages = remaining)
-                                                                disabledOnDevice = readDisabledPackages(adb)
+                                                                disabledOnDevice = actualDisabledAfterRestore
                                                                 disabledPackages = disabledPackages - restored.toSet()
                                                                 managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
                                                                 settings.edit().putStringSet("disabled_packages", disabledPackages)
