@@ -81,7 +81,9 @@ private data class CleanupJournal(
     val plannedPackages: List<String>,
     val completedPackages: List<String>,
     val createdAt: Long,
-    val inFlightPackage: String? = null
+    val inFlightPackage: String? = null,
+    val baselineDisabledPackages: List<String> = emptyList(),
+    val schemaVersion: Int = 2
 )
 
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
@@ -97,7 +99,11 @@ private fun loadCleanupJournal(context: Context): CleanupJournal? {
             plannedPackages = (0 until planned.length()).map { planned.optString(it) }.filter { it.isNotBlank() },
             completedPackages = (0 until completed.length()).map { completed.optString(it) }.filter { it.isNotBlank() },
             createdAt = json.optLong("createdAt", 0L),
-            inFlightPackage = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" }
+            inFlightPackage = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" },
+            baselineDisabledPackages = (json.optJSONArray("baselineDisabled") ?: JSONArray()).let { values ->
+                (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
+            },
+            schemaVersion = json.optInt("schemaVersion", 1)
         ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
     } catch (_: Exception) { null }
 }
@@ -111,6 +117,8 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal) {
         .put("completed", JSONArray(journal.completedPackages))
         .put("createdAt", journal.createdAt)
         .put("inFlightPackage", journal.inFlightPackage)
+        .put("baselineDisabled", JSONArray(journal.baselineDisabledPackages))
+        .put("schemaVersion", journal.schemaVersion)
     prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
@@ -4318,13 +4326,17 @@ fun TvInstallerApp() {
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
                                                 val deviceIdentity = readTvIdentity(adb)
+                                                // Persist the exact pre-cleanup disabled-package state before changing anything.
+                                                val baselineDisabled = readDisabledPackages(adb).toList().sorted()
                                                 var journal = CleanupJournal(
                                                     deviceIdentity = deviceIdentity,
                                                     host = host,
                                                     port = p,
                                                     plannedPackages = safeSelected,
                                                     completedPackages = emptyList(),
-                                                    createdAt = System.currentTimeMillis()
+                                                    createdAt = System.currentTimeMillis(),
+                                                    baselineDisabledPackages = baselineDisabled,
+                                                    schemaVersion = 2
                                                 )
                                                 saveCleanupJournal(context, journal)
                                                 activity.runOnUiThread { cleanupJournal = journal }
