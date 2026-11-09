@@ -923,7 +923,12 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
     if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
     val apkFile = File(directory, "tv-apk-installer-update.apk")
     val stagingFile = File(directory, "tv-apk-installer-update.apk.part")
-    val connection = URL(downloadUrl).openConnection() as HttpURLConnection
+    val parsedUrl = URL(downloadUrl)
+    require(parsedUrl.protocol == "https" && parsedUrl.host.equals("github.com", ignoreCase = true)) {
+        "Разрешены только HTTPS-ссылки на GitHub Releases"
+    }
+    val backupFile = File(directory, "tv-apk-installer-update.apk.bak")
+    val connection = parsedUrl.openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "GET"
         connection.connectTimeout = 20000
@@ -962,15 +967,22 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
             throw Exception("SHA-256 APK не совпадает с GitHub. Установка отменена")
         }
-        if (apkFile.exists() && !apkFile.delete()) {
-            throw Exception("Не удалось заменить предыдущий временный APK")
+        backupFile.delete()
+        val hadPreviousFile = apkFile.exists()
+        if (hadPreviousFile && !apkFile.renameTo(backupFile)) {
+            throw Exception("Не удалось сохранить предыдущий временный APK перед заменой")
         }
         if (!stagingFile.renameTo(apkFile)) {
+            if (hadPreviousFile && !backupFile.renameTo(apkFile)) {
+                throw Exception("Не удалось сохранить новый APK и восстановить предыдущий файл")
+            }
             throw Exception("Не удалось завершить сохранение загруженного APK")
         }
+        backupFile.delete()
         return apkFile
     } catch (e: Exception) {
         stagingFile.delete()
+        if (!apkFile.exists() && backupFile.exists()) backupFile.renameTo(apkFile)
         throw e
     } finally {
         connection.disconnect()
