@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.85"
+private const val APP_VERSION = "0.9.86"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -5169,6 +5169,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.86 • Проверка установленной подписи и пользователя ТВ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("После установки Launcher, Curtain и дополнений подпись проверяется по APK, который действительно скачан с телевизора, а не по приложениям на телефоне. Дополнительно подтверждается доступность пакета основному пользователю Android TV (user 0); те же проверки выполняются после отката.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.85 • Проверка свободной памяти ТВ перед установкой", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Перед установкой Clean Your TV и дополнений проверяется свободное место в /data. При критически малом объёме установка останавливается до изменения пакетов и объясняет, сколько памяти нужно освободить.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
