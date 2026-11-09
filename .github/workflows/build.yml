@@ -65,6 +65,14 @@ jobs:
           echo "Все попытки сборки завершились ошибкой"
           exit 1
 
+      - name: Вычислить SHA-256 APK
+        id: apk
+        run: |
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
@@ -82,6 +90,8 @@ jobs:
           body: |
             Автоматическая сборка TV APK Installer v${{ steps.version.outputs.name }}.
             Установочный APK прикреплён к этому релизу.
+            
+            SHA-256: ${{ steps.apk.outputs.sha256 }}
           files: app/build/outputs/apk/debug/app-debug.apk
           overwrite_files: true
           make_latest: true
