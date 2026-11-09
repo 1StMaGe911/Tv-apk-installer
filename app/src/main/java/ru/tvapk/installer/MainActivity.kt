@@ -1242,6 +1242,7 @@ fun TvInstallerApp() {
     var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
+    var pendingLauncherConfigExport by remember { mutableStateOf<String?>(null) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1352,6 +1353,46 @@ fun TvInstallerApp() {
                 onFinished(result)
             }
         }.start()
+    }
+
+    val launcherConfigExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        val content = pendingLauncherConfigExport
+        if (destinationUri != null && content != null) {
+            try {
+                val output = context.contentResolver.openOutputStream(destinationUri)
+                    ?: throw Exception("Не удалось открыть файл для записи")
+                output.bufferedWriter(Charsets.UTF_8).use { it.write(content) }
+                status = "Конфигурация Clean Your TV сохранена."
+            } catch (e: Exception) {
+                status = "Ошибка сохранения конфигурации: ${errorText(e)}"
+            }
+        }
+        pendingLauncherConfigExport = null
+    }
+
+    val launcherConfigImporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { sourceUri ->
+        if (sourceUri != null) {
+            val host = ip.trim()
+            val p = port.toIntOrNull()
+            if (host.isBlank() || p == null || p !in 1..65535) {
+                status = "Проверь IP и порт ADB"
+            } else runTask({
+                val input = context.contentResolver.openInputStream(sourceUri)
+                    ?: throw Exception("Не удалось открыть JSON-файл")
+                val jsonText = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                require(jsonText.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "Файл конфигурации больше 1 МБ" }
+                val config = JSONObject(jsonText)
+                require(config.length() > 0) { "Конфигурация пустая" }
+                connectWithRetry(context, host, p) { adb ->
+                    val restart = writeLauncherConfig(adb, config)
+                    "Конфигурация Clean Your TV восстановлена. $restart"
+                }
+            })
+        }
     }
 
     val customWallpaperPicker = rememberLauncherForActivityResult(
@@ -1626,6 +1667,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.6 • Резервная копия конфигурации Launcher", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены экспорт и восстановление config.json Clean Your TV через системный выбор файлов. Резервная копия включает настройки темы, дока, скрытых приложений, часов и назначений кнопок; изображения обоев сохраняются отдельно.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.5 • Назначение кнопок пульта", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен редактор app_keys: назначение клавиш и scancode на приложения, действия и входы ТВ. Добавлено включение InputKeyService через ADB с подтверждением, поддержка автозапуска на TCL и очистка назначений без удаления других служб специальных возможностей.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2290,6 +2334,28 @@ fun TvInstallerApp() {
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
                             Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("РЕЗЕРВНАЯ КОПИЯ CONFIG.JSON", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Экспорт сохраняет настройки темы, дока, скрытых приложений, часов и кнопок. Изображение обоев в этот JSON не входит — для него используй выбор обоев отдельно.", color = TextMuted, fontSize = 11.sp)
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb -> readCurrentLauncherConfig(adb).toString(2) }
+                                }, onFinished = { result ->
+                                    if (result.startsWith("Ошибка:")) {
+                                        status = result
+                                    } else {
+                                        pendingLauncherConfigExport = result
+                                        status = "Выбери место для сохранения config.json."
+                                        launcherConfigExporter.launch("cleanyourtv-config.json")
+                                    }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Экспортировать конфигурацию Launcher") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                launcherConfigImporter.launch(arrayOf("application/json", "text/*"))
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Восстановить конфигурацию из JSON") }
+                            Text("Перед восстановлением можно экспортировать текущую конфигурацию. Импорт заменит config.json на телевизоре и перезапустит Launcher.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("КНОПКИ ПУЛЬТА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Одна запись на строку. Можно назначить кнопку на приложение, действие или вход телевизора. Список текущих назначений загружается вместе с настройками Launcher.", color = TextMuted, fontSize = 11.sp)
                             OutlinedTextField(
