@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.60"
+private const val APP_VERSION = "0.9.61"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -1502,17 +1502,34 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
     var totalBytes = 0
     var collectionTotalBytes = 0
     val allowedWallpaper = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
-    fun validateImage(bytes: ByteArray, label: String) {
+    var zipEntryCount = 0
+    fun validateImage(bytes: ByteArray, label: String, extension: String) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         require(bounds.outWidth in 1..12000 && bounds.outHeight in 1..12000) {
             "$label повреждён или имеет слишком большое разрешение"
         }
+        val expectedMime = when (extension.lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            else -> throw IllegalArgumentException("Неподдерживаемый формат изображения: $label")
+        }
+        require(bounds.outMimeType == expectedMime) {
+            "$label: формат содержимого не соответствует расширению файла"
+        }
     }
     ZipInputStream(input).use { zip ->
         while (true) {
             val entry = zip.nextEntry ?: break
+            zipEntryCount++
+            require(zipEntryCount <= 104) { "В архиве слишком много элементов" }
+            require(entry.name.length <= 128 && !entry.name.startsWith("/") &&
+                !entry.name.contains('\\') && entry.name.split('/').none { it == ".." || it == "." }) {
+                "В архиве обнаружен недопустимый путь"
+            }
             if (entry.isDirectory) {
+                require(entry.name == "wallpapers/") { "В архиве обнаружена неизвестная папка: ${entry.name}" }
                 zip.closeEntry()
                 continue
             }
@@ -1550,7 +1567,7 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
                 entry.name == "wallpaper.jpg" -> {
                     require(wallpaperBytes == null) { "В архиве несколько файлов wallpaper.jpg" }
                     require(entryBytes in 64..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
-                    validateImage(bytes, "wallpaper.jpg")
+                    validateImage(bytes, "wallpaper.jpg", "jpg")
                     wallpaperBytes = bytes
                 }
                 entry.name == "wallpaper-state.txt" -> {
@@ -1565,14 +1582,14 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
                     require(entryBytes in 64..(10 * 1024 * 1024)) { "Некорректный размер $collectionName" }
                     collectionTotalBytes += entryBytes
                     require(collectionTotalBytes <= 50 * 1024 * 1024) { "Коллекция обоев в архиве больше 50 МБ" }
-                    validateImage(bytes, collectionName)
+                    validateImage(bytes, collectionName, collectionName.substringAfterLast('.'))
                     collectionBytes[collectionName] = bytes
                 }
             }
             zip.closeEntry()
         }
     }
-    val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))
+    val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))\n    require(config.length() > 0) { "Конфигурация в резервной копии пустая" }
     val wallpaper = wallpaperBytes
     require(wallpaperState != "present" || wallpaper != null) { "В архиве отмечены обои, но wallpaper.jpg отсутствует" }
     require(wallpaperState != "absent" || wallpaper == null) { "Архив противоречив: состояние обоев отмечено как отсутствующее, но файл есть" }
