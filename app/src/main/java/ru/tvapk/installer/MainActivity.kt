@@ -2351,7 +2351,7 @@ fun TvInstallerApp() {
                                                     val permissionIntent = PendingIntent.getBroadcast(
                                                         context,
                                                         device.deviceId,
-                                                        Intent("${context.packageName}.USB_PERMISSION"),
+                                                        Intent("${context.packageName}.USB_PERMISSION").setPackage(context.packageName),
                                                         PendingIntent.FLAG_UPDATE_CURRENT or
                                                             (if (android.os.Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                                                     )
