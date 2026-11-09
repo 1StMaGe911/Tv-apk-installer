@@ -361,8 +361,9 @@ private fun applyLauncherAppearance(
     val directory = "/sdcard/Android/data/$packageName/files"
     val writeCommand =
         "rm -f $directory/config.json 2>/dev/null; " +
-        "o=\$(content write --uri content://$packageName.theme/config.json < /data/local/tmp/tvapk-launcher-config.json 2>&1); " +
-        "case \"\$o\" in *Unsupported*|*Error*) mkdir -p $directory 2>/dev/null; cp /data/local/tmp/tvapk-launcher-config.json $directory/config.json;; esac; " +
+        "o=\$(content write --uri content://$packageName.theme/config.json < /data/local/tmp/tvapk-launcher-config.json 2>&1); rc=\$?; " +
+        "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
+        "if [ \"\$rc\" -ne 0 ]; then mkdir -p $directory 2>/dev/null && cp /data/local/tmp/tvapk-launcher-config.json $directory/config.json || exit 1; fi; " +
         "rm -f /data/local/tmp/tvapk-launcher-config.json"
     shellText(adb, writeCommand)
     shellText(adb, "am force-stop --user 0 $packageName")
@@ -437,8 +438,9 @@ private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wa
     fun writeFile(fileName: String, remotePath: String) {
         val command =
             "rm -f $directory/$fileName 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1); " +
-            "case \"\$o\" in *Unsupported*|*Error*) mkdir -p $directory 2>/dev/null; cp $remotePath $directory/$fileName;; esac; " +
+            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1); rc=\$?; " +
+            "case \"\$o\" in *Unsupported*|*Error*) rc=1;; esac; " +
+            "if [ \"\$rc\" -ne 0 ]; then mkdir -p $directory 2>/dev/null && cp $remotePath $directory/$fileName || exit 1; fi; " +
             "rm -f $remotePath"
         shellText(adb, command)
     }
