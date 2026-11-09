@@ -4118,6 +4118,7 @@ fun TvInstallerApp() {
     var showSettings by remember { mutableStateOf(false) }
     var activeSection by remember { mutableStateOf<String?>(null) }
     var isDarkTheme by remember { mutableStateOf(settings.getBoolean("dark_theme", true)) }
+    var autoCacheTrimEnabled by remember { mutableStateOf(settings.getBoolean("auto_cache_trim", false)) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
 
@@ -4267,8 +4268,26 @@ fun TvInstallerApp() {
         runTask({
             connectWithRetry(context, host, adbPort) { adb ->
                 val details = readTvDetails(adb)
-                val diagnosticsSnapshot = readTvDiagnostics(adb)
-                val healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                var diagnosticsSnapshot = readTvDiagnostics(adb)
+                var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                val autoCacheTrimMessage = if (settings.getBoolean("auto_cache_trim", false) &&
+                    (healthAssessment.dataUsedPercent ?: 0) >= 90
+                ) {
+                    val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
+                    if (trimAttempt.isSuccess) {
+                        val refreshed = runCatching { readTvDiagnostics(adb) }
+                        if (refreshed.isSuccess) {
+                            diagnosticsSnapshot = refreshed.getOrThrow()
+                            healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                        }
+                        "Автоматическая очистка кэша: ${trimAttempt.getOrThrow()}" +
+                            if (refreshed.isFailure) " Повторная диагностика недоступна: ${errorText(refreshed.exceptionOrNull()!!)}" else ""
+                    } else {
+                        "Автоматическая очистка кэша не выполнена: ${errorText(trimAttempt.exceptionOrNull()!!)}"
+                    }
+                } else if (settings.getBoolean("auto_cache_trim", false) && healthAssessment.dataUsedPercent == null) {
+                    "Автоматическая очистка кэша пропущена: нет достоверных данных о заполнении /data."
+                } else ""
                 val compatibility = readTvCompatibilityReport(adb)
                 val disableSupported = readPackageDisableCapability(adb)
                 val users = readUserPackages(adb)
@@ -4299,6 +4318,7 @@ fun TvInstallerApp() {
                     appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
                     appendLine(diagnosticsSnapshot)
                     appendLine()
+                    if (autoCacheTrimMessage.isNotBlank()) appendLine(autoCacheTrimMessage)
                     appendLine("ОЦЕНКА РЕСУРСОВ: ${healthAssessment.summary}")
                     healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
                     healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
@@ -5283,6 +5303,18 @@ fun TvInstallerApp() {
                         Switch(checked = isDarkTheme, onCheckedChange = { enabled ->
                             isDarkTheme = enabled
                             settings.edit().putBoolean("dark_theme", enabled).apply()
+                        })
+                    }
+                }
+                Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Автоматическая очистка кэша", color = TextMain, style = MaterialTheme.typography.titleMedium)
+                            Text("При запуске общей проверки, если /data заполнен на 90% или больше, Android очистит только временный кэш приложений. Приложения, данные и настройки не удаляются. Работает только после включения этой опции.", color = TextMuted, fontSize = 12.sp)
+                        }
+                        Switch(checked = autoCacheTrimEnabled, onCheckedChange = { enabled ->
+                            autoCacheTrimEnabled = enabled
+                            settings.edit().putBoolean("auto_cache_trim", enabled).apply()
                         })
                     }
                 }
