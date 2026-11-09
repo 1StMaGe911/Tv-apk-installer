@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.39"
+private const val APP_VERSION = "0.9.43"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2100,6 +2100,25 @@ private fun readTvDetails(adb: Dadb): String {
         appendLine("Плотность: ${safe("wm density")}")
         appendLine("Сеть: ${safe("ip route | head -n 2")}")
         appendLine("Отпечаток: ${prop("ro.build.fingerprint")}")
+    }.trim()
+}
+
+
+private fun buildSupportReport(tvDetails: String, diagnostics: String): String {
+    val safeDeviceLines = tvDetails.lineSequence().filter { line ->
+        val key = line.substringBefore(":").trim()
+        key in setOf("Производитель", "Модель", "Устройство", "Android", "Тип", "Сборка", "Патч безопасности", "Разрешение", "Плотность")
+    }.toList()
+    return buildString {
+        appendLine("TV APK Installer $APP_VERSION — отчёт диагностики")
+        appendLine("Отчёт подготовлен локально на телефоне. IP-адреса, сетевые маршруты, серийные номера и отпечатки прошивки не включаются.")
+        appendLine()
+        appendLine("УСТРОЙСТВО")
+        if (safeDeviceLines.isEmpty()) appendLine("Данные ТВ ещё не считаны.")
+        else safeDeviceLines.forEach(::appendLine)
+        appendLine()
+        appendLine("ДИАГНОСТИКА")
+        appendLine(diagnostics.ifBlank { "Диагностика ещё не запускалась." })
     }.trim()
 }
 
@@ -5069,6 +5088,17 @@ fun TvInstallerApp() {
                             })
                         }) { Text("Диагностика: память, хранилище, батарея") }
                         Text(diagnostics, color = Color.LightGray, fontSize = 11.sp)
+                        Text("Отчёт формируется на телефоне. IP-адреса, сетевые маршруты и отпечаток прошивки исключены. Ничего не отправляется автоматически.", color = TextMuted, fontSize = 10.sp)
+                        OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                            val report = buildSupportReport(tvDetails, diagnostics)
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "TV APK Installer — отчёт диагностики")
+                                putExtra(Intent.EXTRA_TEXT, report)
+                            }
+                            runCatching { activity.startActivity(Intent.createChooser(share, "Поделиться отчётом")) }
+                                .onFailure { status = "Не удалось открыть меню отправки отчёта: ${it.message ?: "ошибка"}" }
+                        }) { Text("Сформировать и поделиться отчётом") }
 
                         HorizontalDivider(color = Color.DarkGray)
                         Text("АВТОЗАПУСК ПРИ ВКЛЮЧЕНИИ TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
