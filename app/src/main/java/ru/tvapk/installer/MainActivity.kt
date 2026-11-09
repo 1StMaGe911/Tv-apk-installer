@@ -2284,9 +2284,11 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         "Телевизор вернул неожиданный компонент для штатного Home: $stockComponent. Переключение отменено."
     }
 
-    // Save recovery data before the first state-changing command. If ADB drops mid-handover,
-    // the user can reconnect and use the rollback button without guessing the original Home.
+    // Save recovery data and the exact TV identity before the first state-changing command.
+    // A saved Home component must never be replayed against a different television.
+    val handoverDeviceIdentity = readTvIdentity(adb)
     prefs(context).edit()
+        .putString("launcher_handover_device_identity", handoverDeviceIdentity)
         .putString("launcher_handover_stock_package", currentPackage)
         .putString("launcher_handover_stock_component", stockComponent)
         .putBoolean("launcher_handover_active", false)
@@ -2300,6 +2302,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         prefs(context).edit()
             .remove("launcher_handover_stock_package")
             .remove("launcher_handover_stock_component")
+            .remove("launcher_handover_device_identity")
             .remove("launcher_handover_active")
             .apply()
         throw Exception("Не удалось запустить Clean Your TV Launcher. Штатный экран не изменён: ${errorText(launchError)}", launchError)
@@ -2333,6 +2336,7 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
             prefs(context).edit()
                 .remove("launcher_handover_stock_package")
                 .remove("launcher_handover_stock_component")
+                .remove("launcher_handover_device_identity")
                 .remove("launcher_handover_active")
                 .apply()
             "Штатный Home восстановлен автоматически."
@@ -2349,6 +2353,20 @@ private fun restoreStockHomeAfterHandover(context: Context, adb: Dadb): String {
         ?: throw Exception("Нет сохранённой записи переключения Home.")
     val stockComponent = store.getString("launcher_handover_stock_component", null)
         ?: throw Exception("В записи отката отсутствует компонент штатного Home.")
+    val savedIdentity = store.getString("launcher_handover_device_identity", null)
+    val currentIdentity = readTvIdentity(adb)
+    if (savedIdentity != null) {
+        require(savedIdentity == currentIdentity) {
+            "Запись переключения Home создана для другого телевизора или прошивки. Подключение проверено, откат остановлен."
+        }
+    } else {
+        // Legacy records from before 0.9.41 had no device fingerprint. Only allow their
+        // recovery when Clean Your TV is still the currently selected Home.
+        val currentHome = resolveHomeComponent(adb)
+        require(currentHome?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
+            "Старая запись Home не содержит отпечаток телевизора, а Clean Your TV сейчас не является главным экраном. Безопасный откат остановлен."
+        }
+    }
     require(stockPackage in KNOWN_STOCK_HOME_PACKAGES && stockComponent.startsWith("$stockPackage/")) {
         "Запись отката не прошла проверку безопасности. Ничего не изменено."
     }
@@ -2364,6 +2382,7 @@ private fun restoreStockHomeAfterHandover(context: Context, adb: Dadb): String {
     store.edit()
         .remove("launcher_handover_stock_package")
         .remove("launcher_handover_stock_component")
+        .remove("launcher_handover_device_identity")
         .remove("launcher_handover_active")
         .apply()
     return "Штатный домашний экран восстановлен: $restored. Clean Your TV Launcher не удалялся."
