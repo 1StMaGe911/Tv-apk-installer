@@ -7544,7 +7544,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             })
                         }) { Text("Определить устройство и найти приложения") }
                         Button(
-                            enabled = !busy && ip.isNotBlank() && port.toIntOrNull() in 1..65535,
+                            enabled = !busy && ip.isNotBlank() && (port.toIntOrNull()?.let { it in 1..65535 } == true),
                             modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 val host = ip.trim()
