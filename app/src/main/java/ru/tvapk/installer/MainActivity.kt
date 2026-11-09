@@ -2556,6 +2556,26 @@ private fun listRecoveryApks(context: Context): List<RecoveryApkEntry> {
     }.take(100)
 }
 
+private fun recoveryCleanupCandidates(
+    entries: List<RecoveryApkEntry>,
+    catalog: CleanYourTvTrust.VerifiedCatalog?,
+    nowMillis: Long = System.currentTimeMillis()
+): List<RecoveryApkEntry> {
+    val cutoff = nowMillis - 30L * 24L * 60L * 60L * 1000L
+    return entries
+        .filter { entry ->
+            val expected = expectedRecoverySigner(entry, catalog)
+            expected != null && expected.equals(entry.signerSha256, true) &&
+                entry.file.isFile && entry.file.lastModified() < cutoff
+        }
+        .groupBy { it.packageName }
+        .values
+        .flatMap { packageEntries ->
+            val trusted = packageEntries.sortedByDescending { it.file.lastModified() }
+            trusted.drop(1).filter { it.file.lastModified() < cutoff }
+        }
+}
+
 private fun listUndoBackups(context: Context): List<File> {
     val dir = File(context.filesDir, "backups")
     return dir.listFiles()?.filter { file ->
@@ -3760,6 +3780,7 @@ fun TvInstallerApp() {
     var recoveryApks by remember { mutableStateOf(listRecoveryApks(context)) }
     var pendingRecoveryDelete by remember { mutableStateOf<File?>(null) }
     var pendingRecoveryRestore by remember { mutableStateOf<RecoveryApkEntry?>(null) }
+    var pendingRecoveryCleanup by remember { mutableStateOf(false) }
     var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupRestore by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
@@ -7335,6 +7356,22 @@ val actualAfterRestore = readDisabledPackages(adb)
                             "Копии сохраняются автоматически, если откат установки не удался. Перед восстановлением требуется сверить издателя с доверенным каталогом.",
                             color = TextMuted, fontSize = 11.sp
                         )
+                        val cleanupCandidates = recoveryCleanupCandidates(recoveryApks, verifiedCatalog)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Можно безопасно удалить: ${cleanupCandidates.size} старых копий",
+                                color = TextMuted, fontSize = 10.sp
+                            )
+                            Spacer(Modifier.weight(1f))
+                            TextButton(
+                                enabled = !busy && cleanupCandidates.isNotEmpty(),
+                                onClick = { pendingRecoveryCleanup = true }
+                            ) { Text("Очистить старые") }
+                        }
+                        Text(
+                            "Очистка затрагивает только доверенные копии старше 30 дней и сохраняет самую новую проверенную копию каждого пакета. Неизвестные и неподтверждённые APK не удаляются.",
+                            color = TextMuted, fontSize = 10.sp
+                        )
                         if (recoveryApks.isEmpty()) {
                             Text("Аварийных APK-копий не найдено.", color = TextMuted, fontSize = 11.sp)
                         } else {
@@ -7551,6 +7588,44 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 },
                                 dismissButton = {
                                     TextButton(onClick = { pendingRecoveryRestore = null }) { Text("Отмена") }
+                                }
+                            )
+                        }
+                        if (pendingRecoveryCleanup) {
+                            AlertDialog(
+                                onDismissRequest = { pendingRecoveryCleanup = false },
+                                title = { Text("Очистить старые аварийные копии?") },
+                                text = {
+                                    val candidates = recoveryCleanupCandidates(recoveryApks, verifiedCatalog)
+                                    val bytes = candidates.sumOf { it.sizeBytes }
+                                    Text(
+                                        "Будут удалены только ${candidates.size} доверенных APK старше 30 дней (примерно ${bytes / (1024 * 1024)} МБ). Самая новая проверенная копия каждого пакета останется. Неизвестные, неподтверждённые и единственные копии не затрагиваются."
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = {
+                                        pendingRecoveryCleanup = false
+                                        val root = context.filesDir.canonicalFile
+                                        val candidates = recoveryCleanupCandidates(listRecoveryApks(context), verifiedCatalog)
+                                        var removed = 0
+                                        var failed = 0
+                                        candidates.forEach { entry ->
+                                            val file = runCatching { entry.file.canonicalFile }.getOrNull()
+                                            val parent = file?.parentFile
+                                            val valid = file != null && parent != null &&
+                                                parent.parentFile == root &&
+                                                parent.name == entry.folder &&
+                                                parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
+                                                file.isFile && file.extension.equals("apk", true) &&
+                                                expectedRecoverySigner(entry, verifiedCatalog)?.equals(entry.signerSha256, true) == true
+                                            if (valid && file!!.delete()) removed++ else failed++
+                                        }
+                                        recoveryApks = listRecoveryApks(context)
+                                        status = "Очистка завершена: удалено $removed, ошибок $failed. Последние доверенные копии сохранены."
+                                    }) { Text("Очистить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingRecoveryCleanup = false }) { Text("Отмена") }
                                 }
                             )
                         }
