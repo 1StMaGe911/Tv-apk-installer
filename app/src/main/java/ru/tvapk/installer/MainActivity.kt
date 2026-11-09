@@ -2134,7 +2134,7 @@ fun TvInstallerApp() {
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
                                         Text("v0.8.6 • Выбор рекомендаций очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                                        Text("Добавлен ручной выбор известных пакетов из рекомендаций Clean Your TV и пакетное отключение после подтверждения. Перед отключением список повторно сверяется с телевизором, защищённые компоненты и neverDisable исключаются. Отключённые пакеты можно восстановить.", color = TextMain)
+                                        Text("Добавлен выбор компонентов, проверенных для точного профиля модели (ask=false), и пакетное отключение после подтверждения. Перед отключением список повторно сверяется с телевизором; защищённые компоненты и neverDisable исключаются. Отключённые пакеты можно восстановить.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.5 • Возврат оформления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Перед установкой готовой темы автоматически сохраняется ZIP-копия прежней конфигурации, обоев и локальной коллекции. Добавлена кнопка возврата к состоянию до последней темы.", color = TextMain)
@@ -3528,10 +3528,21 @@ fun TvInstallerApp() {
 
                         val activeProfile = matchedTvProfile?.profile
                         val cleanupCandidates = findCleanupCandidates(allPackages, packageFacts, activeProfile)
+                        val verifiedCleanupCandidates = cleanupCandidates.filter {
+                            activeProfile?.packages?.get(it)?.ask == false &&
+                                it !in (activeProfile?.neverDisable ?: emptySet()) &&
+                                it !in disabledOnDevice &&
+                                !isProtectedSystemPackage(it)
+                        }
                         val knownCandidates = cleanupCandidates.count { packageFacts.containsKey(it) || activeProfile?.packages?.containsKey(it) == true }
                         Text("Проверка всего списка: " + allPackages.size + " пакетов. Совпадений: " + cleanupCandidates.size + ", из них в справочнике: " + knownCandidates + ".", color = Color.LightGray, fontSize = 12.sp)
                         Text("Справочник Clean Your TV: " + packageFacts.size + " общих пакетов" + (activeProfile?.let { " + ${it.packages.size} по модели" } ?: "") + ". Подсказки не являются командой на отключение.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (allPackages.isEmpty()) Text("Полный список пакетов ещё не считан. Нажми «Определить устройство».", color = Color.LightGray, fontSize = 11.sp)
+                        if (verifiedCleanupCandidates.isNotEmpty()) {
+                            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                selectedCleanupPackages = verifiedCleanupCandidates.toSet()
+                            }) { Text("Выбрать проверенные для этой модели (${verifiedCleanupCandidates.size})") }
+                        }
                         if (selectedCleanupPackages.isNotEmpty()) {
                             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                                 pendingCleanupPackages = selectedCleanupPackages.filter { it in cleanupCandidates && it !in disabledOnDevice && activeProfile?.packages?.get(it)?.ask == false && it !in (activeProfile?.neverDisable ?: emptySet()) }
