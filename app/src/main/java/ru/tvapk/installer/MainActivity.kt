@@ -214,10 +214,10 @@ private fun changePackageStateTracked(
     val identity = readTvIdentity(adb)
     require(packageName in readAllPackages(adb)) { "Пакет $packageName не установлен; изменение отменено" }
     val beforeDisabled = packageName in readDisabledPackages(adb)
-    val result = changePackageStateVerified(adb, packageName, enabled)
-    val afterDisabled = packageName in readDisabledPackages(adb)
-    recordTrackedPackageChange(context, identity, packageName, beforeDisabled, afterDisabled)
-    return result
+    val expectedDisabled = !enabled
+    // Persist the original state before changing Package Manager state.
+    recordTrackedPackageChange(context, identity, packageName, beforeDisabled, expectedDisabled)
+    return changePackageStateVerified(adb, packageName, enabled)
 }
 
 private fun rollbackTrackedPackageChanges(context: Context, adb: Dadb): String {
@@ -5769,10 +5769,10 @@ fun TvInstallerApp() {
                                         val currentManagedAutoStart = disabledAutoStart.toSet()
                                         val failures = mutableListOf<String>()
                                         (currentUserDisabled - snapshot).forEach { pkg ->
-                                            try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                            try { changePackageStateTracked(context, adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                         }
                                         (snapshot - currentUserDisabled).forEach { pkg ->
-                                            if (pkg in installed) try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            if (pkg in installed) try { changePackageStateTracked(context, adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             else failures.add("${pkg} (не установлен)")
                                         }
                                         val managedUserUniverse = currentManagedUsers + restorePointManagedUserPackages
@@ -5781,9 +5781,9 @@ fun TvInstallerApp() {
                                             val isDisabledNow = pkg in currentUserDisabled
                                             if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
                                             else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
-                                                try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateTracked(context, adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
-                                                try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateTracked(context, adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                             }
                                         }
                                         val managedSystemUniverse = currentManagedSystems + restorePointManagedSystemPackages
@@ -5793,9 +5793,9 @@ fun TvInstallerApp() {
                                             if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
                                             else if (isProtectedSystemPackage(pkg)) failures.add("${pkg} (защищённый компонент, пропущен)")
                                             else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
-                                                try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateTracked(context, adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
-                                                try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateTracked(context, adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                             }
                                         }
                                         (currentManagedAutoStart - restorePointAutoStartComponents).forEach { component ->
