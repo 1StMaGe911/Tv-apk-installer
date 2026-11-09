@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.8"
+private const val APP_VERSION = "0.9.11"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2561,6 +2561,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.11 • Диагностика совместимости ADB", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("После определения телевизора приложение проверяет доступность Package Manager, команд отключения пакетов, cmd package, системных настроек и сведений о питании. Результат показывается отдельно и не считается гарантией поддержки всех функций прошивки.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.10 • Предварительный план очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Перед выполнением можно просмотреть точный список пакетов, разрешённых профилем модели, и отдельно увидеть пропущенные правилами безопасности. Фактическое отключение и восстановление подтверждаются через Android Package Manager.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
