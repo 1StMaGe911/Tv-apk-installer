@@ -1,6 +1,7 @@
 package ru.tvapk.installer
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -73,9 +74,9 @@ class TvAutomationEngineTest {
     fun missingDiagnosticsAreNotMisclassifiedAsHealthyOrFailed() {
         val result = TvAutomationEngine.assessHealth("Недоступно")
 
-        assertEquals(null, result.memoryAvailablePercent)
-        assertEquals(null, result.dataUsedPercent)
-        assertEquals(null, result.uptimeDays)
+        assertNull(result.memoryAvailablePercent)
+        assertNull(result.dataUsedPercent)
+        assertNull(result.uptimeDays)
         assertTrue(result.warnings.isEmpty())
         assertTrue(result.summary.contains("Недостаточно данных"))
     }
