@@ -3634,7 +3634,11 @@ private data class TvProfileMatch(
 private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
     return try {
         val cached = File(context.filesDir, "cleanyourtv-catalog/profile-meta.json")
-        val source = if (cached.isFile && cached.length() in 1..(8L * 1024 * 1024)) {
+        // Remote profile metadata is fetched over HTTPS but is not covered by the
+        // signed Clean Your TV catalog. It may improve model matching and add safety
+        // exclusions, but it must never grant new automatic package-disable approval.
+        val usingUntrustedRemoteCatalog = cached.isFile && cached.length() in 1..(8L * 1024 * 1024)
+        val source = if (usingUntrustedRemoteCatalog) {
             cached.readText(Charsets.UTF_8)
         } else context.assets.open("cleanyourtv/profile-meta.json").bufferedReader().use { it.readText() }
         val root = JSONObject(source)
@@ -3665,7 +3669,9 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
                 val packageInfo = packageJson.optJSONObject(packageName) ?: continue
                 packageMap[packageName] = TvProfilePackage(
                     packageInfo.optString("category", "other"),
-                    packageInfo.optBoolean("ask", true)
+                    // Only the bundled, app-signed profile baseline may approve an
+                    // automatic disable. Remote profiles default to review-only.
+                    usingUntrustedRemoteCatalog || packageInfo.optBoolean("ask", true)
                 )
             }
             val tested = item.optJSONObject("tested") ?: JSONObject()
