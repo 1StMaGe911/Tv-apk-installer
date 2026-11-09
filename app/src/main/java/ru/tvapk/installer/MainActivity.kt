@@ -591,7 +591,7 @@ private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
     val current = try { shellText(adb, "settings get secure screensaver_components").trim() } catch (_: Exception) { "" }
     val components = current.split(":")
         .map { it.trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_.$/]+")) }
+        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
         .toMutableSet()
     if (enabled) components.add(component) else components.remove(component)
     val next = components.joinToString(":")
@@ -654,7 +654,7 @@ private fun configureInputKeyService(adb: Dadb, enabled: Boolean): String {
     }
     val current = try { shellText(adb, "settings get secure enabled_accessibility_services").trim() } catch (_: Exception) { "" }
     val services = current.split(":")
-        .filter { it.matches(Regex("[A-Za-z0-9_.$/]+")) }
+        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
         .distinct()
     val wasEnabled = component in services
     if (enabled) {
