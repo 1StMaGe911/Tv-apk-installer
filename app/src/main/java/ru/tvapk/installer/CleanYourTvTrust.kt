@@ -79,7 +79,7 @@ internal object CleanYourTvTrust {
             .putLong("accepted_keys_sequence", JSONObject(String(keys, Charsets.UTF_8)).getLong("sequence"))
             .commit()
             .also { persisted -> require(persisted) { "Не удалось сохранить защиту от отката каталога" } }
-        verified
+        return verified
     }
 
     fun verify(
