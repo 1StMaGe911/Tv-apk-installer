@@ -688,6 +688,51 @@ private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outc
 }
 
 
+private data class MaintenanceRunHistoryEntry(
+    val createdAt: Long, val deviceIdentity: String,
+    val memoryBefore: Int?, val memoryAfter: Int?,
+    val storageBefore: Int?, val storageAfter: Int?,
+    val cacheTrimAttempted: Boolean, val cacheTrimOutcome: String,
+    val detectedCandidates: Int, val approvedCandidates: Int,
+    val reviewCandidates: Int, val blockedCandidates: Int,
+    val warnings: List<String>
+)
+
+private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
+    val raw = prefs(context).getString("maintenance_run_history", null) ?: "[]"
+    val array = JSONArray(raw)
+    (0 until array.length()).mapNotNull { index ->
+        val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val warningArray = item.optJSONArray("warnings") ?: JSONArray()
+        MaintenanceRunHistoryEntry(
+            createdAt = item.optLong("createdAt"), deviceIdentity = item.optString("deviceIdentity"),
+            memoryBefore = if (item.isNull("memoryBefore")) null else item.optInt("memoryBefore"),
+            memoryAfter = if (item.isNull("memoryAfter")) null else item.optInt("memoryAfter"),
+            storageBefore = if (item.isNull("storageBefore")) null else item.optInt("storageBefore"),
+            storageAfter = if (item.isNull("storageAfter")) null else item.optInt("storageAfter"),
+            cacheTrimAttempted = item.optBoolean("cacheTrimAttempted"), cacheTrimOutcome = item.optString("cacheTrimOutcome"),
+            detectedCandidates = item.optInt("detectedCandidates"), approvedCandidates = item.optInt("approvedCandidates"),
+            reviewCandidates = item.optInt("reviewCandidates"), blockedCandidates = item.optInt("blockedCandidates"),
+            warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() }
+        )
+    }.sortedByDescending { it.createdAt }.take(20)
+} catch (_: Exception) { emptyList() }
+
+private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunHistoryEntry): Boolean = try {
+    val array = JSONArray()
+    (listOf(entry) + loadMaintenanceRunHistory(context).filterNot { it.createdAt == entry.createdAt }.take(19)).forEach { item ->
+        array.put(JSONObject()
+            .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
+            .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
+            .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+            .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
+            .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
+            .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
+            .put("warnings", JSONArray(item.warnings)))
+    }
+    prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+} catch (_: Exception) { false }
+
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -4039,6 +4084,7 @@ fun TvInstallerApp() {
     var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
+    var maintenanceRunHistory by remember { mutableStateOf(loadMaintenanceRunHistory(context)) }
     var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
     var trackedAutoStartChanges by remember { mutableStateOf(runCatching { loadTrackedAutoStartChanges(context) }.getOrDefault(emptyList())) }
     var trackedSystemSettingChanges by remember { mutableStateOf(runCatching { loadTrackedSystemSettingChanges(context) }.getOrDefault(emptyList())) }
@@ -4218,6 +4264,33 @@ fun TvInstallerApp() {
         }
     }
 
+
+    val maintenanceRunHistoryExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                val entries = JSONArray().apply {
+                    maintenanceRunHistory.forEach { entry ->
+                        put(JSONObject().put("createdAt", entry.createdAt).put("deviceIdentity", entry.deviceIdentity)
+                            .put("memoryBefore", entry.memoryBefore).put("memoryAfter", entry.memoryAfter)
+                            .put("storageBefore", entry.storageBefore).put("storageAfter", entry.storageAfter)
+                            .put("cacheTrimAttempted", entry.cacheTrimAttempted).put("cacheTrimOutcome", entry.cacheTrimOutcome)
+                            .put("detectedCandidates", entry.detectedCandidates).put("approvedCandidates", entry.approvedCandidates)
+                            .put("reviewCandidates", entry.reviewCandidates).put("blockedCandidates", entry.blockedCandidates)
+                            .put("warnings", JSONArray(entry.warnings)))
+                    }
+                }
+                val document = JSONObject().put("format", "tv-apk-installer-maintenance-history")
+                    .put("version", 1).put("exportedAt", System.currentTimeMillis()).put("runs", entries)
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(document.toString(2))
+                } ?: throw Exception("Не удалось создать файл")
+                status = "История обслуживания экспортирована (${maintenanceRunHistory.size} запусков)"
+            } catch (e: Exception) { status = "Ошибка экспорта истории обслуживания: ${errorText(e)}" }
+        }
+    }
+
     val settingsBackupImporter = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { sourceUri ->
@@ -4270,12 +4343,16 @@ fun TvInstallerApp() {
                 val details = readTvDetails(adb)
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                val healthBeforeMaintenance = healthAssessment
+                val deviceIdentityForHistory = runCatching { readTvIdentity(adb) }.getOrDefault("неизвестно")
+                var cacheTrimWasAttempted = false
                 val autoCacheTrimEnabledNow = settings.getBoolean("auto_cache_trim", false)
                 val autoCacheTrimMessage = if (TvAutomationEngine.shouldAutomaticallyTrimCache(
                         autoCacheTrimEnabledNow,
                         healthAssessment.dataUsedPercent
                     )
                 ) {
+                    cacheTrimWasAttempted = true
                     val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
                     if (trimAttempt.isSuccess) {
                         val refreshed = runCatching { readTvDiagnostics(adb) }
@@ -4313,8 +4390,27 @@ fun TvInstallerApp() {
                     protectedPackages = protected,
                     neverDisablePackages = profile?.neverDisable ?: emptySet()
                 )
+
+                val cacheTrimOutcome = when {
+                    !cacheTrimWasAttempted -> if (autoCacheTrimEnabledNow) "Пропущено: порог или достоверные данные не достигнуты" else "Выключено пользователем"
+                    autoCacheTrimMessage.contains("не выполнена", ignoreCase = true) -> autoCacheTrimMessage
+                    else -> autoCacheTrimMessage.ifBlank { "Команда выполнена; состояние перепроверено" }
+                }
+                val historyEntry = MaintenanceRunHistoryEntry(
+                    createdAt = System.currentTimeMillis(), deviceIdentity = deviceIdentityForHistory,
+                    memoryBefore = healthBeforeMaintenance.memoryAvailablePercent,
+                    memoryAfter = healthAssessment.memoryAvailablePercent,
+                    storageBefore = healthBeforeMaintenance.dataUsedPercent,
+                    storageAfter = healthAssessment.dataUsedPercent,
+                    cacheTrimAttempted = cacheTrimWasAttempted, cacheTrimOutcome = cacheTrimOutcome,
+                    detectedCandidates = plan.detectedCount, approvedCandidates = plan.approvedCount,
+                    reviewCandidates = plan.reviewCount, blockedCandidates = plan.blockedCount,
+                    warnings = healthAssessment.warnings
+                )
+                val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
                     appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
+                    if (!historySaved) appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
                     appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
                     appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
                     appendLine()
@@ -4347,6 +4443,7 @@ fun TvInstallerApp() {
                     disabledOnDevice = disabled
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
+                    maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                 }
                 report
@@ -7818,6 +7915,28 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     Text(automationReport, color = TextMain, fontSize = 11.sp)
                                     if (selectedCleanupPackages.isNotEmpty()) {
                                         Text("Подготовлено безопасных кандидатов: ${selectedCleanupPackages.size}. Ни один пакет не отключён автоматически.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (maintenanceRunHistory.isNotEmpty()) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("ИСТОРИЯ ОБСЛУЖИВАНИЯ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(),
+                                        onClick = { maintenanceRunHistoryExporter.launch("tv-apk-maintenance-history.json") }
+                                    ) { Text("Экспортировать отчёт (JSON)") }
+                                    maintenanceRunHistory.take(5).forEach { entry ->
+                                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.cacheTrimOutcome}",
+                                                color = TextMain, fontSize = 11.sp)
+                                            Text("RAM: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"}; /data: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"}",
+                                                color = TextMuted, fontSize = 10.sp)
+                                            Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
+                                                color = TextMuted, fontSize = 10.sp)
+                                            if (entry.warnings.isNotEmpty()) Text(entry.warnings.joinToString(" · "), color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                        }
                                     }
                                 }
                             }
