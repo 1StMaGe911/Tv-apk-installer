@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.29"
+private const val APP_VERSION = "0.9.32"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2082,49 +2082,121 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
 }
 
 private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String {
-    val restoreDir = File(context.cacheDir, "tv-restore-${System.currentTimeMillis()}")
-    if (restoreDir.exists()) restoreDir.deleteRecursively()
-    if (!restoreDir.mkdirs()) throw Exception("Не удалось создать временную папку восстановления")
-    val grouped = linkedMapOf<String, MutableList<File>>()
+    val maxArchiveBytes = 512L * 1024L * 1024L
+    val maxApkBytes = 256L * 1024L * 1024L
+    val maxTotalBytes = 512L * 1024L * 1024L
+    val maxEntries = 512
+    val maxPerPackage = 32
+    require(archive.isFile && archive.length() in 1..maxArchiveBytes) {
+        "Архив отсутствует, пуст или превышает 512 МиБ"
+    }
+    data class ApkFile(val name: String, val file: File)
+    val dir = File(context.cacheDir, "tv-restore-" + System.currentTimeMillis())
+    if (dir.exists()) dir.deleteRecursively()
+    if (!dir.mkdirs()) throw Exception("Не удалось создать временную папку восстановления")
+    val grouped = linkedMapOf<String, MutableList<ApkFile>>()
+    val names = mutableSetOf<String>()
+    var entries = 0
+    var totalBytes = 0L
+    var metadataBytes = 0L
     try {
         ZipInputStream(archive.inputStream().buffered()).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                val parts = entry.name.split("/")
-                if (!entry.isDirectory && parts.size == 3 && parts[0] == "apks" &&
-                    parts[2].endsWith(".apk", ignoreCase = true) &&
-                    parts[1].matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))
-                ) {
-                    val packageName = parts[1]
-                    val target = File(restoreDir, "${packageName.replace('.', '_')}_${grouped[packageName]?.size ?: 0}.apk")
-                    target.outputStream().use { output -> zip.copyTo(output) }
-                    if (target.length() > 0L) grouped.getOrPut(packageName) { mutableListOf() }.add(target)
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entries++
+                if (entries > maxEntries) throw Exception("В архиве больше 512 записей")
+                if (!names.add(entry.name)) throw Exception("Повторяющаяся запись ZIP: " + entry.name)
+                if (entry.name.startsWith("/") || entry.name.contains("\\") ||
+                    entry.name.split("/").any { it == ".." || it == "." }) {
+                    throw Exception("Недопустимый путь в ZIP: " + entry.name)
+                }
+                if (entry.isDirectory) {
+                    val parts = entry.name.removeSuffix("/").split("/")
+                    val validDir = entry.name == "apks/" || entry.name == "metadata/" ||
+                        (parts.size == 2 && parts[0] == "apks" &&
+                            parts[1].matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")))
+                    if (!validDir) throw Exception("Неизвестная папка в ZIP: " + entry.name)
+                } else {
+                    val parts = entry.name.split("/")
+                    val apkEntry = parts.size == 3 && parts[0] == "apks"
+                    if (apkEntry) {
+                        val pkg = parts[1]
+                        val fileName = parts[2]
+                        if (!pkg.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) ||
+                            !fileName.matches(Regex("[A-Za-z0-9._-]+\\.apk", RegexOption.IGNORE_CASE))) {
+                            throw Exception("Недопустимое имя APK: " + entry.name)
+                        }
+                        val list = grouped.getOrPut(pkg) { mutableListOf() }
+                        if (list.size >= maxPerPackage) throw Exception("Слишком много APK для " + pkg)
+                        val target = File(dir, pkg.replace('.', '_') + "_" + list.size + ".apk")
+                        var fileBytes = 0L
+                        val header = ByteArray(4)
+                        var headerSize = 0
+                        target.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                val count = zip.read(buffer)
+                                if (count < 0) break
+                                fileBytes += count
+                                totalBytes += count
+                                if (fileBytes > maxApkBytes) throw Exception("APK больше 256 МиБ: " + fileName)
+                                if (totalBytes > maxTotalBytes) throw Exception("Распакованные APK превышают 512 МиБ")
+                                var pos = 0
+                                while (headerSize < header.size && pos < count) {
+                                    header[headerSize++] = buffer[pos++]
+                                }
+                                output.write(buffer, 0, count)
+                            }
+                        }
+                        if (fileBytes < 4L || header[0] != 0x50.toByte() || header[1] != 0x4b.toByte()) {
+                            target.delete()
+                            throw Exception("Файл не похож на APK/ZIP: " + fileName)
+                        }
+                        list.add(ApkFile(fileName, target))
+                    } else {
+                        val allowed = entry.name == "device-info.txt" ||
+                            entry.name == "applications.txt" ||
+                            entry.name == "backup-report.txt" ||
+                            (parts.size == 2 && parts[0] == "metadata" &&
+                                parts[1].matches(Regex("[A-Za-z0-9._-]+\\.txt", RegexOption.IGNORE_CASE)))
+                        if (!allowed) throw Exception("Неизвестная запись в архиве: " + entry.name)
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            val count = zip.read(buffer)
+                            if (count < 0) break
+                            metadataBytes += count
+                            if (metadataBytes > 2L * 1024L * 1024L) throw Exception("Метаданные больше 2 МиБ")
+                        }
+                    }
                 }
                 zip.closeEntry()
-                entry = zip.nextEntry
             }
         }
-        if (grouped.isEmpty()) throw Exception("В архиве не найдены APK из резервной копии TV APK Installer")
+        if (grouped.isEmpty()) throw Exception("В архиве не найдены APK из резервной копии")
         var installed = 0
         val failures = mutableListOf<String>()
-        grouped.forEach { (packageName, files) ->
+        grouped.forEach { (pkg, apks) ->
             try {
-                val result = if (files.size > 1) adb.installMultiple(files) else adb.install(files.first())
+                val ordered = apks.sortedWith(
+                    compareBy<ApkFile> { if (it.name.equals("base.apk", true)) 0 else 1 }
+                        .thenBy { apks.indexOf(it) }
+                ).map { it.file }
+                val result = if (ordered.size > 1) adb.installMultiple(ordered) else adb.install(ordered.first())
                 when (result) {
                     is InstallResult.Success -> installed++
-                    is InstallResult.Failure -> failures.add("$packageName: ${result.reason}")
+                    is InstallResult.Failure -> failures.add(pkg + ": " + result.reason)
                 }
             } catch (e: Exception) {
-                failures.add("$packageName: ${e.message ?: "ошибка установки"}")
+                failures.add(pkg + ": " + (e.message ?: "ошибка установки"))
             }
         }
-        return "Восстановлено приложений: $installed из ${grouped.size}. Ошибок: ${failures.size}" +
+        return "Восстановлено приложений: " + installed + " из " + grouped.size +
+            ". Ошибок: " + failures.size +
             if (failures.isEmpty()) "" else "\n" + failures.take(10).joinToString("\n")
     } finally {
-        restoreDir.deleteRecursively()
+        dir.deleteRecursively()
     }
 }
-
 private fun isProtectedSystemPackage(packageName: String): Boolean {
     // Core Android / TV middleware: upstream Clean Your TV recovery rules prohibit
     // disabling these because a TV can lose setup, networking, package management or boot.
