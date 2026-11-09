@@ -1058,7 +1058,7 @@ private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<
     require(themeName in setOf("arcade", "cinema", "console", "diwali", "horizon", "library", "mist", "quiet")) {
         "Неизвестная тема Clean Your TV"
     }
-    val base = "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/$themeName"
+    val base = "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/v0.4.8/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/$themeName"
     fun download(fileName: String, maxBytes: Long): File {
         val connection = URL("$base/$fileName").openConnection() as HttpURLConnection
         try {
@@ -1092,7 +1092,7 @@ private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<
     // Quiet is a pure-black look and intentionally ships without wallpaper.jpg.
     // pushLauncherTheme expects an image payload, but config.json disables wallpaper for this look.
     val wallpaper = if (themeName == "quiet") {
-        val connection = URL("https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/cinema/wallpaper.jpg").openConnection() as HttpURLConnection
+        val connection = URL("https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/v0.4.8/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/cinema/wallpaper.jpg").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 15000
             connection.readTimeout = 60000
