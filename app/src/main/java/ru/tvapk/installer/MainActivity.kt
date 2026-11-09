@@ -2491,6 +2491,15 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.5 • Полная тема Quiet", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена недостающая официальная тема Quiet — чистый чёрный фон без обоев и с настройками для спокойной работы Launcher. Исправлена загрузка темы, которая в исходном проекте намеренно не содержит wallpaper.jpg.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.9.4 • Аудит приватности и каталог профилей", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлен локальный аудит установленных пакетов по категориям справочника Clean Your TV, подробные описания и просмотр каталога профилей устройств.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
+                                        Text("v0.9.3 • Исправление передачи Home", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Очищается временная запись отката, если Clean Your TV Launcher не запускается до изменения штатного Home. Неуспешное переключение не оставляет ложный статус активного отката.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.2 • Безопасное переключение домашнего экрана", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлено проверяемое назначение Clean Your TV Launcher главным экраном: сначала тестируется запуск, сохраняется точный штатный Home, затем отключается только распознанный системный пакет и проверяется результат. При сбое выполняется автоматический возврат; отдельная кнопка позволяет восстановить штатный экран позже или после обрыва ADB.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2971,7 +2980,7 @@ fun TvInstallerApp() {
                             Text("Автоматическое переключение работает только с распознанными штатными пакетами Google TV / Android TV / Xiaomi TV. Перед отключением проверяется запуск нового Launcher, исходный компонент сохраняется для отката, а результат назначения Home проверяется повторно. Если производитель использует неизвестный Launcher, автоматическое переключение заблокировано — используй системный выбор Home.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = { pendingModuleRemoval = true }, modifier = Modifier.fillMaxWidth()) { Text("Удалить модули Clean Your TV") }
                             Text("Удаление затронет только пакеты Clean Your TV для пользователя телевизора. Перед удалением выбери штатный домашний экран в системных настройках.", color = Color(0xFFFFD98A), fontSize = 11.sp)
-                            Text("Curtain устанавливается как компонент Launcher. Полный откат настроек, профили и каталог модулей оригинала требуют отдельной проверки совместимости и пока не считаются перенесёнными.", color = TextMuted, fontSize = 11.sp)
+                            Text("В исходном APK Clean Your TV 0.4.8 доступны два извлекаемых Android-модуля: Launcher и Curtain. Профили устройств, справочник пакетов, локальный аудит приватности, резервирование конфигурации и просмотр профилей доступны в отдельных разделах приложения. Другие дополнительные APK-модули не входят в выбранный исходный APK и не устанавливаются автоматически.", color = TextMuted, fontSize = 11.sp)
                         }
                     }
                     if (pendingModuleRemoval) {
