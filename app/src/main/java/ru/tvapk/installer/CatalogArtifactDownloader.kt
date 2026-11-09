@@ -93,8 +93,10 @@ internal object CatalogArtifactDownloader {
 
                 val expectedBody = version.size - offset
                 val contentLength = response.getHeaderFieldLong("Content-Length", -1L)
-                require(contentLength < 0L || contentLength == expectedBody) {
-                    "Размер ответа сервера не совпадает с каталогом"
+                if (contentLength >= 0L && contentLength != expectedBody) {
+                    partial.delete()
+                    etagFile.delete()
+                    throw IOException("Размер ответа сервера не совпадает с каталогом")
                 }
                 val responseEtag = response.getHeaderField("ETag")?.take(512)?.takeIf { it.isNotBlank() }
                 if (offset == 0L) {
