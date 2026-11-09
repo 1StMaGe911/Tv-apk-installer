@@ -51,7 +51,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.7.0"
+private const val APP_VERSION = "0.7.1"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -373,6 +373,83 @@ private fun applyLauncherAppearance(
     }
     return "Оформление Clean Your TV применено: $columns приложений в ряду, $rowsBelowDock ряд(а) под доком. Launcher перезапущен. $restart"
 }
+private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<File, File> {
+    require(themeName in setOf("arcade", "cinema", "console", "horizon", "library", "mist", "quiet")) {
+        "Неизвестная тема Clean Your TV"
+    }
+    val base = "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/$themeName"
+    fun download(fileName: String, maxBytes: Long): File {
+        val connection = URL("$base/$fileName").openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15000
+            connection.readTimeout = 60000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty("User-Agent", "TV-APK-Installer")
+            if (connection.responseCode != 200) throw Exception("Не удалось загрузить $fileName: HTTP ${connection.responseCode}")
+            val target = File(context.cacheDir, "cyt-$themeName-$fileName")
+            var total = 0L
+            connection.inputStream.use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > maxBytes) throw Exception("Файл темы слишком большой: $fileName")
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+            if (total < 32L) throw Exception("Файл темы пустой или повреждён: $fileName")
+            return target
+        } finally {
+            connection.disconnect()
+        }
+    }
+    val config = download("config.json", 128 * 1024L)
+    JSONObject(config.readText(Charsets.UTF_8))
+    val wallpaper = download("wallpaper.jpg", 12 * 1024 * 1024L)
+    return config to wallpaper
+}
+
+private fun pushLauncherTheme(adb: Dadb, themeName: String, configFile: File, wallpaperFile: File): String {
+    val packageName = "com.gathin.tvhome"
+    require(shellText(adb, "pm path $packageName").contains("package:")) {
+        "Clean Your TV Launcher не установлен. Сначала установи модуль в разделе «Модули Clean Your TV»."
+    }
+    val remoteConfig = "/data/local/tmp/tvapk-$themeName-config.json"
+    val remoteWallpaper = "/data/local/tmp/tvapk-$themeName-wallpaper.jpg"
+    val remoteRevision = "/data/local/tmp/tvapk-$themeName-revision"
+    fun pushFile(local: File, remote: String) {
+        when (val result = adb.push(local, remote)) {
+            is dadb.SyncResult.Success -> Unit
+            is dadb.SyncResult.Failure -> throw Exception("Не удалось передать файл на телевизор: $result")
+        }
+    }
+    pushFile(configFile, remoteConfig)
+    pushFile(wallpaperFile, remoteWallpaper)
+    val revisionFile = File(configFile.parentFile, "cyt-theme-revision.txt").apply {
+        writeText(System.currentTimeMillis().toString(), Charsets.UTF_8)
+    }
+    pushFile(revisionFile, remoteRevision)
+
+    val directory = "/sdcard/Android/data/$packageName/files"
+    fun writeFile(fileName: String, remotePath: String) {
+        val command =
+            "rm -f $directory/$fileName 2>/dev/null; " +
+            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1); " +
+            "case \"\$o\" in *Unsupported*|*Error*) mkdir -p $directory 2>/dev/null; cp $remotePath $directory/$fileName;; esac; " +
+            "rm -f $remotePath"
+        shellText(adb, command)
+    }
+    writeFile("config.json", remoteConfig)
+    writeFile("wallpaper.jpg", remoteWallpaper)
+    writeFile("theme_revision", remoteRevision)
+    shellText(adb, "am force-stop --user 0 $packageName")
+    val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
+    return "Тема «$themeName» передана на телевизор. Конфигурация и обои установлены, Launcher перезапущен. $restart"
+}
+
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
         shellText(adb, command).ifBlank { "Недоступно" }
@@ -1269,6 +1346,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.1 • Готовые темы и обои", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена загрузка готовых тем Clean Your TV (Cinema, Arcade, Console, Horizon, Library, Mist, Quiet) с передачей конфигурации и обоев на телевизор через ADB и ThemeProvider. После применения Launcher перезапускается.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.0 • Настройка внешнего вида Clean Your TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлены настройки сетки, дока, анимаций, эффектов, компактной верхней панели и библиотеки приложений. Параметры записываются в config.json Launcher через ThemeProvider/ADB и применяются после перезапуска.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -1691,7 +1771,23 @@ fun TvInstallerApp() {
                             }, modifier = Modifier.fillMaxWidth()) {
                                 Text(if (busy) "Применение..." else "Применить оформление на телевизоре")
                             }
-                            Text("Для передачи настроек используется ThemeProvider Clean Your TV, а на старых прошивках — резервная запись через ADB. Обои пока не меняются: для них требуется отдельная передача файлов изображений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
+                            listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман", "quiet" to "Тишина").forEach { (themeId, label) ->
+                                OutlinedButton(enabled = !busy, onClick = {
+                                    val host = ip.trim()
+                                    val p = port.toIntOrNull()
+                                    if (host.isBlank() || p == null || p !in 1..65535) {
+                                        status = "Проверь IP и порт ADB"
+                                    } else runTask({
+                                        val files = downloadCleanYourTvTheme(context, themeId)
+                                        connectWithRetry(context, host, p) { adb ->
+                                            pushLauncherTheme(adb, themeId, files.first, files.second)
+                                        }
+                                    })
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Применить тему: $label") }
+                            }
+                            Text("Для установки темы передаются config.json и wallpaper.jpg. Тема обновляет параметры Launcher и сбрасывает предыдущие локальные настройки внешнего вида, чтобы новая конфигурация вступила в силу.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         }
                     }
                 }
