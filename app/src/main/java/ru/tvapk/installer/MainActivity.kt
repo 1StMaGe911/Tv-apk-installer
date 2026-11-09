@@ -387,13 +387,14 @@ private fun setAutoStartReceiverEnabledTracked(
 ): String {
     val identity = readTvIdentity(adb)
     val before = readAutoStartComponentState(adb, component)
+    val expected = if (enabled) "enabled" else "disabled"
+    // Persist the recovery baseline before issuing a command that changes the TV.
+    recordTrackedAutoStartChange(context, identity, component, before, expected)
     val result = setAutoStartReceiverEnabled(adb, component, enabled)
     val after = readAutoStartComponentState(adb, component)
-    val expected = if (enabled) "enabled" else "disabled"
     require(after == expected) {
-        "Изменение автозапуска не подтверждено: ожидалось $expected, получено $after"
+        "Изменение автозапуска не подтверждено: ожидалось $expected, получено $after. Запись отката сохранена."
     }
-    recordTrackedAutoStartChange(context, identity, component, before, after)
     return result
 }
 
@@ -5798,10 +5799,10 @@ fun TvInstallerApp() {
                                             }
                                         }
                                         (currentManagedAutoStart - restorePointAutoStartComponents).forEach { component ->
-                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, true) } catch (_: Exception) { failures.add(component) }
+                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabledTracked(context, adb, component, true) } catch (_: Exception) { failures.add(component) }
                                         }
                                         (restorePointAutoStartComponents - currentManagedAutoStart).forEach { component ->
-                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, false) } catch (_: Exception) { failures.add(component) }
+                                            if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabledTracked(context, adb, component, false) } catch (_: Exception) { failures.add(component) }
                                         }
                                         
                                         // Verify the resulting package state, not just shell command completion.
@@ -6250,7 +6251,7 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 }
                                                 components.forEach { component ->
                                                     if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try {
-                                                        setAutoStartReceiverEnabled(adb, component, true)
+                                                        setAutoStartReceiverEnabledTracked(context, adb, component, true)
                                                         restoredComponents.add(component)
                                                     } catch (_: Exception) { failures.add(component) }
                                                     else failures.add("$component (неверный идентификатор)")
