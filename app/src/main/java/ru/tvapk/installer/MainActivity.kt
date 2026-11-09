@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.53"
+private const val APP_VERSION = "0.9.54"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2526,12 +2526,15 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
     // Save recovery data and the exact TV identity before the first state-changing command.
     // A saved Home component must never be replayed against a different television.
     val handoverDeviceIdentity = readTvIdentity(adb)
-    prefs(context).edit()
+    val recoveryRecordSaved = prefs(context).edit()
         .putString("launcher_handover_device_identity", handoverDeviceIdentity)
         .putString("launcher_handover_stock_package", currentPackage)
         .putString("launcher_handover_stock_component", stockComponent)
         .putBoolean("launcher_handover_active", false)
-        .apply()
+        .commit()
+    check(recoveryRecordSaved) {
+        "Не удалось надёжно сохранить запись восстановления Home. Переключение отменено; штатный Launcher не изменён."
+    }
 
     // A failed launch happens before any TV state is changed. Clear the
     // provisional recovery record so the UI cannot offer a misleading rollback.
