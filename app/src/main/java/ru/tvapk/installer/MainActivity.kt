@@ -3803,6 +3803,13 @@ fun TvInstallerApp() {
                                         val currentManagedSystems = managedSystemDisabledPackages.toSet()
                                         val currentManagedAutoStart = disabledAutoStart.toSet()
                                         val failures = mutableListOf<String>()
+                                        (currentUserDisabled - snapshot).forEach { pkg ->
+                                            try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                        }
+                                        (snapshot - currentUserDisabled).forEach { pkg ->
+                                            if (pkg in installed) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            else failures.add("${pkg} (не установлен)")
+                                        }
                                         val managedUserUniverse = currentManagedUsers + restorePointManagedUserPackages
                                         managedUserUniverse.forEach { pkg ->
                                             val shouldBeDisabled = pkg in restorePointManagedUserPackages
