@@ -194,7 +194,11 @@ class UsbDadb private constructor(
             if (packet.arg1 != localId && packet.command in intArrayOf(A_OKAY, A_WRTE, A_CLSE)) continue
             when (packet.command) {
                 A_OKAY -> if (packet.arg1 == localId && packet.arg0 == remoteId) return
-                A_WRTE -> if (packet.arg1 == localId && packet.arg0 == remoteId) pending.addLast(packet)
+                A_WRTE -> if (packet.arg1 == localId && packet.arg0 == remoteId) {
+                    acknowledge(localId, remoteId)
+                    packet.acknowledged = true
+                    pending.addLast(packet)
+                }
                 A_CLSE -> throw IOException("Телевизор закрыл USB ADB-поток")
             }
         }
