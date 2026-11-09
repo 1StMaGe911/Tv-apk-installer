@@ -3772,6 +3772,7 @@ fun TvInstallerApp() {
                                             restorePointManagedSystemPackages = managedSystems
                                             restorePointAutoStartComponents = managedAutoStart
                                             restorePointExists = true
+                                            restorePointSchemaVersion = 2
                                             restorePointDeviceFingerprint = deviceFingerprint
                                             settings.edit()
                                                 .putStringSet("restore_point_user_disabled", snapshot)
