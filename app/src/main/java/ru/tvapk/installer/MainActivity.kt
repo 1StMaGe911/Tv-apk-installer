@@ -522,7 +522,10 @@ private fun applyLauncherAppLists(adb: Dadb, dock: List<String>, hidden: List<St
         "Одно приложение нельзя одновременно закрепить в доке и скрыть с главного экрана."
     }
     val config = readCurrentLauncherConfig(adb)
-    if (dock.isEmpty()) config.remove("dock_apps") else config.put("dock_apps", JSONArray(dock))
+    if (dock.isEmpty()) {
+        config.remove("dock_apps")
+        config.remove("rows_below_dock")
+    } else config.put("dock_apps", JSONArray(dock))
     if (hidden.isEmpty()) config.remove("hidden_apps") else config.put("hidden_apps", JSONArray(hidden))
     config.put("fill_dock", fillDock)
     val columns = config.optInt("columns", 4).coerceIn(1, 8)
@@ -1944,8 +1947,30 @@ fun TvInstallerApp() {
                                 else runTask({
                                     connectWithRetry(context, host, p) { adb ->
                                         val found = readLauncherApps(adb)
-                                        activity.runOnUiThread { launcherAvailablePackages = found }
-                                        "Найдено приложений с TV-запуском: ${found.size}"
+                                        val current = try { readCurrentLauncherConfig(adb) } catch (_: Exception) { null }
+                                        val dockText = current?.optJSONArray("dock_apps")?.let { array ->
+                                            (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString(", ")
+                                        } ?: ""
+                                        val hiddenText = current?.optJSONArray("hidden_apps")?.let { array ->
+                                            (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString(", ")
+                                        } ?: ""
+                                        val fill = current?.optBoolean("fill_dock", true) ?: true
+                                        activity.runOnUiThread {
+                                            launcherAvailablePackages = found
+                                            if (current != null) {
+                                                launcherDockPackages = dockText
+                                                launcherHiddenPackages = hiddenText
+                                                launcherFillDock = fill
+                                                settings.edit()
+                                                    .putString("launcher_dock_packages", dockText)
+                                                    .putString("launcher_hidden_packages", hiddenText)
+                                                    .putBoolean("launcher_fill_dock", fill)
+                                                    .apply()
+                                            }
+                                        }
+                                        "Найдено приложений с TV-запуском: ${found.size}. " +
+                                            if (current != null) "Текущие настройки дока и скрытых приложений загружены."
+                                            else "Список получен, но config.json прочитать не удалось — существующие настройки не заменены."
                                     }
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Загрузить приложения с телевизора") }
@@ -2017,7 +2042,7 @@ fun TvInstallerApp() {
                                     })
                                 }
                             }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Применение..." else "Применить док и список приложений") }
-                            Text("Список сохраняется в текущей конфигурации Launcher. Чтобы вернуть обычный док, очисти поле дока; чтобы показать все плитки, очисти поле скрытых приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("Список сохраняется в текущей конфигурации Launcher. Очистка поля дока возвращает док из темы; чтобы вернуть конкретную плитку, удали её package name из поля скрытых приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
                             listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
