@@ -1589,7 +1589,8 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
             zip.closeEntry()
         }
     }
-    val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))\n    require(config.length() > 0) { "Конфигурация в резервной копии пустая" }
+    val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))
+    require(config.length() > 0) { "Конфигурация в резервной копии пустая" }
     val wallpaper = wallpaperBytes
     require(wallpaperState != "present" || wallpaper != null) { "В архиве отмечены обои, но wallpaper.jpg отсутствует" }
     require(wallpaperState != "absent" || wallpaper == null) { "Архив противоречив: состояние обоев отмечено как отсутствующее, но файл есть" }
