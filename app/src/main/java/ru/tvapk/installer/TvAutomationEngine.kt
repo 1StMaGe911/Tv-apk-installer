@@ -39,6 +39,9 @@ internal object TvAutomationEngine {
             safeToDisable = safe
         )
     }
+    internal fun shouldAutomaticallyTrimCache(enabled: Boolean, dataUsedPercent: Int?): Boolean =
+        enabled && dataUsedPercent != null && dataUsedPercent in 90..100
+
     internal data class DataStorageSnapshot(
         val totalBytes: Long,
         val usedBytes: Long,
