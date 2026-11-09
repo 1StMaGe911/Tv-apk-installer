@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.37"
+private const val APP_VERSION = "0.9.38"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -262,6 +262,185 @@ private fun rollbackTrackedPackageChanges(context: Context, adb: Dadb): String {
         saveTrackedPackageChanges(context, remaining)
     }
     return "Откат ручных изменений завершён. Восстановлено: $restored; уже в исходном состоянии: $alreadyOriginal; конфликт состояния: $conflicts; пакет отсутствует: $missing; ошибка проверки/отката: $failed. Конфликтные и неудачные записи сохранены."
+}
+
+
+
+private data class TrackedAutoStartChange(
+    val deviceIdentity: String,
+    val component: String,
+    val wasState: String,
+    val isState: String,
+    val changedAt: Long
+)
+
+private val trackedComponentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+
+private fun loadTrackedAutoStartChanges(context: Context): List<TrackedAutoStartChange> {
+    val raw = prefs(context).getString("manual_autostart_change_journal", null) ?: return emptyList()
+    return try {
+        val array = JSONArray(raw)
+        require(array.length() <= 500) { "Журнал автозапуска превышает допустимый размер" }
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val identity = item.optString("deviceIdentity")
+            val component = item.optString("component")
+            val wasState = item.optString("wasState")
+            val isState = item.optString("isState")
+            if (identity.isBlank() || !trackedComponentPattern.matches(component) ||
+                wasState !in setOf("default", "enabled", "disabled") ||
+                isState !in setOf("default", "enabled", "disabled")) return@mapNotNull null
+            TrackedAutoStartChange(identity, component, wasState, isState, item.optLong("changedAt", 0L))
+        }.distinctBy { it.deviceIdentity + "|" + it.component }.sortedByDescending { it.changedAt }
+    } catch (e: Exception) {
+        throw Exception("Не удалось прочитать журнал автозапуска. Исходные данные сохранены; новые записи и откат заблокированы: \${e.message}", e)
+    }
+}
+
+private fun saveTrackedAutoStartChanges(context: Context, changes: List<TrackedAutoStartChange>) {
+    require(changes.size <= 500) { "Журнал автозапуска достиг лимита в 500 записей" }
+    val array = JSONArray()
+    changes.distinctBy { it.deviceIdentity + "|" + it.component }
+        .sortedByDescending { it.changedAt }
+        .forEach { entry ->
+            array.put(JSONObject()
+                .put("deviceIdentity", entry.deviceIdentity)
+                .put("component", entry.component)
+                .put("wasState", entry.wasState)
+                .put("isState", entry.isState)
+                .put("changedAt", entry.changedAt))
+        }
+    check(prefs(context).edit().putString("manual_autostart_change_journal", array.toString()).commit()) {
+        "Не удалось сохранить журнал автозапуска"
+    }
+}
+
+private fun recordTrackedAutoStartChange(
+    context: Context,
+    deviceIdentity: String,
+    component: String,
+    before: String,
+    after: String
+) {
+    require(deviceIdentity.isNotBlank() && trackedComponentPattern.matches(component) &&
+        before in setOf("default", "enabled", "disabled") && after in setOf("default", "enabled", "disabled")) {
+        "Не удалось проверить состояние компонента автозапуска; запись не создана"
+    }
+    val current = loadTrackedAutoStartChanges(context).toMutableList()
+    val index = current.indexOfFirst { it.deviceIdentity == deviceIdentity && it.component == component }
+    val original = if (index >= 0) current[index].wasState else before
+    current.removeAll { it.deviceIdentity == deviceIdentity && it.component == component }
+    if (original != after) {
+        current.add(TrackedAutoStartChange(deviceIdentity, component, original, after, System.currentTimeMillis()))
+    }
+    saveTrackedAutoStartChanges(context, current)
+}
+
+/**
+ * Reads the explicit component override from Package Manager's diagnostic dump.
+ * Missing from both lists means DEFAULT; unknown output is rejected rather than guessed.
+ */
+private fun readAutoStartComponentState(adb: Dadb, component: String): String {
+    require(trackedComponentPattern.matches(component)) { "Некорректный компонент автозапуска" }
+    val packageName = component.substringBefore("/")
+    val targetClassRaw = component.substringAfter("/")
+    val targetClass = if (targetClassRaw.startsWith(".")) packageName + targetClassRaw else targetClassRaw
+    val dump = shellText(adb, "dumpsys package $packageName")
+    var section = ""
+    var foundEnabled = false
+    var foundDisabled = false
+    var sawEnabledSection = false
+    var sawDisabledSection = false
+    dump.lineSequence().forEach { line ->
+        when (line.trim()) {
+            "enabledComponents:" -> { section = "enabled"; sawEnabledSection = true }
+            "disabledComponents:" -> { section = "disabled"; sawDisabledSection = true }
+            else -> if (section.isNotEmpty()) {
+                val value = line.trim().trimStart('-', '*').trim()
+                if (value.isNotEmpty()) {
+                    val normalized = value.removePrefix("ComponentInfo{").removeSuffix("}")
+                    val className = if ("/" in normalized) normalized.substringAfter("/") else normalized
+                    val fullClass = if (className.startsWith(".")) packageName + className else className
+                    if (fullClass == targetClass) {
+                        if (section == "enabled") foundEnabled = true else foundDisabled = true
+                    }
+                }
+            }
+        }
+    }
+    require(sawEnabledSection && sawDisabledSection) {
+        "Прошивка не предоставляет списки состояний компонентов; безопасное изменение автозапуска отменено"
+    }
+    require(!(foundEnabled && foundDisabled)) { "Противоречивое состояние компонента $component" }
+    return when {
+        foundEnabled -> "enabled"
+        foundDisabled -> "disabled"
+        else -> "default"
+    }
+}
+
+private fun setAutoStartReceiverEnabledTracked(
+    context: Context,
+    adb: Dadb,
+    component: String,
+    enabled: Boolean
+): String {
+    val identity = readTvIdentity(adb)
+    val before = readAutoStartComponentState(adb, component)
+    val result = setAutoStartReceiverEnabled(adb, component, enabled)
+    val after = readAutoStartComponentState(adb, component)
+    val expected = if (enabled) "enabled" else "disabled"
+    require(after == expected) {
+        "Изменение автозапуска не подтверждено: ожидалось $expected, получено $after"
+    }
+    recordTrackedAutoStartChange(context, identity, component, before, after)
+    return result
+}
+
+private fun rollbackTrackedAutoStartChanges(context: Context, adb: Dadb): String {
+    val identity = readTvIdentity(adb)
+    val all = loadTrackedAutoStartChanges(context)
+    val candidates = all.filter { it.deviceIdentity == identity }
+    if (candidates.isEmpty()) {
+        val otherDevices = all.map { it.deviceIdentity }.distinct().size
+        return if (all.isEmpty()) "Журнал автозапуска пуст."
+        else "Для этого телевизора записей автозапуска нет. Сохранены записи других устройств: $otherDevices."
+    }
+    val remaining = all.toMutableList()
+    var restored = 0
+    var alreadyOriginal = 0
+    var conflicts = 0
+    var failed = 0
+    candidates.forEach { entry ->
+        try {
+            val current = readAutoStartComponentState(adb, entry.component)
+            when {
+                current == entry.wasState -> {
+                    remaining.removeAll { it.deviceIdentity == identity && it.component == entry.component }
+                    alreadyOriginal++
+                }
+                current != entry.isState -> conflicts++
+                else -> {
+                    val command = when (entry.wasState) {
+                        "default" -> "pm default-state --user 0 \${entry.component}"
+                        "enabled" -> "pm enable --user 0 \${entry.component}"
+                        "disabled" -> "pm disable --user 0 \${entry.component}"
+                        else -> throw Exception("Неизвестное исходное состояние")
+                    }
+                    shellText(adb, command)
+                    require(readAutoStartComponentState(adb, entry.component) == entry.wasState) {
+                        "Состояние компонента после отката не совпало с исходным"
+                    }
+                    remaining.removeAll { it.deviceIdentity == identity && it.component == entry.component }
+                    restored++
+                }
+            }
+        } catch (_: Exception) {
+            failed++
+        }
+        saveTrackedAutoStartChanges(context, remaining)
+    }
+    return "Откат автозапуска завершён. Восстановлено: $restored; уже в исходном состоянии: $alreadyOriginal; конфликты: $conflicts; ошибки проверки: $failed. Конфликтные и неудачные записи сохранены."
 }
 
 private data class CleanupHistoryEntry(
@@ -2681,6 +2860,7 @@ fun TvInstallerApp() {
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
+    var trackedAutoStartChanges by remember { mutableStateOf(runCatching { loadTrackedAutoStartChanges(context) }.getOrDefault(emptyList())) }
     var pendingTrackedPackageRollback by remember { mutableStateOf(false) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
     var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
@@ -4841,7 +5021,7 @@ fun TvInstallerApp() {
                                         val p = port.toIntOrNull() ?: 5555
                                         runTask({
                                             connectWithRetry(context, host, p) { adb ->
-                                                setAutoStartReceiverEnabled(adb, component, true)
+                                                setAutoStartReceiverEnabledTracked(context, adb, component, true)
                                                 "Автозапуск восстановлен: $component"
                                             }
                                         }, { result ->
@@ -4868,7 +5048,7 @@ fun TvInstallerApp() {
                                         val p = port.toIntOrNull() ?: 5555
                                         runTask({
                                             connectWithRetry(context, host, p) { adb ->
-                                                setAutoStartReceiverEnabled(adb, component, false)
+                                                setAutoStartReceiverEnabledTracked(context, adb, component, false)
                                                 "Автозапуск отключён: $component"
                                             }
                                         }, { result ->
@@ -5638,9 +5818,9 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 HorizontalDivider(color = Color.DarkGray)
                             }
                         }
-                        Text("Журнал ручных изменений пакетов", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                        Text("Запоминаются исходное и текущее состояния пакетов, которые вручную включали или отключали в этом разделе. Очистка, автозапуск и другие настройки сюда пока не входят.", color = TextMuted, fontSize = 11.sp)
-                        Text("Записей: ${trackedPackageChanges.size}", color = TextMain, fontSize = 12.sp)
+                        Text("Журнал ручных изменений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                        Text("Запоминаются исходные и текущие состояния пакетов и компонентов автозапуска, изменённых вручную в соответствующих разделах. Очистка и другие системные настройки пока ведутся отдельно.", color = TextMuted, fontSize = 11.sp)
+                        Text("Записей пакетов: ${trackedPackageChanges.size} • автозапуск: ${trackedAutoStartChanges.size}", color = TextMain, fontSize = 12.sp)
                         trackedPackageChanges.take(8).forEach { entry ->
                             Text(
                                 "${entry.packageName}: ${if (entry.wasDisabled) "изначально отключён" else "изначально включён"} → ${if (entry.isDisabled) "сейчас отключён" else "сейчас включён"}",
@@ -5649,11 +5829,20 @@ val actualAfterRestore = readDisabledPackages(adb)
                             )
                         }
                         if (trackedPackageChanges.size > 8) Text("И ещё ${trackedPackageChanges.size - 8} записей", color = TextMuted, fontSize = 11.sp)
+                        trackedAutoStartChanges.take(8).forEach { entry ->
+                            Text(
+                                "${entry.component}: ${entry.wasState} → ${entry.isState}",
+                                color = TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                        if (trackedAutoStartChanges.size > 8) Text("И ещё ${trackedAutoStartChanges.size - 8} записей автозапуска", color = TextMuted, fontSize = 11.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(enabled = !busy, onClick = {
                                 trackedPackageChanges = loadTrackedPackageChanges(context)
+                                trackedAutoStartChanges = loadTrackedAutoStartChanges(context)
                             }) { Text("Обновить журнал") }
-                            OutlinedButton(enabled = !busy && trackedPackageChanges.isNotEmpty(), onClick = {
+                            OutlinedButton(enabled = !busy && (trackedPackageChanges.isNotEmpty() || trackedAutoStartChanges.isNotEmpty()), onClick = {
                                 pendingTrackedPackageRollback = true
                             }) { Text("Предпросмотр отката") }
                         }
@@ -5669,6 +5858,10 @@ val actualAfterRestore = readDisabledPackages(adb)
                                             Text("${entry.packageName}: вернуть в состояние «${if (entry.wasDisabled) "отключён" else "включён"}»", fontSize = 11.sp)
                                         }
                                         if (trackedPackageChanges.size > 20) Text("Показаны первые 20 из ${trackedPackageChanges.size} записей.", fontSize = 11.sp)
+                                         trackedAutoStartChanges.take(20).forEach { entry ->
+                                             Text("${entry.component}: вернуть состояние «${entry.wasState}»", fontSize = 11.sp)
+                                         }
+                                         if (trackedAutoStartChanges.size > 20) Text("Показаны первые 20 из ${trackedAutoStartChanges.size} записей автозапуска.", fontSize = 11.sp)
                                     }
                                 },
                                 confirmButton = {
@@ -5680,11 +5873,13 @@ val actualAfterRestore = readDisabledPackages(adb)
                                             status = "Сначала укажи IP и порт ADB"
                                         } else runTask({
                                             connectWithRetry(context, host, p) { adb ->
-                                                rollbackTrackedPackageChanges(context, adb)
+                                                val packagesResult = rollbackTrackedPackageChanges(context, adb)
+                                                val autoStartResult = rollbackTrackedAutoStartChanges(context, adb)
+                                                "$packagesResult\n$autoStartResult"
                                             }
                                         }, {
                                             runCatching { loadTrackedPackageChanges(context) }
-                                                .onSuccess { trackedPackageChanges = it }
+                                                .onSuccess { trackedPackageChanges = it; trackedAutoStartChanges = loadTrackedAutoStartChanges(context) }
                                                 .onFailure { status = "Журнал не прочитан: ${errorText(it)}" }
                                         })
                                     }) { Text("Проверить и откатить") }
