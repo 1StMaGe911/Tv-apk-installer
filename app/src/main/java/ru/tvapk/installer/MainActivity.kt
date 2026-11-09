@@ -1545,6 +1545,20 @@ private fun readDisabledPackages(adb: Dadb): Set<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
 
+/**
+ * Executes a package state change and verifies the resulting state against Package Manager.
+ * A successful shell exit alone is not treated as proof that Android applied the change.
+ */
+private fun changePackageStateVerified(adb: Dadb, packageName: String, enabled: Boolean): String {
+    val result = changePackageState(adb, packageName, enabled)
+    val disabled = packageName in readDisabledPackages(adb)
+    val expected = if (enabled) !disabled else disabled
+    require(expected) {
+        "Android не подтвердил " + (if (enabled) "включение" else "отключение") + " пакета " + packageName
+    }
+    return result
+}
+
 
 private fun createTvBackup(adb: Dadb, context: Context): File {
     val packages = readUserPackages(adb)
@@ -4101,7 +4115,7 @@ fun TvInstallerApp() {
                                                             rollbackPackages.forEach { pkg ->
                                                                 if (pkg !in installed) failures.add("$pkg (пакет отсутствует)")
                                                                 else try {
-                                                                    if (pkg in disabledNowOnTv) changePackageState(adb, pkg, true)
+                                                                    if (pkg in disabledNowOnTv) changePackageStateVerified(adb, pkg, true)
                                                                     restored.add(pkg)
                                                                     saveCleanupJournal(context, journal.copy(
                                                                         completedPackages = rollbackPackages - restored.toSet(),
