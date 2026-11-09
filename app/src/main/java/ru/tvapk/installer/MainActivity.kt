@@ -2432,6 +2432,49 @@ private fun openTvAppInfo(adb: Dadb, packageName: String): String {
     return shellText(adb, "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:$packageName")
 }
 
+private data class RecoveryApkEntry(
+    val file: File,
+    val folder: String,
+    val packageName: String,
+    val versionCode: Long,
+    val signerSha256: String,
+    val sizeBytes: Long
+)
+
+private fun listRecoveryApks(context: Context): List<RecoveryApkEntry> {
+    val root = context.filesDir.canonicalFile
+    val dirs = root.listFiles()?.filter { dir ->
+        dir.isDirectory &&
+            (dir.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+"))) &&
+            runCatching { dir.canonicalFile.parentFile == root }.getOrDefault(false)
+    }?.sortedByDescending { it.lastModified() }?.take(50).orEmpty()
+    return dirs.flatMap { dir ->
+        dir.listFiles()?.filter { it.isFile && it.extension.equals("apk", true) &&
+            it.length() in 1..(200L * 1024L * 1024L) &&
+            runCatching { it.canonicalFile.parentFile == dir.canonicalFile }.getOrDefault(false)
+        }?.take(10).orEmpty().mapNotNull { apk ->
+            runCatching {
+                val pm = context.packageManager
+                val info = pm.getPackageArchiveInfo(
+                    apk.absolutePath,
+                    if (Build.VERSION.SDK_INT >= 28) PackageManager.GET_SIGNING_CERTIFICATES
+                    else PackageManager.GET_SIGNATURES
+                ) ?: return@runCatching null
+                @Suppress("DEPRECATION")
+                val signatures = if (Build.VERSION.SDK_INT >= 28) {
+                    info.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                } else info.signatures?.toList().orEmpty()
+                require(signatures.size == 1) { "APK должен иметь ровно одну подпись" }
+                val digest = MessageDigest.getInstance("SHA-256").digest(signatures.single().toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                @Suppress("DEPRECATION")
+                val code = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+                RecoveryApkEntry(apk, dir.name, info.packageName, code, digest, apk.length())
+            }.getOrNull()
+        }.orEmpty()
+    }.take(100)
+}
+
 private fun listUndoBackups(context: Context): List<File> {
     val dir = File(context.filesDir, "backups")
     return dir.listFiles()?.filter { file ->
@@ -3633,6 +3676,8 @@ fun TvInstallerApp() {
     var showRemoteControl by remember { mutableStateOf(false) }
     var pendingAppUninstall by remember { mutableStateOf<String?>(null) }
     var localUndoBackups by remember { mutableStateOf(listUndoBackups(context)) }
+    var recoveryApks by remember { mutableStateOf(listRecoveryApks(context)) }
+    var pendingRecoveryDelete by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupRestore by remember { mutableStateOf<File?>(null) }
     var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
@@ -7200,6 +7245,36 @@ val actualAfterRestore = readDisabledPackages(adb)
                             color = Color(0xFFFFD98A), fontSize = 11.sp
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Аварийные копии модулей", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { recoveryApks = listRecoveryApks(context) }) { Text("Обновить") }
+                        }
+                        Text(
+                            "Копии сохраняются автоматически, если откат установки не удался. Перед восстановлением требуется сверить издателя с доверенным каталогом.",
+                            color = TextMuted, fontSize = 11.sp
+                        )
+                        if (recoveryApks.isEmpty()) {
+                            Text("Аварийных APK-копий не найдено.", color = TextMuted, fontSize = 11.sp)
+                        } else {
+                            Text("Найдено APK: ${recoveryApks.size}", color = TextMuted, fontSize = 11.sp)
+                            recoveryApks.forEach { entry ->
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(entry.packageName, color = TextMain, fontSize = 12.sp)
+                                    Text(
+                                        "Версия code ${entry.versionCode} • ${entry.sizeBytes / 1024} КБ • ${entry.folder}",
+                                        color = TextMuted, fontSize = 10.sp
+                                    )
+                                    Text("SHA-256 сертификата: ${entry.signerSha256}", color = TextMuted, fontSize = 9.sp)
+                                    Text("Восстановление пока заблокировано до проверки издателя.", color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        onClick = { pendingRecoveryDelete = entry.file }
+                                    ) { Text("Удалить копию") }
+                                }
+                                HorizontalDivider(color = Color.DarkGray)
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Локальные копии перед удалением", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Spacer(Modifier.weight(1f))
                             TextButton(onClick = { localUndoBackups = listUndoBackups(context) }) { Text("Обновить") }
@@ -7354,6 +7429,30 @@ val actualAfterRestore = readDisabledPackages(adb)
                                 }
                             }
                             HorizontalDivider(color = Color.DarkGray)
+                        }
+                        if (pendingRecoveryDelete != null) {
+                            AlertDialog(
+                                onDismissRequest = { pendingRecoveryDelete = null },
+                                title = { Text("Удалить аварийную копию?") },
+                                text = { Text("APK будет удалён без возможности восстановления. Убедись, что он больше не нужен для ручного ремонта телевизора.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        val target = pendingRecoveryDelete ?: return@TextButton
+                                        pendingRecoveryDelete = null
+                                        val root = context.filesDir.canonicalFile
+                                        val parent = target.canonicalFile.parentFile
+                                        val validFolder = parent?.parentFile == root &&
+                                            parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+"))
+                                        if (validFolder && target.isFile && target.extension.equals("apk", true) && target.delete()) {
+                                            recoveryApks = listRecoveryApks(context)
+                                            status = "Аварийная копия удалена"
+                                        } else status = "Ошибка: копия не удалена (путь не прошёл проверку или файл занят)"
+                                    }) { Text("Удалить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { pendingRecoveryDelete = null }) { Text("Отмена") }
+                                }
+                            )
                         }
                         if (pendingUndoBackupRestore != null) {
                             AlertDialog(
