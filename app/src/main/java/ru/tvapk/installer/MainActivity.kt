@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.0"
+private const val APP_VERSION = "0.9.1"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2339,6 +2339,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.1 • Расширенная защита Android TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Расширен список критически важных пакетов Android и TV middleware по правилам Clean Your TV. Ручное отключение системного пакета теперь повторно проверяет защиту и профиль конкретной модели непосредственно перед ADB-командой; компоненты neverDisable заблокированы даже при ручном выборе.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.0 • Переносимый сценарий восстановления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен экспорт Bash-сценария для восстановления с компьютера через ADB. Сценарий содержит только изменения, отслеживаемые TV APK Installer, проверяет производителя, модель, устройство и отпечаток прошивки до выполнения команд, а ошибки показывает отдельно.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
