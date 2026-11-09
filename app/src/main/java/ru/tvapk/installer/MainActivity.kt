@@ -1333,8 +1333,8 @@ private fun buildRestorePointBackupJson(
     require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) {
         "В точке нет полной идентификации телевизора"
     }
-    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
-    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
     require(userDisabled.size <= 5000 && managedUsers.size <= 5000 && managedSystems.size <= 5000 && autoStartComponents.size <= 5000) {
         "Слишком много записей в точке восстановления"
     }
@@ -1380,8 +1380,8 @@ private fun parseRestorePointBackup(jsonText: String): PortableRestorePoint {
     val managedUsers = readSet("managedUserPackages")
     val managedSystems = readSet("managedSystemPackages")
     val autoStart = readSet("autoStartComponents")
-    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
-    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
     require((userDisabled + managedUsers + managedSystems).all { packagePattern.matches(it) }) {
         "Файл содержит некорректное имя пакета"
     }
