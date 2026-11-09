@@ -4443,7 +4443,7 @@ fun TvInstallerApp() {
                     MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
                         .joinToString("") { "%02x".format(it) }
                 }
-                require(signerDigests.any { it.equals(version.signerSha256, ignoreCase = true) }) {
+                require(signerDigests.size == 1 && signerDigests.single().equals(version.signerSha256, ignoreCase = true)) {
                     "Сертификат подписанта APK не совпадает с подписанным каталогом"
                 }
                 @Suppress("DEPRECATION")
