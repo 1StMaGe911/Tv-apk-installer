@@ -4158,15 +4158,28 @@ fun TvInstallerApp() {
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
                                                             rollbackPackages.forEach { pkg ->
-                                                                if (pkg !in installed) failures.add("$pkg (пакет отсутствует)")
-                                                                else try {
-                                                                    if (pkg in disabledNowOnTv) changePackageStateVerified(adb, pkg, true)
-                                                                    restored.add(pkg)
-                                                                    saveCleanupJournal(context, journal.copy(
-                                                                        completedPackages = rollbackPackages - restored.toSet(),
-                                                                        inFlightPackage = journal.inFlightPackage?.takeUnless { it in restored }
-                                                                    ))
-                                                                } catch (_: Exception) { failures.add(pkg) }
+                                                                if (pkg !in installed) {
+                                                                    failures.add("$pkg (пакет отсутствует)")
+                                                                } else {
+                                                                    try {
+                                                                        val before = readDisabledPackages(adb)
+                                                                        if (pkg in before) changePackageStateVerified(adb, pkg, true)
+                                                                    } catch (_: Exception) {
+                                                                        // ADB may report an error after the device applied the change.
+                                                                    }
+                                                                    val verifiedDisabled = try { readDisabledPackages(adb) } catch (_: Exception) { null }
+                                                                    if (verifiedDisabled != null && pkg !in verifiedDisabled) {
+                                                                        restored.add(pkg)
+                                                                    } else {
+                                                                        failures.add(pkg + if (verifiedDisabled == null) " (не удалось проверить состояние)" else " (остался отключён)")
+                                                                    }
+                                                                    val stillPending = rollbackPackages - restored.toSet()
+                                                                    val nextJournal = journal.copy(
+                                                                        completedPackages = stillPending,
+                                                                        inFlightPackage = journal.inFlightPackage?.takeIf { it in stillPending }
+                                                                    )
+                                                                    saveCleanupJournal(context, nextJournal)
+                                                                }
                                                             }
                                                             val remaining = rollbackPackages - restored.toSet()
                                                             val actualDisabledAfterRestore = readDisabledPackages(adb)
