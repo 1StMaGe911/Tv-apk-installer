@@ -4410,6 +4410,7 @@ fun TvInstallerApp() {
                 val module = catalog.modules.firstOrNull { it.id == selectedModule.id }
                     ?: throw Exception("Модуль отсутствует в проверенном каталоге")
                 require(module.packageName == selectedModule.packageName) { "Package name модуля изменился" }
+                require(module.type == "app") { "Автоматическая установка поддерживает только Android-приложения; тип ${module.type} требует отдельного обработчика." }
                 require(module.tier == "verified" || module.tier == "community") {
                     "Этот модуль нельзя устанавливать: уровень доверия ${module.tier}"
                 }
