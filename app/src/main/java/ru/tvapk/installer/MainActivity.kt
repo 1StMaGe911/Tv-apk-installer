@@ -488,6 +488,13 @@ private fun pushLauncherTheme(
         ).forEach { key ->
             if (current.has(key)) themed.put(key, current.get(key))
         }
+        // Forward-compatible merge: retain any settings written by newer launcher
+        // versions when an older theme archive does not know about those keys.
+        val currentKeys = current.keys()
+        while (currentKeys.hasNext()) {
+            val key = currentKeys.next()
+            if (!themed.has(key)) themed.put(key, current.get(key))
+        }
         File.createTempFile("cleanyourtv-theme-merged-", ".json").apply {
             writeText(themed.toString(2), Charsets.UTF_8)
         }
