@@ -4162,7 +4162,12 @@ fun TvInstallerApp() {
                                                             }
                                                             val installed = readAllPackages(adb).toSet()
                                                             val disabledNowOnTv = readDisabledPackages(adb)
-                                                            val rollbackPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv })).distinct()
+                                                            val rollbackPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv }))
+                                                                .distinct()
+                                                                .filter { it !in journal.baselineDisabledPackages }
+                                                            require(journal.schemaVersion < 2 || journal.baselineDisabledPackages.isNotEmpty() || rollbackPackages.isEmpty()) {
+                                                                "Снимок исходного состояния неполный. Автоматический откат остановлен для защиты ранее отключённых пакетов."
+                                                            }
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
                                                             rollbackPackages.forEach { pkg ->
