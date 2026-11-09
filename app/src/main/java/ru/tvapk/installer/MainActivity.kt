@@ -4222,6 +4222,79 @@ fun TvInstallerApp() {
         }.start()
     }
 
+    fun runAutomaticTvMaintenance() {
+        val host = ip.trim()
+        val adbPort = port.toIntOrNull()
+        if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
+            status = "Сначала выбери телевизор и проверь IP/порт ADB"
+            return
+        }
+        runTask({
+            connectWithRetry(context, host, adbPort) { adb ->
+                val details = readTvDetails(adb)
+                val diagnosticsSnapshot = readTvDiagnostics(adb)
+                val healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
+                val compatibility = readTvCompatibilityReport(adb)
+                val disableSupported = readPackageDisableCapability(adb)
+                val users = readUserPackages(adb)
+                val installed = readAllPackages(adb)
+                val disabled = readDisabledPackages(adb)
+                val profileMatch = matchTvModelProfile(details, tvModelProfiles, packageFacts)
+                val profile = profileMatch?.profile
+                val candidates = findCleanupCandidates(installed, packageFacts, profile).toSet()
+                val approved = profile?.packages
+                    ?.filterValues { rule -> !rule.ask }
+                    ?.keys
+                    ?.toSet()
+                    ?: emptySet()
+                val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
+                val plan = TvAutomationEngine.buildPlan(
+                    installedPackages = installed.toSet(),
+                    disabledPackages = disabled,
+                    detectedCandidates = candidates,
+                    profileApprovedPackages = approved,
+                    protectedPackages = protected,
+                    neverDisablePackages = profile?.neverDisable ?: emptySet()
+                )
+                val report = buildString {
+                    appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
+                    appendLine("Модель/профиль: \${profile?.id ?: "точный профиль не найден"}")
+                    appendLine("Установлено пакетов: \${installed.size}; пользовательских: \${users.size}")
+                    appendLine()
+                    appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
+                    appendLine(diagnosticsSnapshot)
+                    appendLine()
+                    appendLine("ОЦЕНКА РЕСУРСОВ: \${healthAssessment.summary}")
+                    healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
+                    healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
+                    healthAssessment.uptimeDays?.let { appendLine("Время без перезагрузки: $it дн.") }
+                    healthAssessment.warnings.forEach { appendLine("⚠ $it") }
+                    appendLine("Уже отключено: \${disabled.size}")
+                    appendLine("Кандидатов по справочнику: \${plan.detectedCount}")
+                    appendLine("Безопасно разрешено точным профилем: \${plan.approvedCount}")
+                    appendLine("Требуют ручной оценки: \${plan.reviewCount}")
+                    appendLine("Защищено или исключено: \${plan.blockedCount}")
+                    appendLine("Отключение пакетов: \${if (disableSupported) "поддерживается" else "не подтверждено — действия заблокированы"}")
+                    if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
+                    else appendLine("Подготовлен предварительный план из \${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
+                }
+                activity.runOnUiThread {
+                    tvDetails = details
+                    diagnostics = diagnosticsSnapshot
+                    tvCompatibilityReport = compatibility
+                    packageDisableSupported = disableSupported
+                    userPackages = users
+                    allPackages = installed
+                    disabledOnDevice = disabled
+                    selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
+                    automationReport = report
+                    pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
+                }
+                report
+            }
+        })
+    }
+
     val restorePointJsonExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { destinationUri ->
@@ -6687,6 +6760,17 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
 
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("АВТОМАТИЧЕСКОЕ ОБСЛУЖИВАНИЕ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                        Text("Одна кнопка проверит Android TV, оценит память и хранилище, найдёт безопасные кандидаты для очистки и покажет подтверждение перед изменениями.", color = TextMuted, fontSize = 12.sp)
+                        Button(enabled = !busy, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
+                            Text("⚡ Проверить и оптимизировать ТВ")
+                        }
+                        Text("Выбранное устройство: ${if (ip.isBlank()) "не выбрано" else "$tvName • $ip:$port"}", color = TextMuted, fontSize = 11.sp)
+                    }
+                }
+
+                Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("ЦЕНТР УПРАВЛЕНИЯ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
                         Text("Все инструменты находятся в левом боковом меню. Открой меню ☰ и выбери нужный раздел.", color = TextMuted)
                         Text("Для Wi-Fi ADB, Clean Your TV, пульта и установки APK предусмотрено отдельное подключение к телевизору.", color = TextMuted, fontSize = 12.sp)
@@ -7544,78 +7628,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             })
                         }) { Text("Определить устройство и найти приложения") }
                         Button(
-                            enabled = !busy && ip.isNotBlank() && (port.toIntOrNull()?.let { it in 1..65535 } == true),
+                            enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                val host = ip.trim()
-                                val adbPort = port.toIntOrNull() ?: 5555
-                                runTask({
-                                    connectWithRetry(context, host, adbPort) { adb ->
-                                        val details = readTvDetails(adb)
-                                        // Collect read-only health diagnostics as part of the same automation pass.
-                                        val diagnosticsSnapshot = readTvDiagnostics(adb)
-                                        val healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
-                                        val compatibility = readTvCompatibilityReport(adb)
-                                        val disableSupported = readPackageDisableCapability(adb)
-                                        val users = readUserPackages(adb)
-                                        val installed = readAllPackages(adb)
-                                        val disabled = readDisabledPackages(adb)
-                                        val profileMatch = matchTvModelProfile(details, tvModelProfiles, packageFacts)
-                                        val profile = profileMatch?.profile
-                                        val candidates = findCleanupCandidates(installed, packageFacts, profile).toSet()
-                                        val approved = profile?.packages
-                                            ?.filterValues { rule -> !rule.ask }
-                                            ?.keys
-                                            ?.toSet()
-                                            ?: emptySet()
-                                        val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
-                                        val plan = TvAutomationEngine.buildPlan(
-                                            installedPackages = installed.toSet(),
-                                            disabledPackages = disabled,
-                                            detectedCandidates = candidates,
-                                            profileApprovedPackages = approved,
-                                            protectedPackages = protected,
-                                            neverDisablePackages = profile?.neverDisable ?: emptySet()
-                                        )
-                                        val report = buildString {
-                                            appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
-                                            appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
-                                            appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
-                                            appendLine()
-                                            appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
-                                            appendLine(diagnosticsSnapshot)
-                                            appendLine()
-                                            appendLine("ОЦЕНКА РЕСУРСОВ: ${healthAssessment.summary}")
-                                            healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
-                                            healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
-                                            healthAssessment.uptimeDays?.let { appendLine("Время без перезагрузки: $it дн.") }
-                                            healthAssessment.warnings.forEach { appendLine("⚠ $it") }
-                                            appendLine("Уже отключено: ${disabled.size}")
-                                            appendLine("Кандидатов по справочнику: ${plan.detectedCount}")
-                                            appendLine("Безопасно разрешено точным профилем: ${plan.approvedCount}")
-                                            appendLine("Требуют ручной оценки: ${plan.reviewCount}")
-                                            appendLine("Защищено или исключено: ${plan.blockedCount}")
-                                            appendLine("Отключение пакетов: ${if (disableSupported) "поддерживается" else "не подтверждено — действия заблокированы"}")
-                                            if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
-                                            else appendLine("Подготовлен предварительный план из ${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
-                                        }
-                                        activity.runOnUiThread {
-                                            tvDetails = details
-                                            diagnostics = diagnosticsSnapshot
-                                            tvCompatibilityReport = compatibility
-                                            packageDisableSupported = disableSupported
-                                            userPackages = users
-                                            allPackages = installed
-                                            disabledOnDevice = disabled
-                                            selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
-                                            automationReport = report
-                                            // Continue directly to the existing explicit confirmation dialog.
-                                            pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
-                                        }
-                                        report
-                                    }
-                                })
-                            }
+                            onClick = { runAutomaticTvMaintenance() }
                         ) { Text("⚡ Автоматически проверить и подготовить план") }
                         if (automationReport.isNotBlank()) {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
