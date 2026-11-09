@@ -1679,6 +1679,7 @@ fun TvInstallerApp() {
     var restorePointManagedSystemPackages by remember { mutableStateOf(settings.getStringSet("restore_point_managed_system_packages", emptySet())?.toSet() ?: emptySet()) }
     var restorePointAutoStartComponents by remember { mutableStateOf(settings.getStringSet("restore_point_autostart_components", emptySet())?.toSet() ?: emptySet()) }
     var restorePointExists by remember { mutableStateOf(settings.getBoolean("restore_point_exists", false)) }
+    var restorePointSchemaVersion by remember { mutableStateOf(settings.getInt("restore_point_schema_version", 1)) }
     var restorePointDeviceFingerprint by remember { mutableStateOf(settings.getString("restore_point_device_fingerprint", null)) }
 
 
@@ -3770,6 +3771,7 @@ fun TvInstallerApp() {
                                                 .putStringSet("restore_point_managed_system_packages", managedSystems)
                                                 .putStringSet("restore_point_autostart_components", managedAutoStart)
                                                 .putString("restore_point_device_fingerprint", deviceFingerprint)
+                                                .putInt("restore_point_schema_version", 2)
                                                 .putBoolean("restore_point_exists", true).apply()
                                         }
                                         "Точка создана. Отключено пользовательских: ${snapshot.size}; под управлением приложения: ${managedUsers.size + managedSystems.size}; автозапуск: ${managedAutoStart.size}"
@@ -3781,6 +3783,9 @@ fun TvInstallerApp() {
                                 val snapshot = restorePoint
                                 runTask({
                                     connectWithRetry(context, host, p) { adb ->
+                                        require(restorePointSchemaVersion >= 2) {
+                                            "Эта точка создана старой версией приложения и не содержит полного списка изменений. Создай новую точку перед восстановлением."
+                                        }
                                         val savedFingerprint = restorePointDeviceFingerprint
                                             ?: throw Exception("Эта старая точка не привязана к конкретному телевизору. Создай новую точку перед восстановлением.")
                                         val currentFingerprint = readTvIdentity(adb)
@@ -3834,7 +3839,7 @@ fun TvInstallerApp() {
                             }) { Text("Восстановить точку") }
                         }
                         Text(
-                            if (restorePointExists) "Точка сохранена: отключённых пользовательских приложений — ${restorePoint.size}"
+                            if (restorePointExists) "Точка сохранена: отключённых пользовательских приложений — ${restorePoint.size}; изменения TV APK Installer — ${restorePointManagedUserPackages.size + restorePointManagedSystemPackages.size}; автозапуск — ${restorePointAutoStartComponents.size}"
                             else "Точка восстановления ещё не создана",
                             color = Color.LightGray, fontSize = 11.sp
                         )
