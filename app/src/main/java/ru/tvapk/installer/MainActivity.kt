@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.33"
+private const val APP_VERSION = "0.9.34"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2134,6 +2134,8 @@ private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String 
                         (parts.size == 2 && parts[0] == "apks" &&
                             parts[1].matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")))
                     if (!validDir) throw Exception("Неизвестная папка в ZIP: " + entry.name)
+                    // ZIP directory entries must be empty; reject hidden payloads instead of silently draining them.
+                    if (zip.read() != -1) throw Exception("ZIP-каталог содержит неожиданные данные: " + entry.name)
                 } else {
                     val parts = entry.name.split("/")
                     val apkEntry = parts.size == 3 && parts[0] == "apks"
