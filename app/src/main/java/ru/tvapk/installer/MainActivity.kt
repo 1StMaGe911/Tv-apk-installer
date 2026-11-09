@@ -2117,7 +2117,7 @@ fun TvInstallerApp() {
                                                 launcherBackOpensClock = current.optBoolean("back_opens_clock", false)
                                                 launcherClockFormat = current.optString("clock_format", "system").takeIf { it in setOf("system", "12", "24") } ?: "system"
                                                 launcherRemoteKeyMappings = current.optJSONArray("app_keys")?.let { array ->
-                                                    (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString("\\n")
+                                                    (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString("\n")
                                                 } ?: ""
                                                 settings.edit()
                                                     .putString("launcher_dock_packages", dockText)
