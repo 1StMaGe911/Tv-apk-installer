@@ -1177,33 +1177,26 @@ private fun applyLauncherClockSettings(
     return "Параметры часов Clean Your TV применены. Авточасы: ${if (idleMinutes <= 0) "выключены" else "через $idleMinutes мин."}. $restart"
 }
 
-private fun configureClockDream(adb: Dadb, enabled: Boolean): String {
+private fun configureClockDream(context: Context, adb: Dadb, enabled: Boolean): String {
     val component = "com.gathin.tvhome/.ClockDream"
-    val current = try { shellText(adb, "settings get secure screensaver_components").trim() } catch (_: Exception) { "" }
-    val components = current.split(":")
-        .map { it.trim() }
-        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
-        .toMutableSet()
+    val current = readTrackedSystemSetting(adb, "screensaver_components").orEmpty()
+    val raw = current.split(":").filter { it.isNotBlank() }
+    require(raw.all { it.matches(Regex("[A-Za-z0-9_.$/]+")) }) { "Неизвестный формат списка заставок; изменение отменено" }
+    val components = raw.toMutableSet()
     if (enabled) components.add(component) else components.remove(component)
     val next = components.joinToString(":")
-    val wasEnabled = try { shellText(adb, "settings get secure screensaver_enabled").trim() == "1" } catch (_: Exception) { false }
+    val wasEnabled = readTrackedSystemSetting(adb, "screensaver_enabled") == "1"
     val nowEnabled = if (enabled) true else wasEnabled && components.isNotEmpty()
-    shellText(adb, "settings put secure screensaver_components '$next'; settings put secure screensaver_enabled ${if (nowEnabled) 1 else 0}")
-    val verifiedComponents = try {
-        shellText(adb, "settings get secure screensaver_components").trim()
-    } catch (e: Exception) {
-        throw Exception("Не удалось проверить список заставок после изменения: ${errorText(e)}", e)
-    }
-    val verifiedEnabled = shellText(adb, "settings get secure screensaver_enabled").trim() == "1"
-    require(verifiedComponents == next && verifiedEnabled == nowEnabled) {
-        "Телевизор не подтвердил новое состояние заставки. Список или переключатель отличается от ожидаемого."
+    setTrackedSystemSetting(context, adb, "screensaver_components", next)
+    setTrackedSystemSetting(context, adb, "screensaver_enabled", if (nowEnabled) "1" else "0")
+    require(readTrackedSystemSetting(adb, "screensaver_components").orEmpty() == next &&
+        (readTrackedSystemSetting(adb, "screensaver_enabled") == "1") == nowEnabled) {
+        "Телевизор не подтвердил новое состояние заставки"
     }
     return if (enabled) {
-        val opened = try { shellText(adb, "am start -a android.settings.DREAM_SETTINGS") } catch (_: Exception) { "Открой системные настройки заставки вручную." }
-        "Системная заставка Clean Your TV включена. Настрой время запуска в открывшемся меню. $opened"
-    } else {
-        "Системная заставка Clean Your TV отключена. Другие заставки сохранены."
-    }
+        val opened = try { shellText(adb, "am start -a android.settings.DREAM_SETTINGS") } catch (_: Exception) { "Открой настройки заставки вручную." }
+        "Системная заставка Clean Your TV включена. $opened"
+    } else "Системная заставка Clean Your TV отключена. Другие заставки сохранены."
 }
 
 private fun parseLauncherRemoteMappings(raw: String): List<String> {
@@ -1240,65 +1233,51 @@ private fun parseLauncherRemoteMappings(raw: String): List<String> {
     return entries.distinct()
 }
 
-private fun configureInputKeyService(adb: Dadb, enabled: Boolean): String {
+private fun configureInputKeyService(context: Context, adb: Dadb, enabled: Boolean): String {
     val packageName = "com.gathin.tvhome"
     val component = "$packageName/.InputKeyService"
-    require(shellText(adb, "pm path $packageName").contains("package:")) {
-        "Clean Your TV Launcher не установлен."
-    }
+    require(shellText(adb, "pm path $packageName").contains("package:")) { "Clean Your TV Launcher не установлен." }
     if (enabled) {
         val declared = try { shellText(adb, "dumpsys package $packageName | grep -F 'InputKeyService'") } catch (_: Exception) { "" }
-        require(declared.contains("InputKeyService")) {
-            "В установленной версии Launcher нет InputKeyService. Обнови модуль Clean Your TV."
-        }
+        require(declared.contains("InputKeyService")) { "В установленной версии Launcher нет InputKeyService. Обнови модуль Clean Your TV." }
     }
-    val current = try { shellText(adb, "settings get secure enabled_accessibility_services").trim() } catch (_: Exception) { "" }
-    val services = current.split(":")
-        .filter { it != "null" && it.matches(Regex("[A-Za-z0-9_.$/]+")) }
-        .distinct()
+    val current = readTrackedSystemSetting(adb, "enabled_accessibility_services").orEmpty()
+    val services = current.split(":").filter { it.isNotBlank() }
+    require(services.all { it.matches(Regex("[A-Za-z0-9_.$/]+")) }) { "Неизвестный формат списка служб специальных возможностей; изменение отменено" }
     val wasEnabled = component in services
     if (enabled) {
         try { shellText(adb, "pm grant $packageName android.permission.WRITE_SECURE_SETTINGS") } catch (_: Exception) { }
-        try {
-            shellText(adb, "cmd appops set $packageName AUTO_START allow 2>/dev/null || true; cmd appops set $packageName APP_AUTO_START allow 2>/dev/null || true; appops write-settings 2>/dev/null || true")
-        } catch (_: Exception) { }
+        try { shellText(adb, "cmd appops set $packageName AUTO_START allow 2>/dev/null || true; cmd appops set $packageName APP_AUTO_START allow 2>/dev/null || true; appops write-settings 2>/dev/null || true") } catch (_: Exception) { }
         val base = services.filterNot { it == component }
         val next = (base + component).distinct().joinToString(":")
-        val command = if (wasEnabled) {
-            "settings put secure enabled_accessibility_services '${base.joinToString(":")}'; sleep 1; settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
-        } else {
-            "settings put secure enabled_accessibility_services '$next'; settings put secure accessibility_enabled 1"
+        if (wasEnabled) {
+            setTrackedSystemSetting(context, adb, "enabled_accessibility_services", base.joinToString(":"))
+            Thread.sleep(1000)
         }
-        shellText(adb, command)
-        val verifiedRaw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
-        val verifiedServices = verifiedRaw.takeUnless { it.isBlank() || it == "null" }?.split(":").orEmpty()
-        val accessibilityEnabled = shellText(adb, "settings get secure accessibility_enabled").trim() == "1"
-        require(verifiedServices.count { it == component } == 1 &&
-            verifiedServices.filterNot { it == component } == base &&
-            accessibilityEnabled) {
-            "Телевизор не подтвердил включение InputKeyService или изменился список других служб специальных возможностей."
+        setTrackedSystemSetting(context, adb, "enabled_accessibility_services", next)
+        setTrackedSystemSetting(context, adb, "accessibility_enabled", "1")
+        val verify = readTrackedSystemSetting(adb, "enabled_accessibility_services").orEmpty().split(":").filter { it.isNotBlank() }
+        require(verify.count { it == component } == 1 && verify.filterNot { it == component } == base &&
+            readTrackedSystemSetting(adb, "accessibility_enabled") == "1") {
+            "Телевизор не подтвердил включение InputKeyService или изменился список других служб."
         }
         return "Сервис обработки кнопок включён. Сохранённые назначения готовы к работе."
     } else {
-        val nextServices = services.filterNot { it == component }
-        val next = nextServices.joinToString(":")
-        shellText(adb, "settings put secure enabled_accessibility_services '$next'")
-        val verifiedRaw = shellText(adb, "settings get secure enabled_accessibility_services").trim()
-        val verifiedServices = verifiedRaw.takeUnless { it.isBlank() || it == "null" }?.split(":").orEmpty()
-        require(component !in verifiedServices && verifiedServices == nextServices) {
-            "Телевизор не подтвердил отключение InputKeyService или изменился список других служб специальных возможностей."
-        }
+        val next = services.filterNot { it == component }
+        setTrackedSystemSetting(context, adb, "enabled_accessibility_services", next.joinToString(":"))
+        val verify = readTrackedSystemSetting(adb, "enabled_accessibility_services").orEmpty().split(":").filter { it.isNotBlank() }
+        require(component !in verify && verify == next) { "Телевизор не подтвердил отключение InputKeyService." }
         return "Сервис обработки кнопок отключён. Остальные службы специальных возможностей сохранены."
     }
 }
 
-private fun applyLauncherRemoteMappings(adb: Dadb, raw: String): String {
+private fun applyLauncherRemoteMappings(context: Context, adb: Dadb, raw: String): String {
     val entries = parseLauncherRemoteMappings(raw)
     val config = readCurrentLauncherConfig(adb)
     if (entries.isEmpty()) config.remove("app_keys") else config.put("app_keys", JSONArray(entries))
     config.put("key_filter", true)
     val restart = writeLauncherConfig(adb, config)
-    val service = configureInputKeyService(adb, true)
+    val service = configureInputKeyService(context, adb, true)
     return "Назначения кнопок сохранены: ${entries.size}. $service $restart"
 }
 
@@ -4630,7 +4609,7 @@ fun TvInstallerApp() {
                                 val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
                                 else runTask({
-                                    connectWithRetry(context, host, p) { adb -> configureClockDream(adb, true) }
+                                    connectWithRetry(context, host, p) { adb -> configureClockDream(context, adb, true) }
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Установить системную заставку Clean Your TV") }
                             OutlinedButton(enabled = !busy, onClick = {
@@ -4638,7 +4617,7 @@ fun TvInstallerApp() {
                                 val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
                                 else runTask({
-                                    connectWithRetry(context, host, p) { adb -> configureClockDream(adb, false) }
+                                    connectWithRetry(context, host, p) { adb -> configureClockDream(context, adb, false) }
                                 })
                             }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
                             Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
@@ -4796,7 +4775,7 @@ fun TvInstallerApp() {
                                                 settings.edit().putString("launcher_remote_key_mappings", launcherRemoteKeyMappings).apply()
                                                 runTask({
                                                     connectWithRetry(context, host, p) { adb ->
-                                                        applyLauncherRemoteMappings(adb, launcherRemoteKeyMappings)
+                                                        applyLauncherRemoteMappings(context, adb, launcherRemoteKeyMappings)
                                                     }
                                                 })
                                             }
