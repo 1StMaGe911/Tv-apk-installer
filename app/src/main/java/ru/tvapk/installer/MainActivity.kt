@@ -47,6 +47,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.ByteArrayOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipInputStream
@@ -694,6 +695,107 @@ private fun disableLauncherRemoteMappings(adb: Dadb): String {
     config.remove("key_filter")
     val restart = writeLauncherConfig(adb, config)
     return "Назначения кнопок очищены. InputKeyService оставлен включённым для штатной кнопки TV/Input; при необходимости отключи его в настройках специальных возможностей. $restart"
+}
+
+private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
+    val encoded = try {
+        shellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64")
+    } catch (_: Exception) {
+        try { shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64") }
+        catch (_: Exception) { "" }
+    }
+    if (encoded.isBlank()) return null
+    val compact = encoded.filterNot { it.isWhitespace() }
+    if (compact.length > 16 * 1024 * 1024) throw Exception("Файл обоев слишком большой для резервной копии")
+    val bytes = try { Base64.decode(compact, Base64.DEFAULT) } catch (_: Exception) { return null }
+    if (bytes.size !in 1024..(12 * 1024 * 1024)) return null
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 12000 || bounds.outHeight > 12000) return null
+    return bytes
+}
+
+private fun exportLauncherBackup(context: Context, adb: Dadb): Pair<File, Boolean> {
+    val config = readCurrentLauncherConfig(adb)
+    val wallpaper = readLauncherWallpaper(adb)
+    val archive = File.createTempFile("cleanyourtv-backup-", ".zip", context.cacheDir)
+    try {
+        ZipOutputStream(archive.outputStream().buffered()).use { zip ->
+            zip.putNextEntry(ZipEntry("config.json"))
+            zip.write(config.toString(2).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            if (wallpaper != null) {
+                zip.putNextEntry(ZipEntry("wallpaper.jpg"))
+                zip.write(wallpaper)
+                zip.closeEntry()
+            }
+        }
+        return archive to (wallpaper != null)
+    } catch (e: Exception) {
+        archive.delete()
+        throw e
+    }
+}
+
+private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String {
+    val input = context.contentResolver.openInputStream(uri) ?: throw Exception("Не удалось открыть ZIP-архив")
+    var configBytes: ByteArray? = null
+    var wallpaperBytes: ByteArray? = null
+    var totalBytes = 0
+    ZipInputStream(input).use { zip ->
+        while (true) {
+            val entry = zip.nextEntry ?: break
+            if (entry.isDirectory) {
+                zip.closeEntry()
+                continue
+            }
+            require(entry.name == "config.json" || entry.name == "wallpaper.jpg") {
+                "В архиве есть неподдерживаемый файл: ${entry.name}"
+            }
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var entryBytes = 0
+            while (true) {
+                val count = zip.read(buffer)
+                if (count < 0) break
+                entryBytes += count
+                totalBytes += count
+                require(totalBytes <= 13 * 1024 * 1024) { "Резервная копия превышает 13 МБ" }
+                output.write(buffer, 0, count)
+            }
+            val bytes = output.toByteArray()
+            if (entry.name == "config.json") {
+                require(configBytes == null) { "В архиве несколько файлов config.json" }
+                require(entryBytes in 2..(1024 * 1024)) { "Некорректный размер config.json" }
+                configBytes = bytes
+            } else {
+                require(wallpaperBytes == null) { "В архиве несколько файлов wallpaper.jpg" }
+                require(entryBytes in 1024..(12 * 1024 * 1024)) { "Некорректный размер wallpaper.jpg" }
+                wallpaperBytes = bytes
+            }
+            zip.closeEntry()
+        }
+    }
+    val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))
+    val wallpaper = wallpaperBytes
+    if (wallpaper == null) {
+        val restart = writeLauncherConfig(adb, config)
+        return "Конфигурация Clean Your TV восстановлена. В архиве не было wallpaper.jpg. $restart"
+    }
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(wallpaper, 0, wallpaper.size, bounds)
+    require(bounds.outWidth > 0 && bounds.outHeight > 0) { "wallpaper.jpg повреждён" }
+    val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
+    val wallpaperFile = File.createTempFile("cleanyourtv-restore-", ".jpg", context.cacheDir)
+    try {
+        configFile.writeText(config.toString(2), Charsets.UTF_8)
+        wallpaperFile.writeBytes(wallpaper)
+        val restart = pushLauncherTheme(adb, "backup", configFile, wallpaperFile)
+        return "Конфигурация и текущие обои Clean Your TV восстановлены. $restart"
+    } finally {
+        configFile.delete()
+        wallpaperFile.delete()
+    }
 }
 
 private fun readTvDiagnostics(adb: Dadb): String {
