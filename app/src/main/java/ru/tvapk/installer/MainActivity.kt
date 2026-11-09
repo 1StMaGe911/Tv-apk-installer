@@ -2541,6 +2541,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.10 • Предварительный план очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Перед выполнением можно просмотреть точный список пакетов, разрешённых профилем модели, и отдельно увидеть пропущенные правилами безопасности. Фактическое отключение и восстановление подтверждаются через Android Package Manager.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.9 • Проверка результата очистки", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("После каждой команды отключения и восстановления приложение дополнительно проверяет фактическое состояние пакета через Android Package Manager. Успешный код ADB сам по себе больше не считается подтверждением изменения.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
