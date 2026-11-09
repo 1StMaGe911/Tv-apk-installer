@@ -4235,7 +4235,8 @@ fun TvInstallerApp() {
                             val details = shellText(adb, "dumpsys package ${module.packageName}")
                             val currentCode = Regex("versionCode=(\\d+)").find(details)
                                 ?.groupValues?.get(1)?.toLongOrNull()
-                            if (currentCode != null && currentCode > module.versionCode) {
+                                ?: throw Exception("Не удалось безопасно определить установленную версию ${module.packageName}. Установка остановлена.")
+                            if (currentCode > module.versionCode) {
                                 throw Exception(
                                     "${module.packageName} на телевизоре новее встроенного модуля " +
                                         "(установлен код $currentCode, встроен ${module.versionCode}). " +
@@ -4257,7 +4258,7 @@ fun TvInstallerApp() {
                         val details = shellText(adb, "dumpsys package ${module.packageName}")
                         val installedCode = Regex("versionCode=(\\d+)").find(details)
                             ?.groupValues?.get(1)?.toLongOrNull()
-                        require(installedCode == null || installedCode == module.versionCode) {
+                        require(installedCode == module.versionCode) {
                             "Версия ${module.packageName} после установки не совпадает с проверенным APK."
                         }
                         "${module.packageName}: ${module.versionName} (код ${module.versionCode})"
