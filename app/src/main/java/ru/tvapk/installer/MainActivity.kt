@@ -1394,6 +1394,148 @@ private fun parseRestorePointBackup(jsonText: String): PortableRestorePoint {
     return PortableRestorePoint(fingerprint, userDisabled, managedUsers, managedSystems, autoStart)
 }
 
+
+private data class PortableRestoreBundle(val point: PortableRestorePoint, val restoreScript: String)
+
+private fun sha256Hex(bytes: ByteArray): String =
+    java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+private fun buildPortableRestorePowerShell(
+    fingerprint: String,
+    managedUsers: Set<String>,
+    snapshotUsers: Set<String>,
+    managedSystems: Set<String>,
+    snapshotSystems: Set<String>,
+    managedAutoStart: Set<String>,
+    snapshotAutoStart: Set<String>
+): String {
+    val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+    val componentPattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+")
+    val users = managedUsers + snapshotUsers
+    val systems = managedSystems + snapshotSystems
+    val components = managedAutoStart + snapshotAutoStart
+    require(users.all { packagePattern.matches(it) } && systems.all { packagePattern.matches(it) && !isProtectedSystemPackage(it) }) {
+        "В ZIP есть некорректный или защищённый пакет"
+    }
+    require(components.all { componentPattern.matches(it) }) { "В ZIP есть некорректный компонент" }
+    val identity = fingerprint.split("|")
+    require(identity.size == 4 && identity.none { it.isBlank() || it == "неизвестно" }) { "Нет полной идентификации телевизора" }
+    return buildString {
+        appendLine("# TV APK Installer portable restore bundle")
+        appendLine("\$ErrorActionPreference = 'Stop'")
+        appendLine("if (-not (Get-Command adb -ErrorAction SilentlyContinue)) { throw 'Android platform-tools (adb) не найдены.' }")
+        appendLine("adb get-state | Out-Null")
+        appendLine("if (\$LASTEXITCODE -ne 0) { throw 'Телевизор не подключён или не авторизован в ADB.' }")
+        appendLine("\$actual = @((adb shell getprop ro.product.manufacturer).Trim(), (adb shell getprop ro.product.model).Trim(), (adb shell getprop ro.product.device).Trim(), (adb shell getprop ro.build.fingerprint).Trim()) -join '|'")
+        appendLine("\$expected = '" + fingerprint + "'")
+        appendLine("if (\$actual -cne \$expected) { throw 'Модель или прошивка не совпадает с точкой. Ничего не изменено.' }")
+        appendLine("\$failed = 0")
+        appendLine("function Set-TvState([string]\$Target, [bool]\$Disabled) {")
+        appendLine("  if (\$Disabled) { adb shell pm disable-user --user 0 \$Target | Out-Null } else { adb shell pm enable --user 0 \$Target | Out-Null }")
+        appendLine("  if (\$LASTEXITCODE -ne 0) { Write-Error ('Не удалось изменить: ' + \$Target); \$script:failed++ }")
+        appendLine("}")
+        users.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotUsers) "\$true" else "\$false") }
+        systems.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotSystems) "\$true" else "\$false") }
+        components.sorted().forEach { component -> appendLine("Set-TvState '" + component + "' " + if (component in snapshotAutoStart) "\$true" else "\$false") }
+        appendLine("if (\$failed -ne 0) { throw ('Восстановление выполнено частично. Ошибок: ' + \$failed) }")
+        appendLine("Write-Host 'Сценарий завершён. Проверь состояние телевизора.'")
+    }
+}
+
+private fun buildPortableRestoreBundleZip(
+    restorePointJson: String,
+    restoreSh: String,
+    restorePs1: String
+): ByteArray {
+    val point = parseRestorePointBackup(restorePointJson)
+    val entries = linkedMapOf(
+        "restore-point.json" to restorePointJson.toByteArray(Charsets.UTF_8),
+        "restore.sh" to restoreSh.toByteArray(Charsets.UTF_8),
+        "restore.ps1" to restorePs1.toByteArray(Charsets.UTF_8),
+        "README.txt" to ("TV APK Installer — переносимая точка восстановления\n\n" +
+            "Содержимое: restore-point.json — снимок состояния; restore.sh — сценарий Bash; " +
+            "restore.ps1 — сценарий PowerShell.\n" +
+            "Перед запуском сценария установи Android platform-tools, подключи телевизор по ADB " +
+            "и подтверди авторизацию. Скрипты сверяют производителя, модель, устройство и fingerprint прошивки.\n" +
+            "Импорт ZIP в приложение только загружает точку; команды из архива автоматически не запускаются.\n").toByteArray(Charsets.UTF_8)
+    )
+    val manifest = JSONObject()
+        .put("format", "tv-apk-installer-restore-bundle")
+        .put("schemaVersion", 1)
+        .put("createdAt", System.currentTimeMillis())
+        .put("deviceFingerprint", point.fingerprint)
+        .put("entries", JSONArray().also { array ->
+            entries.forEach { (name, content) ->
+                array.put(JSONObject().put("name", name).put("size", content.size).put("sha256", sha256Hex(content)))
+            }
+        }).toString(2).toByteArray(Charsets.UTF_8)
+    val output = ByteArrayOutputStream()
+    ZipOutputStream(output).use { zip ->
+        (linkedMapOf("manifest.json" to manifest) + entries).forEach { (name, content) ->
+            zip.putNextEntry(ZipEntry(name).apply { time = 0L })
+            zip.write(content)
+            zip.closeEntry()
+        }
+    }
+    return output.toByteArray().also { require(it.size <= 8 * 1024 * 1024) { "ZIP точки восстановления слишком большой" } }
+}
+
+private fun parsePortableRestoreBundleZip(bytes: ByteArray): PortableRestoreBundle {
+    require(bytes.size in 1..(8 * 1024 * 1024)) { "Размер ZIP недопустим" }
+    val files = linkedMapOf<String, ByteArray>()
+    var total = 0
+    ZipInputStream(bytes.inputStream()).use { zip ->
+        while (true) {
+            val entry = zip.nextEntry ?: break
+            require(!entry.isDirectory) { "Папки в ZIP не поддерживаются" }
+            require(entry.name in setOf("manifest.json", "restore-point.json", "restore.sh", "restore.ps1", "README.txt")) {
+                "В ZIP найден неизвестный файл: " + entry.name.take(80)
+            }
+            require(entry.name !in files) { "Повторяющийся файл в ZIP: " + entry.name }
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = zip.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= 8 * 1024 * 1024) { "Распакованный ZIP слишком большой" }
+                out.write(buffer, 0, count)
+            }
+            files[entry.name] = out.toByteArray()
+            zip.closeEntry()
+        }
+    }
+    val manifestBytes = files["manifest.json"] ?: throw Exception("В ZIP отсутствует manifest.json")
+    val manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
+    require(manifest.optString("format") == "tv-apk-installer-restore-bundle" && manifest.optInt("schemaVersion") == 1) {
+        "Неподдерживаемый формат ZIP-архива"
+    }
+    val listed = linkedMapOf<String, Pair<Int, String>>()
+    val array = manifest.getJSONArray("entries")
+    for (i in 0 until array.length()) {
+        val item = array.getJSONObject(i)
+        val name = item.getString("name")
+        require(name in setOf("restore-point.json", "restore.sh", "restore.ps1", "README.txt") && name !in listed) {
+            "Некорректная запись в манифесте"
+        }
+        listed[name] = item.getInt("size") to item.getString("sha256")
+    }
+    require(listed.keys == setOf("restore-point.json", "restore.sh", "restore.ps1", "README.txt")) {
+        "Манифест неполный или содержит неизвестные записи"
+    }
+    require(files.keys == listed.keys + "manifest.json") { "Состав ZIP не совпадает с манифестом" }
+    listed.forEach { (name, expected) ->
+        val content = files[name] ?: throw Exception("В ZIP отсутствует " + name)
+        require(content.size == expected.first && sha256Hex(content) == expected.second) {
+            "Проверка целостности " + name + " не пройдена"
+        }
+    }
+    val point = parseRestorePointBackup(files.getValue("restore-point.json").toString(Charsets.UTF_8))
+    require(manifest.optString("deviceFingerprint") == point.fingerprint) { "Отпечаток в манифесте не совпадает с точкой" }
+    return PortableRestoreBundle(point, files.getValue("restore.sh").toString(Charsets.UTF_8))
+}
+
 private fun buildPortableRestoreScript(
     fingerprint: String,
     managedUsers: Set<String>,
