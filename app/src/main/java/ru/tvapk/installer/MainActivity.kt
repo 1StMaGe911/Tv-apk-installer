@@ -4258,25 +4258,25 @@ fun TvInstallerApp() {
                 )
                 val report = buildString {
                     appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
-                    appendLine("Модель/профиль: \${profile?.id ?: "точный профиль не найден"}")
-                    appendLine("Установлено пакетов: \${installed.size}; пользовательских: \${users.size}")
+                    appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
+                    appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
                     appendLine()
                     appendLine("ДИАГНОСТИКА СОСТОЯНИЯ ТВ")
                     appendLine(diagnosticsSnapshot)
                     appendLine()
-                    appendLine("ОЦЕНКА РЕСУРСОВ: \${healthAssessment.summary}")
+                    appendLine("ОЦЕНКА РЕСУРСОВ: ${healthAssessment.summary}")
                     healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
                     healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
                     healthAssessment.uptimeDays?.let { appendLine("Время без перезагрузки: $it дн.") }
                     healthAssessment.warnings.forEach { appendLine("⚠ $it") }
-                    appendLine("Уже отключено: \${disabled.size}")
-                    appendLine("Кандидатов по справочнику: \${plan.detectedCount}")
-                    appendLine("Безопасно разрешено точным профилем: \${plan.approvedCount}")
-                    appendLine("Требуют ручной оценки: \${plan.reviewCount}")
-                    appendLine("Защищено или исключено: \${plan.blockedCount}")
-                    appendLine("Отключение пакетов: \${if (disableSupported) "поддерживается" else "не подтверждено — действия заблокированы"}")
+                    appendLine("Уже отключено: ${disabled.size}")
+                    appendLine("Кандидатов по справочнику: ${plan.detectedCount}")
+                    appendLine("Безопасно разрешено точным профилем: ${plan.approvedCount}")
+                    appendLine("Требуют ручной оценки: ${plan.reviewCount}")
+                    appendLine("Защищено или исключено: ${plan.blockedCount}")
+                    appendLine("Отключение пакетов: ${if (disableSupported) "поддерживается" else "не подтверждено — действия заблокированы"}")
                     if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
-                    else appendLine("Подготовлен предварительный план из \${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
+                    else appendLine("Подготовлен предварительный план из ${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
                 }
                 activity.runOnUiThread {
                     tvDetails = details
