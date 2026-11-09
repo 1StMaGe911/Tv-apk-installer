@@ -863,6 +863,13 @@ private fun restoreLauncherBackup(context: Context, uri: Uri, adb: Dadb): String
     return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation"
 }
 
+private fun applyLauncherHomeKeySettings(adb: Dadb, longPressHome: Boolean): String {
+    val config = readCurrentLauncherConfig(adb)
+        .put("home_long_press_home", longPressHome)
+    val restart = writeLauncherConfig(adb, config)
+    return "Перехват долгого нажатия Home ${if (longPressHome) "включён" else "выключен"}. Для работы требуется HomeKeyService. $restart"
+}
+
 private fun enableHomeKeyService(adb: Dadb): String {
     val packageName = "com.gathin.tvhome"
     val component = "$packageName/.HomeKeyService"
@@ -1555,6 +1562,7 @@ fun TvInstallerApp() {
     var launcherRemoteKeyMappings by remember { mutableStateOf(settings.getString("launcher_remote_key_mappings", "") ?: "") }
     var pendingRemoteKeyEnable by remember { mutableStateOf(false) }
     var pendingHomeKeyServiceEnable by remember { mutableStateOf(false) }
+    var launcherHomeLongPressHome by remember { mutableStateOf(settings.getBoolean("launcher_home_long_press_home", false)) }
     var pendingLauncherConfigExport by remember { mutableStateOf<String?>(null) }
     var pendingLauncherBackupFile by remember { mutableStateOf<File?>(null) }
     var pendingLauncherBackupHasWallpaper by remember { mutableStateOf(false) }
@@ -2048,6 +2056,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.1 • Настройка долгого нажатия Home", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена настройка home_long_press_home для HomeKeyService: можно направить длительное нажатие кнопки Home в Clean Your TV. Настройка включается отдельно и требует HomeKeyService.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.0 • Полная копия коллекции обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("ZIP-резервная копия теперь включает локальную коллекцию wallpapers, а восстановление возвращает изображения на телевизор и телефон вместе с config.json и активными обоями. Коллекции, добавленные вне приложения, могут не попасть в архив.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2555,6 +2566,7 @@ fun TvInstallerApp() {
                                                 launcherClockFormat = current.optString("clock_format", "system").takeIf { it in setOf("system", "12", "24") } ?: "system"
                                                 launcherWallpaperRotationMinutes = current.optInt("wallpaper_rotation_minutes", 0).coerceIn(0, 120)
                                                 launcherWallpaperOrder = current.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
+                                                launcherHomeLongPressHome = current.optBoolean("home_long_press_home", false)
                                                 launcherRemoteKeyMappings = current.optJSONArray("app_keys")?.let { array ->
                                                     (0 until array.length()).mapNotNull { index -> array.optString(index).takeIf { it.isNotBlank() } }.joinToString("\n")
                                                 } ?: ""
@@ -2570,6 +2582,7 @@ fun TvInstallerApp() {
                                                     .putString("launcher_clock_format", launcherClockFormat)
                                                     .putInt("launcher_wallpaper_rotation_minutes", launcherWallpaperRotationMinutes)
                                                     .putString("launcher_wallpaper_order", launcherWallpaperOrder)
+                                                    .putBoolean("launcher_home_long_press_home", launcherHomeLongPressHome)
                                                     .putString("launcher_remote_key_mappings", launcherRemoteKeyMappings)
                                                     .apply()
                                             }
@@ -2869,6 +2882,26 @@ fun TvInstallerApp() {
                             OutlinedButton(enabled = !busy, onClick = { pendingHomeKeyServiceEnable = true }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Включить HomeKeyService для кнопки Home / All Apps")
                             }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Долгое нажатие Home открывает Clean Your TV", color = TextMain)
+                                    Text("Требуется HomeKeyService; меняет обработку удержания кнопки Home", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherHomeLongPressHome, onCheckedChange = { launcherHomeLongPressHome = it })
+                            }
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else {
+                                    settings.edit().putBoolean("launcher_home_long_press_home", launcherHomeLongPressHome).apply()
+                                    runTask({
+                                        connectWithRetry(context, host, p) { adb ->
+                                            applyLauncherHomeKeySettings(adb, launcherHomeLongPressHome)
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Применить поведение кнопки Home") }
                             if (pendingHomeKeyServiceEnable) {
                                 AlertDialog(
                                     onDismissRequest = { pendingHomeKeyServiceEnable = false },
