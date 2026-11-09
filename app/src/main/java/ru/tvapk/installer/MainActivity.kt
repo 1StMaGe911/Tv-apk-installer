@@ -2212,6 +2212,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.9 • Быстрое восстановление системных изменений", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлена отдельная команда для восстановления всех системных пакетов и компонентов автозапуска, отключённых самим приложением. Перед действием показывается подтверждение; успешные элементы удаляются из списка ожидания, а ошибки остаются доступными для повторной попытки.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.8.8 • Расширенная точка восстановления", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Точка сохраняет не только отключённые пользовательские приложения, но и изменения, выполненные самим TV APK Installer: отключённые системные пакеты и компоненты автозапуска. При восстановлении сравнивается модель и отпечаток прошивки; защищённые системные компоненты не отключаются. Старые точки без полного снимка нужно создать заново.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
