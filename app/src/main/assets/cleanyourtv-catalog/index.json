@@ -29,13 +29,25 @@
             "signer_sha256": "0202281bb726dbc12b82622dee50a278656128a82204db3cf055f8f5c006e405"
           },
           "permissions": [
-            {"permission":"android.permission.INTERNET","plain_words":"Downloads free homebrew games and cover art over HTTPS."},
-            {"permission":"android.permission.READ_EXTERNAL_STORAGE","plain_words":"Reads your own game files from the Roms/NES folder on the TV."},
-            {"permission":"io.github.udhaykumarbala.retro.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION","plain_words":"Used only inside Retro itself; no other app can use it."}
+            {
+              "permission": "android.permission.INTERNET",
+              "plain_words": "Downloads free homebrew games and cover art over HTTPS."
+            },
+            {
+              "permission": "android.permission.READ_EXTERNAL_STORAGE",
+              "plain_words": "Reads your own game files from the Roms/NES folder on the TV."
+            },
+            {
+              "permission": "io.github.udhaykumarbala.retro.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+              "plain_words": "Used only inside Retro itself; no other app can use it."
+            }
           ],
           "network": "Connects only to the pages and download links of the games you pick, and to their cover art, over HTTPS.",
           "min_sdk": 26,
-          "abis": ["armeabi-v7a","arm64-v8a"],
+          "abis": [
+            "armeabi-v7a",
+            "arm64-v8a"
+          ],
           "post_install": []
         }
       ]
