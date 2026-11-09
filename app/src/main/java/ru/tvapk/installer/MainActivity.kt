@@ -57,7 +57,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.5"
+private const val APP_VERSION = "0.9.6"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -386,7 +386,7 @@ private fun applyLauncherAppearance(
     return "Оформление Clean Your TV применено: $columns приложений в ряду, $rowsBelowDock ряд(а) под доком. Launcher перезапущен. $restart"
 }
 private fun downloadCleanYourTvTheme(context: Context, themeName: String): Pair<File, File> {
-    require(themeName in setOf("arcade", "cinema", "console", "horizon", "library", "mist", "quiet")) {
+    require(themeName in setOf("arcade", "cinema", "console", "diwali", "horizon", "library", "mist", "quiet")) {
         "Неизвестная тема Clean Your TV"
     }
     val base = "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/core/spec/src/main/resources/tv/cleanyour/core/spec/looks/$themeName"
@@ -3580,7 +3580,9 @@ fun TvInstallerApp() {
                             }
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
-                            listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман", "quiet" to "Тихий чёрный экран").forEach { (themeId, label) ->
+                            (listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман", "quiet" to "Тихий чёрный экран") +
+                                if (java.time.LocalDate.now().toString() <= "2026-11-10") listOf("diwali" to "Дивали (до 10 ноября)") else emptyList()
+                            ).forEach { (themeId, label) ->
                                 OutlinedButton(enabled = !busy, onClick = {
                                     val host = ip.trim()
                                     val p = port.toIntOrNull()
