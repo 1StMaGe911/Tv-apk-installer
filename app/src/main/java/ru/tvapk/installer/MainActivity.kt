@@ -1144,6 +1144,12 @@ fun TvInstallerApp() {
     var launcherAvailablePackages by remember { mutableStateOf(emptyList<String>()) }
     var launcherFillDock by remember { mutableStateOf(settings.getBoolean("launcher_fill_dock", false)) }
     var launcherAppFilter by remember { mutableStateOf("") }
+    var launcherIdleClockMinutes by remember { mutableStateOf(settings.getInt("launcher_idle_clock_minutes", 0)) }
+    var launcherClockWallpaper by remember { mutableStateOf(settings.getBoolean("launcher_clock_wallpaper", false)) }
+    var launcherClockWallpaperDim by remember { mutableStateOf(settings.getInt("launcher_clock_wallpaper_dim", 50).toFloat()) }
+    var launcherClockGlow by remember { mutableStateOf(settings.getBoolean("launcher_clock_glow", true)) }
+    var launcherBackOpensClock by remember { mutableStateOf(settings.getBoolean("launcher_back_opens_clock", false)) }
+    var launcherClockFormat by remember { mutableStateOf(settings.getString("launcher_clock_format", "system") ?: "system") }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1528,6 +1534,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.7.4 • Часы и системная заставка", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Добавлены настройки автоматических часов, обоев и затемнения на экране часов, свечения, формата времени и действия кнопки Назад. Можно установить или отключить системную заставку ClockDream Clean Your TV с сохранением других заставок.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.3 • Управление доком и приложениями", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлено чтение TV-приложений, выбор приложений в док, скрытие плиток на главном экране и настройка заполнения свободных мест. Изменения записываются в текущий config.json без удаления или отключения приложений.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2006,10 +2015,22 @@ fun TvInstallerApp() {
                                                 launcherDockPackages = dockText
                                                 launcherHiddenPackages = hiddenText
                                                 launcherFillDock = fill
+                                                launcherIdleClockMinutes = current.optInt("home_idle_clock_minutes", 0)
+                                                launcherClockWallpaper = current.optBoolean("clock_wallpaper", false)
+                                                launcherClockWallpaperDim = current.optInt("clock_wallpaper_dim", 50).toFloat()
+                                                launcherClockGlow = current.optBoolean("clock_glow", true)
+                                                launcherBackOpensClock = current.optBoolean("back_opens_clock", false)
+                                                launcherClockFormat = current.optString("clock_format", "system")
                                                 settings.edit()
                                                     .putString("launcher_dock_packages", dockText)
                                                     .putString("launcher_hidden_packages", hiddenText)
                                                     .putBoolean("launcher_fill_dock", fill)
+                                                    .putInt("launcher_idle_clock_minutes", launcherIdleClockMinutes)
+                                                    .putBoolean("launcher_clock_wallpaper", launcherClockWallpaper)
+                                                    .putInt("launcher_clock_wallpaper_dim", launcherClockWallpaperDim.toInt())
+                                                    .putBoolean("launcher_clock_glow", launcherClockGlow)
+                                                    .putBoolean("launcher_back_opens_clock", launcherBackOpensClock)
+                                                    .putString("launcher_clock_format", launcherClockFormat)
                                                     .apply()
                                             }
                                         }
@@ -2088,6 +2109,88 @@ fun TvInstallerApp() {
                                 }
                             }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Применение..." else "Применить док и список приложений") }
                             Text("Список сохраняется в текущей конфигурации Launcher. Очистка поля дока возвращает док из темы; чтобы вернуть конкретную плитку, удали её package name из поля скрытых приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("ЧАСЫ И ЗАСТАВКА", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text("Настрой часы на главном экране и системную заставку Clean Your TV. Авточасы появляются после бездействия, а системная заставка запускается по таймеру Android TV.", color = TextMuted, fontSize = 11.sp)
+                            Text("Показывать часы после бездействия: ${if (launcherIdleClockMinutes <= 0) "выключено" else "через $launcherIdleClockMinutes мин."}", color = TextMain)
+                            Slider(
+                                value = launcherIdleClockMinutes.toFloat(),
+                                onValueChange = { launcherIdleClockMinutes = ((it / 5f).toInt() * 5).coerceIn(0, 60) },
+                                valueRange = 0f..60f,
+                                steps = 11
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Показывать обои на экране часов", color = TextMain)
+                                    Text("Использовать текущие обои Launcher", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherClockWallpaper, onCheckedChange = { launcherClockWallpaper = it })
+                            }
+                            Text("Затемнение обоев часов: ${launcherClockWallpaperDim.toInt()}%", color = TextMain)
+                            Slider(
+                                value = launcherClockWallpaperDim,
+                                onValueChange = { launcherClockWallpaperDim = it },
+                                valueRange = 0f..90f,
+                                steps = 8,
+                                enabled = launcherClockWallpaper
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Цветное свечение часов", color = TextMain)
+                                    Text("На OLED можно отключить для чистого чёрного фона", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherClockGlow, onCheckedChange = { launcherClockGlow = it })
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Кнопка Назад открывает часы", color = TextMain)
+                                    Text("Только на главном экране Launcher", color = TextMuted, fontSize = 11.sp)
+                                }
+                                Switch(checked = launcherBackOpensClock, onCheckedChange = { launcherBackOpensClock = it })
+                            }
+                            Text("Формат времени", color = TextMain)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(onClick = { launcherClockFormat = "system" }, modifier = Modifier.weight(1f)) { Text(if (launcherClockFormat == "system") "✓ Системный" else "Системный") }
+                                OutlinedButton(onClick = { launcherClockFormat = "12" }, modifier = Modifier.weight(1f)) { Text(if (launcherClockFormat == "12") "✓ 12 ч" else "12 ч") }
+                                OutlinedButton(onClick = { launcherClockFormat = "24" }, modifier = Modifier.weight(1f)) { Text(if (launcherClockFormat == "24") "✓ 24 ч" else "24 ч") }
+                            }
+                            Button(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else {
+                                    settings.edit()
+                                        .putInt("launcher_idle_clock_minutes", launcherIdleClockMinutes)
+                                        .putBoolean("launcher_clock_wallpaper", launcherClockWallpaper)
+                                        .putInt("launcher_clock_wallpaper_dim", launcherClockWallpaperDim.toInt())
+                                        .putBoolean("launcher_clock_glow", launcherClockGlow)
+                                        .putBoolean("launcher_back_opens_clock", launcherBackOpensClock)
+                                        .putString("launcher_clock_format", launcherClockFormat)
+                                        .apply()
+                                    runTask({
+                                        connectWithRetry(context, host, p) { adb ->
+                                            applyLauncherClockSettings(adb, launcherIdleClockMinutes, launcherClockWallpaper,
+                                                launcherClockWallpaperDim.toInt(), launcherClockGlow, launcherBackOpensClock, launcherClockFormat)
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Применение..." else "Применить настройки часов") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb -> configureClockDream(adb, true) }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Установить системную заставку Clean Your TV") }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = port.toIntOrNull()
+                                if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
+                                else runTask({
+                                    connectWithRetry(context, host, p) { adb -> configureClockDream(adb, false) }
+                                })
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
+                            Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ГОТОВЫЕ ТЕМЫ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Темы загружаются из официального открытого проекта Clean Your TV. Для установки нужны интернет на телефоне и подключение к телевизору.", color = TextMuted, fontSize = 11.sp)
                             listOf("cinema" to "Кино", "arcade" to "Аркада", "console" to "Консоль", "horizon" to "Горизонт", "library" to "Библиотека", "mist" to "Туман").forEach { (themeId, label) ->
