@@ -60,7 +60,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.38"
+private const val APP_VERSION = "0.9.39"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -441,6 +441,89 @@ private fun rollbackTrackedAutoStartChanges(context: Context, adb: Dadb): String
         saveTrackedAutoStartChanges(context, remaining)
     }
     return "Откат автозапуска завершён. Восстановлено: $restored; уже в исходном состоянии: $alreadyOriginal; конфликты: $conflicts; ошибки проверки: $failed. Конфликтные и неудачные записи сохранены."
+}
+
+
+private data class TrackedSystemSettingChange(
+    val deviceIdentity: String, val namespace: String, val key: String,
+    val wasValue: String?, val isValue: String, val changedAt: Long
+)
+private val trackedSystemSettingKeys = setOf(
+    "screensaver_components", "screensaver_enabled",
+    "enabled_accessibility_services", "accessibility_enabled"
+)
+private fun loadTrackedSystemSettingChanges(context: Context): List<TrackedSystemSettingChange> {
+    val raw = prefs(context).getString("manual_system_setting_change_journal", null) ?: return emptyList()
+    val array = JSONArray(raw)
+    require(array.length() <= 500) { "Журнал системных настроек превышает допустимый размер" }
+    return (0 until array.length()).mapNotNull { index ->
+        val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val id = item.optString("deviceIdentity")
+        val ns = item.optString("namespace")
+        val key = item.optString("key")
+        val before = if (item.isNull("wasValue")) null else item.optString("wasValue")
+        val after = item.optString("isValue")
+        if (id.isBlank() || ns != "secure" || key !in trackedSystemSettingKeys) return@mapNotNull null
+        TrackedSystemSettingChange(id, ns, key, before, after, item.optLong("changedAt", 0L))
+    }.distinctBy { it.deviceIdentity + "|" + it.namespace + "|" + it.key }.sortedByDescending { it.changedAt }
+}
+private fun saveTrackedSystemSettingChanges(context: Context, changes: List<TrackedSystemSettingChange>) {
+    require(changes.size <= 500) { "Журнал системных настроек достиг лимита в 500 записей" }
+    val array = JSONArray()
+    changes.distinctBy { it.deviceIdentity + "|" + it.namespace + "|" + it.key }.forEach { e ->
+        array.put(JSONObject().put("deviceIdentity", e.deviceIdentity).put("namespace", e.namespace)
+            .put("key", e.key).put("wasValue", e.wasValue).put("isValue", e.isValue).put("changedAt", e.changedAt))
+    }
+    check(prefs(context).edit().putString("manual_system_setting_change_journal", array.toString()).commit())
+}
+private fun recordTrackedSystemSettingChange(context: Context, id: String, key: String, before: String?, after: String) {
+    require(id.isNotBlank() && key in trackedSystemSettingKeys && after.length <= 4096)
+    val changes = loadTrackedSystemSettingChanges(context).toMutableList()
+    val old = changes.firstOrNull { it.deviceIdentity == id && it.key == key }?.wasValue ?: before
+    changes.removeAll { it.deviceIdentity == id && it.key == key }
+    if (old != after) changes.add(TrackedSystemSettingChange(id, "secure", key, old, after, System.currentTimeMillis()))
+    saveTrackedSystemSettingChanges(context, changes)
+}
+private fun readTrackedSystemSetting(adb: Dadb, key: String): String? {
+    require(key in trackedSystemSettingKeys)
+    return shellText(adb, "settings get secure $key").trim().takeUnless { it == "null" }
+}
+private fun writeTrackedSystemSetting(adb: Dadb, key: String, value: String?) {
+    require(key in trackedSystemSettingKeys)
+    require(value == null || (value.length <= 4096 && value.matches(Regex("[A-Za-z0-9_.$/:,-]*"))))
+    shellText(adb, if (value == null) "settings delete secure $key" else "settings put secure $key '$value'")
+}
+private fun setTrackedSystemSetting(context: Context, adb: Dadb, key: String, value: String) {
+    require(value.length <= 4096 && value.matches(Regex("[A-Za-z0-9_.$/:,-]*")))
+    val id = readTvIdentity(adb)
+    val before = readTrackedSystemSetting(adb, key)
+    if (before == value) return
+    recordTrackedSystemSettingChange(context, id, key, before, value)
+    writeTrackedSystemSetting(adb, key, value)
+    require(readTrackedSystemSetting(adb, key) == value) { "Телевизор не подтвердил secure/$key" }
+}
+private fun rollbackTrackedSystemSettingChanges(context: Context, adb: Dadb): String {
+    val id = readTvIdentity(adb)
+    val all = loadTrackedSystemSettingChanges(context)
+    val candidates = all.filter { it.deviceIdentity == id }
+    val remaining = all.toMutableList()
+    var restored = 0; var original = 0; var conflicts = 0; var failed = 0
+    candidates.forEach { e ->
+        try {
+            val current = readTrackedSystemSetting(adb, e.key)
+            when {
+                current == e.wasValue -> { remaining.removeAll { it.deviceIdentity == id && it.key == e.key }; original++ }
+                current != e.isValue -> conflicts++
+                else -> {
+                    writeTrackedSystemSetting(adb, e.key, e.wasValue)
+                    require(readTrackedSystemSetting(adb, e.key) == e.wasValue)
+                    remaining.removeAll { it.deviceIdentity == id && it.key == e.key }; restored++
+                }
+            }
+        } catch (_: Exception) { failed++ }
+        saveTrackedSystemSettingChanges(context, remaining)
+    }
+    return "Откат системных настроек: восстановлено $restored; уже исходное $original; конфликты $conflicts; ошибки $failed."
 }
 
 private data class CleanupHistoryEntry(
