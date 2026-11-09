@@ -296,6 +296,10 @@ class UsbDadb private constructor(
             streamClosed = true
             adb.closeStream(localId, remoteId)
         }
+
+        override fun close() {
+            closeStream()
+        }
     }
 
     private data class KeyMaterial(val privateKey: java.security.PrivateKey, val adbPublicKey: ByteArray)
