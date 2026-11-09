@@ -64,7 +64,7 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
-private const val APP_VERSION = "0.9.51"
+private const val APP_VERSION = "0.9.52"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2199,6 +2199,7 @@ private fun readTvDetails(adb: Dadb): String {
     fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
     return buildString {
         appendLine("Производитель: ${prop("ro.product.manufacturer")}")
+        appendLine("Бренд: ${prop("ro.product.brand")}")
         appendLine("Модель: ${prop("ro.product.model")}")
         appendLine("Устройство: ${prop("ro.product.device")}")
         appendLine("Android: ${prop("ro.build.version.release")} (SDK ${prop("ro.build.version.sdk")})")
@@ -2994,11 +2995,18 @@ private fun matchTvModelProfile(
         ?.substringAfter(":")?.trim().orEmpty()
 
     val manufacturer = field("Производитель")
+    val productBrand = field("Бренд")
     val model = field("Модель")
     val device = field("Устройство")
     val sdk = Regex("SDK\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
     val fingerprint = field("Отпечаток")
+    fun normalized(value: String) = value.lowercase().replace(Regex("[^a-z0-9]"), "")
+    val reportedBrands = listOf(manufacturer, productBrand).map(::normalized).filter { it.length >= 3 }
+    fun matchesReportedBrand(candidate: String): Boolean {
+        val target = normalized(candidate)
+        return target.length >= 3 && reportedBrands.any { it.contains(target) || target.contains(it) }
+    }
 
     val exact = profiles.mapNotNull { profile ->
         val modelHit = profile.models.any { it.equals(model, ignoreCase = true) }
@@ -3009,8 +3017,7 @@ private fun matchTvModelProfile(
         if (sdk != null && profile.sdkMin != null && sdk < profile.sdkMin) return@mapNotNull null
         if (sdk != null && profile.sdkMax != null && sdk > profile.sdkMax) return@mapNotNull null
 
-        val brandHit = profile.brand.isNotBlank() &&
-            (manufacturer.contains(profile.brand, ignoreCase = true) || profile.brand.contains(manufacturer, ignoreCase = true))
+        val brandHit = matchesReportedBrand(profile.brand)
         val score = (if (modelHit) 100 else 0) + (if (fingerprintHit) 80 else 0) +
             (if (deviceHit) 50 else 0) + (if (brandHit) 10 else 0)
         val label = when {
@@ -3024,8 +3031,7 @@ private fun matchTvModelProfile(
 
     // Use reviewed profile brands instead of a fixed brand list. This enables the
     // upstream careful-set path for manufacturers represented by only 1–2 profiles.
-    val normalizedManufacturer = manufacturer.lowercase().replace(Regex("[^a-z0-9]"), "")
-    if (normalizedManufacturer.length < 3) return null
+    if (reportedBrands.isEmpty()) return null
     val reviewPending = setOf(
         "amazon-fire-tv-aftdec012e", "google-chromecast-gtv-hd",
         "hisense-smarttv-4k-ffm-android11", "hisense-smarttv-4k-ffm-lushan",
@@ -3049,8 +3055,8 @@ private fun matchTvModelProfile(
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase() }
         .mapNotNull { candidate ->
-            val normalized = candidate.lowercase().replace(Regex("[^a-z0-9]"), "")
-            if (normalized.length < 3 || !normalizedManufacturer.contains(normalized)) null
+            val normalized = normalized(candidate)
+            if (normalized.length < 3 || !matchesReportedBrand(candidate)) null
             else candidate to normalized.length
         }
         .maxByOrNull { it.second }?.first ?: return null
