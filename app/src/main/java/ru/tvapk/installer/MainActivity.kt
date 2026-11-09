@@ -4669,10 +4669,10 @@ fun TvInstallerApp() {
                                         val currentManagedAutoStart = disabledAutoStart.toSet()
                                         val failures = mutableListOf<String>()
                                         (currentUserDisabled - snapshot).forEach { pkg ->
-                                            try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                            try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                         }
                                         (snapshot - currentUserDisabled).forEach { pkg ->
-                                            if (pkg in installed) try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                            if (pkg in installed) try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             else failures.add("${pkg} (не установлен)")
                                         }
                                         val managedUserUniverse = currentManagedUsers + restorePointManagedUserPackages
@@ -4681,9 +4681,9 @@ fun TvInstallerApp() {
                                             val isDisabledNow = pkg in currentUserDisabled
                                             if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
                                             else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
-                                                try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
-                                                try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                             }
                                         }
                                         val managedSystemUniverse = currentManagedSystems + restorePointManagedSystemPackages
@@ -4693,9 +4693,9 @@ fun TvInstallerApp() {
                                             if (pkg !in installed && shouldBeDisabled) failures.add("${pkg} (не установлен)")
                                             else if (isProtectedSystemPackage(pkg)) failures.add("${pkg} (защищённый компонент, пропущен)")
                                             else if (pkg in installed && shouldBeDisabled && !isDisabledNow) {
-                                                try { changePackageState(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateVerified(adb, pkg, false) } catch (_: Exception) { failures.add(pkg) }
                                             } else if (pkg in installed && !shouldBeDisabled && isDisabledNow) {
-                                                try { changePackageState(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
+                                                try { changePackageStateVerified(adb, pkg, true) } catch (_: Exception) { failures.add(pkg) }
                                             }
                                         }
                                         (currentManagedAutoStart - restorePointAutoStartComponents).forEach { component ->
@@ -4704,7 +4704,20 @@ fun TvInstallerApp() {
                                         (restorePointAutoStartComponents - currentManagedAutoStart).forEach { component ->
                                             if (component.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+"))) try { setAutoStartReceiverEnabled(adb, component, false) } catch (_: Exception) { failures.add(component) }
                                         }
-                                        val actualAfterRestore = readDisabledPackages(adb)
+                                        
+                                        // Verify the resulting package state, not just shell command completion.
+                                        val verifiedUserDisabled = readDisabledUserPackages(adb)
+                                        val expectedUserDisabled = snapshot.intersect(installed)
+                                        (expectedUserDisabled - verifiedUserDisabled).forEach { failures.add("$it (не удалось подтвердить отключение)") }
+                                        (verifiedUserDisabled - expectedUserDisabled).forEach { failures.add("$it (остался отключён)") }
+                                        val verifiedAllDisabled = readDisabledPackages(adb)
+                                        managedSystemUniverse.forEach { pkg ->
+                                            val shouldBeDisabled = pkg in restorePointManagedSystemPackages
+                                            if ((pkg in verifiedAllDisabled) != shouldBeDisabled) {
+                                                failures.add("$pkg (состояние системного пакета не подтверждено)")
+                                            }
+                                        }
+val actualAfterRestore = readDisabledPackages(adb)
                                         activity.runOnUiThread {
                                             disabledOnDevice = actualAfterRestore
                                             if (failures.isEmpty()) {
