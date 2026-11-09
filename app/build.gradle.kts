@@ -12,8 +12,8 @@ android {
         applicationId = "ru.tvapk.installer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 144
-        versionName = "0.9.93"
+        versionCode = 145
+        versionName = "0.9.94"
     }
 
     signingConfigs {
@@ -59,4 +59,5 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }
