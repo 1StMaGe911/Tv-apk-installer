@@ -733,6 +733,21 @@ private fun disableLauncherRemoteMappings(adb: Dadb): String {
     return "Назначения кнопок очищены. InputKeyService оставлен включённым для штатной кнопки TV/Input; при необходимости отключи его в настройках специальных возможностей. $restart"
 }
 
+private fun launcherWallpaperExists(adb: Dadb): Boolean? {
+    val packageName = "com.gathin.tvhome"
+    val path = "/sdcard/Android/data/$packageName/files/wallpaper.jpg"
+    return try {
+        when (shellText(
+            adb,
+            "if content read --uri content://$packageName.theme/wallpaper.jpg >/dev/null 2>&1; then echo present; elif [ -f $path ]; then echo present; else echo absent; fi"
+        ).trim()) {
+            "present" -> true
+            "absent" -> false
+            else -> null
+        }
+    } catch (_: Exception) { null }
+}
+
 private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
     val provider = try { shellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64") } catch (_: Exception) { "" }
     val encoded = if (provider.isNotBlank()) provider else try {
@@ -762,6 +777,11 @@ private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
 private fun exportLauncherBackup(context: Context, adb: Dadb): Triple<File, Boolean, Int> {
     val config = readCurrentLauncherConfig(adb)
     val wallpaper = readLauncherWallpaper(adb)
+    val wallpaperState = when {
+        wallpaper != null -> "present"
+        launcherWallpaperExists(adb) == false -> "absent"
+        else -> "unknown"
+    }
     val collectionDir = File(context.filesDir, "launcher_wallpapers")
     val allowed = Regex("wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")
     val collection = collectionDir.listFiles()?.filter { file ->
@@ -773,6 +793,9 @@ private fun exportLauncherBackup(context: Context, adb: Dadb): Triple<File, Bool
         ZipOutputStream(archive.outputStream().buffered()).use { zip ->
             zip.putNextEntry(ZipEntry("config.json"))
             zip.write(config.toString(2).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            zip.putNextEntry(ZipEntry("wallpaper-state.txt"))
+            zip.write(wallpaperState.toByteArray(Charsets.UTF_8))
             zip.closeEntry()
             if (wallpaper != null) {
                 zip.putNextEntry(ZipEntry("wallpaper.jpg"))
@@ -807,6 +830,7 @@ private fun restoreLauncherBackupFile(context: Context, file: File, adb: Dadb): 
 private fun restoreLauncherBackupFromStream(context: Context, input: java.io.InputStream, adb: Dadb): String {
     var configBytes: ByteArray? = null
     var wallpaperBytes: ByteArray? = null
+    var wallpaperState: String? = null
     val collectionBytes = linkedMapOf<String, ByteArray>()
     var totalBytes = 0
     var collectionTotalBytes = 0
@@ -826,13 +850,14 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
                 continue
             }
             val collectionName = if (entry.name.startsWith("wallpapers/")) entry.name.removePrefix("wallpapers/") else null
-            require(entry.name == "config.json" || entry.name == "wallpaper.jpg" ||
+            require(entry.name == "config.json" || entry.name == "wallpaper.jpg" || entry.name == "wallpaper-state.txt" ||
                 (collectionName != null && allowedWallpaper.matches(collectionName))) {
                 "В архиве есть неподдерживаемый файл: ${entry.name}"
             }
             val maxEntrySize = when {
                 entry.name == "config.json" -> 1024 * 1024
                 entry.name == "wallpaper.jpg" -> 12 * 1024 * 1024
+                entry.name == "wallpaper-state.txt" -> 16
                 else -> 10 * 1024 * 1024
             }
             val output = ByteArrayOutputStream()
@@ -861,6 +886,12 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
                     validateImage(bytes, "wallpaper.jpg")
                     wallpaperBytes = bytes
                 }
+                entry.name == "wallpaper-state.txt" -> {
+                    require(wallpaperState == null) { "В архиве несколько файлов wallpaper-state.txt" }
+                    require(entryBytes in 3..16) { "Некорректный wallpaper-state.txt" }
+                    wallpaperState = String(bytes, Charsets.UTF_8).trim()
+                    require(wallpaperState in setOf("present", "absent", "unknown")) { "Неизвестное состояние обоев в архиве" }
+                }
                 collectionName != null -> {
                     require(collectionBytes.size < 100) { "В архиве больше 100 обоев" }
                     require(collectionName !in collectionBytes) { "В архиве повторяется файл $collectionName" }
@@ -876,7 +907,16 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
     }
     val config = JSONObject(String(configBytes ?: throw Exception("В архиве отсутствует config.json"), Charsets.UTF_8))
     val wallpaper = wallpaperBytes
+    require(wallpaperState != "present" || wallpaper != null) { "В архиве отмечены обои, но wallpaper.jpg отсутствует" }
+    require(wallpaperState != "absent" || wallpaper == null) { "Архив противоречив: состояние обоев отмечено как отсутствующее, но файл есть" }
     val baseRestore = if (wallpaper == null) {
+        if (wallpaperState == "absent") {
+            try {
+                shellText(adb, "content delete --uri content://com.gathin.tvhome.theme/wallpaper.jpg")
+            } catch (_: Exception) {
+                shellText(adb, "rm -f /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg")
+            }
+        }
         writeLauncherConfig(adb, config)
     } else {
         val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
@@ -891,7 +931,12 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
         }
     }
     if (collectionBytes.isEmpty()) {
-        return "Конфигурация Clean Your TV восстановлена. ${if (wallpaper == null) "Обои не входили в архив." else "Текущие обои восстановлены."} Коллекция ротации не менялась. $baseRestore"
+        val wallpaperNote = when {
+            wallpaper != null -> "Текущие обои восстановлены."
+            wallpaperState == "absent" -> "Восстановлено отсутствие файла обоев."
+            else -> "Файл обоев не удалось сохранить; текущие обои оставлены без изменений."
+        }
+        return "Конфигурация Clean Your TV восстановлена. $wallpaperNote Коллекция ротации не менялась. $baseRestore"
     }
     val staging = File(context.cacheDir, "launcher-wallpapers-restore")
     if (staging.exists()) staging.deleteRecursively()
