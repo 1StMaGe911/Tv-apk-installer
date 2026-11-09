@@ -59,7 +59,7 @@ import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-private const val APP_VERSION = "0.9.24"
+private const val APP_VERSION = "0.9.25"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -2698,8 +2698,7 @@ fun TvInstallerApp() {
             } else runTask({
                 val input = context.contentResolver.openInputStream(sourceUri)
                     ?: throw Exception("Не удалось открыть JSON-файл")
-                val jsonText = input.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                require(jsonText.toByteArray(Charsets.UTF_8).size <= 1024 * 1024) { "Файл конфигурации больше 1 МБ" }
+                val jsonText = readBoundedUtf8(input, 1024 * 1024)
                 val config = JSONObject(jsonText)
                 require(config.length() > 0) { "Конфигурация пустая" }
                 connectWithRetry(context, host, p) { adb ->
@@ -4796,7 +4795,7 @@ fun TvInstallerApp() {
                                                                                 .apply()
                                                                         }
                                                                         "Отмена очистки: включено ${restored.size} пакетов. Уже включены: ${undoEntry.changedPackages.size - candidates.size}. Не установлены: ${missing.size}. Остались отключёнными: ${stillDisabled.size}. Ошибки: ${failures.size}" +
-                                                                            if (failures.isNotEmpty()) "\\n" + failures.joinToString("\\n") else ""
+                                                                            if (failures.isNotEmpty()) "\n" + failures.joinToString("\n") else ""
                                                                     }
                                                                 })
                                                             }
