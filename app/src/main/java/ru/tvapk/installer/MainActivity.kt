@@ -3827,6 +3827,7 @@ fun TvInstallerApp() {
     var localUndoBackups by remember { mutableStateOf(listUndoBackups(context)) }
     var recoveryApks by remember { mutableStateOf(listRecoveryApks(context)) }
     var pendingRecoveryDelete by remember { mutableStateOf<RecoveryApkEntry?>(null) }
+    var pendingRecoveryExport by remember { mutableStateOf<RecoveryApkEntry?>(null) }
     var pendingRecoveryRestore by remember { mutableStateOf<RecoveryApkEntry?>(null) }
     var pendingRecoveryCleanup by remember { mutableStateOf(false) }
     var pendingUndoBackupExport by remember { mutableStateOf<File?>(null) }
@@ -4273,6 +4274,33 @@ fun TvInstallerApp() {
                     source.inputStream().use { input -> input.copyTo(output) }
                 } ?: throw Exception("Не удалось экспортировать ZIP-файл")
                 "Резервная копия " + undoBackupPackage(source) + " экспортирована"
+            })
+        }
+    }
+
+    val recoveryApkExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
+    ) { destinationUri ->
+        val entry = pendingRecoveryExport
+        pendingRecoveryExport = null
+        if (destinationUri != null && entry != null) {
+            runTask({
+                val source = entry.file.canonicalFile
+                val root = context.filesDir.canonicalFile
+                val parent = source.parentFile
+                require(parent?.parentFile == root &&
+                    parent.name == entry.folder &&
+                    parent.name.matches(Regex("(?:catalog|cleanyourtv)-recovery-\\d+")) &&
+                    source.isFile && source.extension.equals("apk", true)) {
+                    "Путь аварийной копии не прошёл проверку"
+                }
+                require(verifyRecoveryFileUnchanged(entry, source)) {
+                    "APK изменён или повреждён; экспорт отменён"
+                }
+                context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                    source.inputStream().use { input -> input.copyTo(output) }
+                } ?: throw Exception("Не удалось сохранить APK")
+                "APK ${entry.packageName} versionCode ${entry.versionCode} экспортирован после проверки SHA-256"
             })
         }
     }
@@ -4959,6 +4987,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.9.80 • Экспорт аварийных APK", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("Аварийную копию модуля теперь можно сохранить в выбранное место. Перед экспортом повторно проверяются путь, размер и SHA-256; повреждённый или изменённый файл не экспортируется.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.9.11 • Диагностика совместимости ADB", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("После определения телевизора приложение проверяет доступность Package Manager, команд отключения пакетов, cmd package, системных настроек и сведений о питании. Результат показывается отдельно и не считается гарантией поддержки всех функций прошивки.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -7433,13 +7464,20 @@ val actualAfterRestore = readDisabledPackages(adb)
                                     )
                                     Text("SHA-256 сертификата: ${entry.signerSha256}", color = TextMuted, fontSize = 9.sp)
                                     Text("SHA-256 APK: ${entry.sha256}", color = TextMuted, fontSize = 9.sp)
-                                    Text("Хэш файла повторно проверяется перед восстановлением и удалением.", color = TextMuted, fontSize = 10.sp)
+                                    Text("Хэш файла повторно проверяется перед восстановлением, экспортом и удалением.", color = TextMuted, fontSize = 10.sp)
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         OutlinedButton(
                                             enabled = !busy,
                                             modifier = Modifier.weight(1f),
                                             onClick = { pendingRecoveryRestore = entry }
                                         ) { Text("Восстановить") }
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            onClick = {
+                                                pendingRecoveryExport = entry
+                                                recoveryApkExporter.launch("${entry.packageName}-${entry.versionCode}.apk")
+                                            }
+                                        ) { Text("Экспорт") }
                                         OutlinedButton(
                                             enabled = !busy,
                                             onClick = { pendingRecoveryDelete = entry }
