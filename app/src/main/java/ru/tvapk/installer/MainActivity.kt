@@ -2,6 +2,7 @@
 package ru.tvapk.installer
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.content.Intent
 import android.hardware.usb.UsbManager
