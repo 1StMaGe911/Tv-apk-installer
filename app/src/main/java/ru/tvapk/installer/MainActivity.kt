@@ -1558,6 +1558,7 @@ fun TvInstallerApp() {
     var pendingLauncherConfigExport by remember { mutableStateOf<String?>(null) }
     var pendingLauncherBackupFile by remember { mutableStateOf<File?>(null) }
     var pendingLauncherBackupHasWallpaper by remember { mutableStateOf(false) }
+    var pendingLauncherBackupCollectionCount by remember { mutableStateOf(0) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
     var showRebootConfirm by remember { mutableStateOf(false) }
     var showChangelog by remember { mutableStateOf(false) }
@@ -1719,10 +1720,12 @@ fun TvInstallerApp() {
                 val output = context.contentResolver.openOutputStream(destinationUri)
                     ?: throw Exception("Не удалось открыть ZIP-файл для записи")
                 file.inputStream().use { input -> output.use { input.copyTo(it) } }
-                status = if (pendingLauncherBackupHasWallpaper) {
-                    "Резервная копия сохранена: config.json и текущие обои."
-                } else {
-                    "Резервная копия сохранена: config.json. Обои не удалось прочитать с телевизора."
+                status = buildString {
+                    append("Резервная копия сохранена: config.json")
+                    if (pendingLauncherBackupHasWallpaper) append(", текущие обои")
+                    else append("; обои не удалось прочитать с телевизора")
+                    if (pendingLauncherBackupCollectionCount > 0) append(", коллекция обоев: $pendingLauncherBackupCollectionCount")
+                    append(".")
                 }
             } catch (e: Exception) {
                 status = "Ошибка сохранения ZIP: ${errorText(e)}"
@@ -1733,6 +1736,7 @@ fun TvInstallerApp() {
         file?.delete()
         pendingLauncherBackupFile = null
         pendingLauncherBackupHasWallpaper = false
+        pendingLauncherBackupCollectionCount = 0
     }
 
     val launcherBackupImporter = rememberLauncherForActivityResult(
@@ -2044,6 +2048,9 @@ fun TvInstallerApp() {
                                         modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
+                                        Text("v0.8.0 • Полная копия коллекции обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                        Text("ZIP-резервная копия теперь включает локальную коллекцию wallpapers, а восстановление возвращает изображения на телевизор и телефон вместе с config.json и активными обоями. Коллекции, добавленные вне приложения, могут не попасть в архив.", color = TextMain)
+                                        HorizontalDivider(color = Color.DarkGray)
                                         Text("v0.7.9 • Коллекция и ротация обоев", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                                         Text("Добавлен выбор и загрузка до 100 изображений в wallpapers Launcher, локальное хранение коллекции на телефоне, интервал ротации и случайный/последовательный порядок. Повторная загрузка заменяет коллекцию на телевизоре.", color = TextMain)
                                         HorizontalDivider(color = Color.DarkGray)
@@ -2775,20 +2782,20 @@ fun TvInstallerApp() {
                             }, modifier = Modifier.fillMaxWidth()) { Text("Отключить заставку Clean Your TV") }
                             Text("Системная заставка использует тайм-аут Android TV. После включения откроются настройки заставки, где можно выбрать время запуска. Другие заставки не удаляются.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("ПОЛНАЯ РЕЗЕРВНАЯ КОПИЯ LAUNCHER", color = GoldLight, style = MaterialTheme.typography.titleSmall)
-                            Text("ZIP содержит config.json и текущий wallpaper.jpg, если обои доступны через ThemeProvider. Папка ротации wallpapers пока не включена.", color = TextMuted, fontSize = 11.sp)
+                            Text("ZIP содержит config.json, текущий wallpaper.jpg (если доступен) и коллекцию ротации, сохранённую этим приложением на телефоне. Обои из сторонних источников, не сохранённые здесь, могут не попасть в архив.", color = TextMuted, fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = {
                                 val host = ip.trim()
                                 val p = port.toIntOrNull()
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Проверь IP и порт ADB"
                                 else runTask({
                                     connectWithRetry(context, host, p) { adb ->
-                                        val (archive, hasWallpaper) = exportLauncherBackup(context, adb)
+                                        val (archive, hasWallpaper, collectionCount) = exportLauncherBackup(context, adb)
                                         activity.runOnUiThread {
                                             pendingLauncherBackupFile = archive
                                             pendingLauncherBackupHasWallpaper = hasWallpaper
+                                            pendingLauncherBackupCollectionCount = collectionCount
                                         }
-                                        if (hasWallpaper) "ZIP подготовлен: конфигурация и текущие обои."
-                                        else "ZIP подготовлен: конфигурация. Файл обоев не найден или недоступен."
+                                        "ZIP подготовлен: конфигурация, ${if (hasWallpaper) "текущие обои" else "без файла обоев"}, коллекция: $collectionCount."
                                     }
                                 }, onFinished = { result ->
                                     if (result.startsWith("Ошибка:")) {
@@ -2802,7 +2809,7 @@ fun TvInstallerApp() {
                             OutlinedButton(enabled = !busy, onClick = {
                                 launcherBackupImporter.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
                             }, modifier = Modifier.fillMaxWidth()) { Text("Восстановить ZIP-копию") }
-                            Text("Восстановление заменит config.json и, если он есть в архиве, текущий wallpaper.jpg. Перед восстановлением сохрани текущую конфигурацию. Коллекция ротации обоев не включена.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            Text("Восстановление заменит config.json, текущий wallpaper.jpg и коллекцию ротации, если она есть в архиве. Если коллекции в архиве нет, существующая на телевизоре коллекция не меняется.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             Text("РЕЗЕРВНАЯ КОПИЯ CONFIG.JSON", color = GoldLight, style = MaterialTheme.typography.titleSmall)
                             Text("Экспорт сохраняет настройки темы, дока, скрытых приложений, часов и кнопок. Изображение обоев в этот JSON не входит — для него используй выбор обоев отдельно.", color = TextMuted, fontSize = 11.sp)
                             OutlinedButton(enabled = !busy, onClick = {
