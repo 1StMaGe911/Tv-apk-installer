@@ -1433,7 +1433,7 @@ private fun buildPortableRestorePowerShell(
         appendLine("\$failed = 0")
         appendLine("function Set-TvState([string]\$Target, [bool]\$Disabled) {")
         appendLine("  if (\$Disabled) { adb shell pm disable-user --user 0 \$Target | Out-Null } else { adb shell pm enable --user 0 \$Target | Out-Null }")
-        appendLine("  if (\$LASTEXITCODE -ne 0) { Write-Error ('Не удалось изменить: ' + \$Target); \$script:failed++ }")
+        appendLine("  if (\$LASTEXITCODE -ne 0) { Write-Warning ('Не удалось изменить: ' + \$Target); \$script:failed++ }")
         appendLine("}")
         users.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotUsers) "\$true" else "\$false") }
         systems.sorted().forEach { pkg -> appendLine("Set-TvState '" + pkg + "' " + if (pkg in snapshotSystems) "\$true" else "\$false") }
@@ -2586,8 +2586,17 @@ fun TvInstallerApp() {
     ) { sourceUri ->
         if (sourceUri != null) {
             try {
-                val bytes = context.contentResolver.openInputStream(sourceUri)?.use { it.readBytes() }
-                    ?: throw Exception("Не удалось прочитать ZIP-файл")
+                val bytes = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 8 * 1024 * 1024) { "ZIP-файл превышает допустимый размер 8 МБ" }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: throw Exception("Не удалось прочитать ZIP-файл")
                 val bundle = parsePortableRestoreBundleZip(bytes)
                 val point = bundle.point
                 restorePoint = point.userDisabled
