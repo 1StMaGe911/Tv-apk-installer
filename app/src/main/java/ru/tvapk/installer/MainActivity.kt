@@ -58,6 +58,7 @@ import java.util.zip.ZipOutputStream
 import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 
 private const val APP_VERSION = "0.9.29"
 private const val RELEASES_URL =
@@ -356,7 +357,8 @@ private data class UpdateInfo(
     val status: String,
     val releaseUrl: String?,
     val apkUrl: String?,
-    val apkSize: Long
+    val apkSize: Long,
+    val expectedSha256: String? = null
 )
 
 private fun checkLatestVersion(): UpdateInfo {
@@ -384,27 +386,33 @@ private fun checkLatestVersion(): UpdateInfo {
         val assets = json.optJSONArray("assets") ?: JSONArray()
         var apkUrl: String? = null
         var apkSize = 0L
+        var apkSha256: String? = null
         for (i in 0 until assets.length()) {
             val asset = assets.optJSONObject(i) ?: continue
             val name = asset.optString("name")
-            if (name.endsWith(".apk", ignoreCase = true)) {
+            if (name.equals("app-debug.apk", ignoreCase = true)) {
                 apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
                 apkSize = asset.optLong("size", 0L)
+                apkSha256 = asset.optString("digest")
+                    .removePrefix("sha256:")
+                    .lowercase()
+                    .takeIf { it.matches(Regex("[0-9a-f]{64}")) }
                 if (apkUrl != null) break
             }
         }
 
-        return if (apkUrl != null) {
-            UpdateInfo("Доступно обновление: $tag", releaseUrl, apkUrl, apkSize)
-        } else {
-            UpdateInfo("Доступно обновление $tag, но APK ещё не прикреплён к релизу", releaseUrl, null, 0L)
+        return when {
+            apkUrl == null -> UpdateInfo("Доступно обновление $tag, но APK ещё не прикреплён к релизу", releaseUrl, null, 0L)
+            apkSha256 == null -> UpdateInfo("Доступно обновление $tag, но GitHub не предоставил SHA-256 APK", releaseUrl, null, 0L)
+            else -> UpdateInfo("Доступно обновление: $tag", releaseUrl, apkUrl, apkSize, apkSha256)
         }
     } finally {
         connection.disconnect()
     }
 }
 
-private fun downloadUpdateApk(context: Context, downloadUrl: String): File {
+private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha256: String): File {
+    require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Некорректная контрольная сумма APK" }
     val directory = File(context.cacheDir, "updates")
     if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
     val apkFile = File(directory, "tv-apk-installer-update.apk")
@@ -422,6 +430,20 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String): File {
         if (!apkFile.exists() || apkFile.length() < 1024L) {
             apkFile.delete()
             throw Exception("Загруженный APK повреждён или пуст")
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        apkFile.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+        if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+            apkFile.delete()
+            throw Exception("SHA-256 APK не совпадает с GitHub. Установка отменена")
         }
         return apkFile
     } finally {
@@ -2459,6 +2481,7 @@ fun TvInstallerApp() {
     }
     var releaseUrl by remember { mutableStateOf<String?>(null) }
     var updateApkUrl by remember { mutableStateOf<String?>(null) }
+    var updateApkSha256 by remember { mutableStateOf<String?>(null) }
     var downloadedUpdatePath by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -2472,6 +2495,7 @@ fun TvInstallerApp() {
                 versionStatus = result.status
                 releaseUrl = result.releaseUrl
                 updateApkUrl = result.apkUrl
+                updateApkSha256 = result.expectedSha256
             }
         }.start()
     }
@@ -3287,6 +3311,7 @@ fun TvInstallerApp() {
                                         versionStatus = result.status
                                         releaseUrl = result.releaseUrl
                                         updateApkUrl = result.apkUrl
+                                        updateApkSha256 = result.expectedSha256
                                         downloadedUpdatePath = null
                                         status = result.status
                                         busy = false
@@ -3311,8 +3336,12 @@ fun TvInstallerApp() {
                                 modifier = Modifier.fillMaxWidth(),
                                 onClick = {
                                     val url = updateApkUrl ?: return@Button
+                                    val sha256 = updateApkSha256 ?: run {
+                                        status = "Нет проверенной SHA-256. Загрузка отменена."
+                                        return@Button
+                                    }
                                     runTask(
-                                        action = { downloadUpdateApk(context, url).absolutePath },
+                                        action = { downloadUpdateApk(context, url, sha256).absolutePath },
                                         onFinished = { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 downloadedUpdatePath = result
