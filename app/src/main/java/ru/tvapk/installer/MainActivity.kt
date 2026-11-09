@@ -4482,6 +4482,9 @@ fun TvInstallerApp() {
                     val deviceAbis = shellText(adb, "getprop ro.product.cpu.abilist").trim()
                         .ifBlank { shellText(adb, "getprop ro.product.cpu.abi").trim() }
                         .split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
+                    require(version.abis.isEmpty() || version.abis.any { it in deviceAbis }) {
+                        "Каталог не заявляет поддержку архитектур ТВ. APK: ${version.abis.joinToString()}; ТВ: ${deviceAbis.joinToString()}"
+                    }
                     require(apkAbis.isEmpty() || apkAbis.any { it in deviceAbis }) {
                         "Архитектура APK не подходит телевизору. APK: ${apkAbis.joinToString()}; ТВ: ${deviceAbis.joinToString()}"
                     }
