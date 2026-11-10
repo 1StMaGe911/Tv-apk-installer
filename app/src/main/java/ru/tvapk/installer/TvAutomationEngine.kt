@@ -36,6 +36,14 @@ internal object CleanupJournalValidator {
 }
 
 internal object TvAutomationEngine {
+    /** Returns the unique index of the highest-scoring candidate; ties fail closed. */
+    internal fun uniqueBestCandidateIndex(scores: List<Int>): Int? {
+        if (scores.isEmpty()) return null
+        val bestScore = scores.maxOrNull() ?: return null
+        val bestIndices = scores.indices.filter { scores[it] == bestScore }
+        return bestIndices.singleOrNull()
+    }
+
     /** Only the bundled trusted profile baseline may authorize automatic package changes. */
     internal fun automaticallyApprovedPackages(
         packageReviewFlags: Map<String, Boolean>,
