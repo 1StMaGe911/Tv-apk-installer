@@ -279,6 +279,12 @@ internal object TvAutomationEngine {
         val usedPercent: Int
     )
 
+    /** Returns the minimum /data free space required before installing an APK. */
+    internal fun requiredStorageBytesForApk(apkBytes: Long): Long? {
+        if (apkBytes <= 0L || apkBytes > Long.MAX_VALUE / 2L) return null
+        return maxOf(200L * 1024L * 1024L, apkBytes * 2L)
+    }
+
     /** Parses machine-readable df -k /data output conservatively. */
     internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
         // Multiple /data rows make the source ambiguous; fail closed instead of
