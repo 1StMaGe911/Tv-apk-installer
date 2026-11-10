@@ -92,7 +92,11 @@ internal object TvAutomationEngine {
         val retryable = sortedSetOf<String>()
         val conflicts = sortedSetOf<String>()
         plannedPackages.forEach { packageName ->
-            if (packageName in baselineDisabledPackages || packageName in restoredPackages) return@forEach
+            if (packageName in baselineDisabledPackages) return@forEach
+            if (packageName in restoredPackages) {
+                if (packageName in disabledPackages) conflicts += packageName
+                return@forEach
+            }
             when {
                 packageName !in installedPackages -> conflicts += packageName
                 packageName in disabledPackages && packageName in completedPackages -> confirmed += packageName
