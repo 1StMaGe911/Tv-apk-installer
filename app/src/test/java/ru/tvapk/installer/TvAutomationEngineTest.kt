@@ -136,7 +136,9 @@ class TvAutomationEngineTest {
     fun recoveryReconcilesInFlightPackageAlreadyDisabledWithoutRepeatingIt() {
         val result = TvAutomationEngine.buildCleanupRecoveryPlan(
             plannedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
-            completedPackages = setOf("com.example.done"),
+            // The caller folds the journal's in-flight package into attempted packages
+            // after reconciling it with the live Package Manager snapshot.
+            completedPackages = setOf("com.example.done", "com.example.inFlight"),
             installedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
             disabledPackages = setOf("com.example.done", "com.example.inFlight"),
             baselineDisabledPackages = emptySet(),
@@ -159,6 +161,36 @@ class TvAutomationEngineTest {
         )
         assertTrue(result.retryablePackages.isEmpty())
         assertEquals(setOf("com.example.app"), result.conflictPackages)
+    }
+
+    @Test
+    fun recoveryDoesNotClaimUnattemptedDisabledPackageAsCompleted() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.pending"),
+            completedPackages = emptySet(),
+            installedPackages = setOf("com.example.pending"),
+            disabledPackages = setOf("com.example.pending"),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+        assertTrue(result.confirmedCompletedPackages.isEmpty())
+        assertEquals(setOf("com.example.pending"), result.conflictPackages)
+        assertTrue(result.retryablePackages.isEmpty())
+    }
+
+    @Test
+    fun recoveryFlagsPreviouslyRestoredPackageThatBecameDisabledAgain() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.restored"),
+            completedPackages = emptySet(),
+            installedPackages = setOf("com.example.restored"),
+            disabledPackages = setOf("com.example.restored"),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = setOf("com.example.restored")
+        )
+        assertTrue(result.confirmedCompletedPackages.isEmpty())
+        assertEquals(setOf("com.example.restored"), result.conflictPackages)
+        assertTrue(result.retryablePackages.isEmpty())
     }
 
     @Test

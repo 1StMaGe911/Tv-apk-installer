@@ -7627,12 +7627,18 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             }
                                                             val installed = readAllPackages(adb).toSet()
                                                             val disabledNowOnTv = readDisabledPackages(adb)
-                                                            val rollbackCandidates = (journal.completedPackages + listOfNotNull(journal.inFlightPackage?.takeIf { it in disabledNowOnTv })).distinct()
-                                                            // Version 1 journals predate snapshots; preserve their existing rollback behavior.
-                                                            // Version 2 restores only packages that were enabled before this cleanup.
-                                                            val rollbackPackages = if (journal.schemaVersion >= 2) {
-                                                                rollbackCandidates.filter { it !in journal.baselineDisabledPackages }
-                                                            } else rollbackCandidates
+                                                            val recoveryPlan = TvAutomationEngine.buildCleanupRecoveryPlan(
+                                                                plannedPackages = journal.plannedPackages.toSet(),
+                                                                completedPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet(),
+                                                                installedPackages = installed,
+                                                                disabledPackages = disabledNowOnTv,
+                                                                baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                                restoredPackages = journal.restoredPackages.toSet()
+                                                            )
+                                                            // Only packages whose disable operation is recorded as attempted AND is
+                                                            // confirmed disabled on this TV are eligible for rollback.
+                                                            val rollbackPackages = recoveryPlan.confirmedCompletedPackages.toList().sorted()
+                                                            val recoveryConflicts = recoveryPlan.conflictPackages.toList().sorted()
                                                             val restored = mutableListOf<String>()
                                                             val failures = mutableListOf<String>()
                                                             var durableRollbackJournal = journal
@@ -7678,7 +7684,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 disabledPackages = actualDisabledAfterRestore
                                                             )
                                                             val verifiedRestored = rollbackVerification.restoredPackages.toList().sorted()
-                                                            val remaining = rollbackVerification.remainingPackages.toList().sorted()
+                                                            // Keep journal conflicts unresolved; never clear the recovery record
+                                                            // merely because the packages eligible for rollback were restored.
+                                                            val remaining = (rollbackVerification.remainingPackages + recoveryConflicts).toList().distinct().sorted()
                                                             val rollbackOutcome = if (remaining.isEmpty()) "Откат завершён" else "Откат частичный"
                                                             val historyUpdated = updateLatestMaintenanceCleanupHistory(
                                                                 context, journal.deviceIdentity, rollbackOutcome, verifiedRestored
@@ -7710,9 +7718,13 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                     "Пакеты восстановлены, но не удалось удалить журнал. Он сохранён для повторной проверки."
                                                                 }
                                                                 activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
-                                                                "Откат завершён: восстановлено ${restored.size} пакетов." + if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
+                                                                "Откат завершён: восстановлено ${restored.size} пакетов." +
+                                                                    (if (recoveryConflicts.isNotEmpty()) " Требуют ручной проверки: ${recoveryConflicts.joinToString()}." else "") +
+                                                                    (if (historyUpdated) "" else " Не удалось обновить историю обслуживания.")
                                                             } else {
-                                                                "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}" + if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
+                                                                "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}" +
+                                                                    (if (recoveryConflicts.isNotEmpty()) " Противоречия журнала: ${recoveryConflicts.joinToString()}." else "") +
+                                                                    (if (historyUpdated) "" else " Не удалось обновить историю обслуживания.")
                                                             }
                                                         }
                                                     }, { cleanupJournal = loadCleanupJournal(context); cleanupJournalCorrupt = hasCorruptCleanupJournal(context) })
