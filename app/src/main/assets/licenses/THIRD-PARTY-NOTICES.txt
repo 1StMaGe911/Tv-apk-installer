@@ -1,0 +1,19 @@
+Third-party notices for the native ADB SPAKE2 bridge
+
+BoringSSL
+---------
+Source: https://github.com/google/boringssl
+Pinned revision: 5fa9e920fe867353a5a0a6eee4005e20aa3df85d
+The Android build links the BoringSSL crypto target to provide the SPAKE2 API.
+The complete BoringSSL license bundle for this revision is included in
+BORINGSSL-LICENSE.txt. It contains the applicable OpenSSL, original SSLeay,
+ISC, Intel and other notices for the source distribution.
+
+The SPAKE2 implementation source file
+(crypto/curve25519/spake25519.cc) and its public API header
+(include/openssl/curve25519.h) carry Apache License 2.0 headers. The complete
+Apache License 2.0 text is included in APACHE-2.0.txt.
+
+No GPL-licensed SPAKE2 implementation is included in the Android runtime
+dependency graph. CI checks this condition and runs native and JNI-level
+client/server interoperability tests.
