@@ -7744,7 +7744,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             }
                                                             var currentJournal = journal
                                                             val failures = mutableListOf<String>()
-                                                            resume.safeToRetryPackages.sorted().forEachIndexed { index, pkg ->
+                                                            for ((index, pkg) in resume.safeToRetryPackages.sorted().withIndex()) {
                                                                 updateMaintenanceProgress("Продолжаем очистку: пакет ${index + 1} из ${resume.safeToRetryPackages.size}: $pkg")
                                                                 currentJournal = currentJournal.copy(inFlightPackage = pkg)
                                                                 check(saveCleanupJournal(context, currentJournal)) {
