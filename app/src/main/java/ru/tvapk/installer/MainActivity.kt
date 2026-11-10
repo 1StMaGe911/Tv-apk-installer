@@ -4571,6 +4571,7 @@ fun TvInstallerApp() {
     var privacyAuditExpanded by remember { mutableStateOf(false) }
     var profileCatalogExpanded by remember { mutableStateOf(false) }
     var pendingCleanupPackages by remember { mutableStateOf(emptyList<String>()) }
+    var pendingCleanupAutoExecute by remember { mutableStateOf(false) }
     var disabledPackages by remember { mutableStateOf(settings.getStringSet("disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var managedSystemDisabledPackages by remember { mutableStateOf(settings.getStringSet("managed_system_disabled_packages", emptySet())?.toSet() ?: emptySet()) }
     var packageFilter by remember { mutableStateOf("") }
@@ -5059,6 +5060,11 @@ fun TvInstallerApp() {
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
+                    pendingCleanupAutoExecute = TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+                        safePackages = plan.safeToDisable,
+                        rememberedApprovals = rememberedDeviceApprovals,
+                        cacheTrimPending = !cacheTrimWasAttempted && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
+                    )
                     // Offer cache-only cleanup even when no package can be safely disabled.
                     // Cache trimming does not depend on package-disable support.
                     pendingCombinedCacheTrim = !cacheTrimWasAttempted &&
@@ -8692,37 +8698,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             }
                         }
                         if (cleanupCandidates.isNotEmpty()) Text(if (packageDisableSupported) "Для пакетного отключения доступны только компоненты точного профиля модели с правилом ask=false. Остальные рекомендации справочные. Перед каждой операцией результат проверяется через Package Manager." else "Пакетная очистка заблокирована: устройство ещё не подтвердило поддержку команды отключения и чтения фактического состояния пакетов. Повтори определение устройства.", color = Color(0xFFFFD98A), fontSize = 11.sp)
-                        if (pendingCleanupPackages.isNotEmpty() || pendingCombinedCacheTrim) {
-                            AlertDialog(
-                                onDismissRequest = {
-                                    pendingCleanupPackages = emptyList()
-                                    pendingCombinedCacheTrim = false
-                                    installLauncherAfterMaintenance = false
-                                    maintenanceReadyToInstallLauncher = false
-                                },
-                                title = {
-                                    Text(
-                                        when {
-                                            pendingCombinedCacheTrim && pendingCleanupPackages.isEmpty() -> "Очистить кэш приложений?"
-                                            pendingCombinedCacheTrim -> "Выполнить комплексную оптимизацию?"
-                                            else -> "Отключить выбранные компоненты?"
-                                        }
-                                    )
-                                },
-                                text = {
-                                    Text(
-                                        when {
-                                            pendingCombinedCacheTrim && pendingCleanupPackages.isEmpty() ->
-                                                "Хранилище /data заполнено не менее чем на 90%. Будет выполнена только штатная очистка кэша приложений. Пакеты не отключаются, приложения и личные данные не удаляются. Продолжить?"
-                                            pendingCombinedCacheTrim ->
-                                                "Дополнительно будет выполнена штатная очистка только кэша приложений (без удаления приложений и личных данных).\n\nБудут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления и журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?"
-                                            else ->
-                                                "Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?"
-                                        }
-                                    )
-                                },
-                                confirmButton = {
-                                    TextButton(enabled = !busy, onClick = {
+                        val executePendingCleanup: () -> Unit = {
                                         val selected = pendingCleanupPackages
                                         val includeCacheTrim = pendingCombinedCacheTrim
                                         pendingCombinedCacheTrim = false
@@ -9026,11 +9002,50 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             }
                                         })
                                         }
-                                    }) { Text(if (pendingCleanupPackages.isEmpty()) "Очистить кэш" else "Отключить выбранные") }
+                                    }
+                        LaunchedEffect(pendingCleanupAutoExecute) {
+                            if (pendingCleanupAutoExecute) {
+                                pendingCleanupAutoExecute = false
+                                executePendingCleanup()
+                            }
+                        }
+                        if (pendingCleanupPackages.isNotEmpty() || pendingCombinedCacheTrim) {
+                            AlertDialog(
+                                onDismissRequest = {
+                                    pendingCleanupPackages = emptyList()
+                                    pendingCleanupAutoExecute = false
+                                    pendingCombinedCacheTrim = false
+                                    installLauncherAfterMaintenance = false
+                                    maintenanceReadyToInstallLauncher = false
+                                },
+                                title = {
+                                    Text(
+                                        when {
+                                            pendingCombinedCacheTrim && pendingCleanupPackages.isEmpty() -> "Очистить кэш приложений?"
+                                            pendingCombinedCacheTrim -> "Выполнить комплексную оптимизацию?"
+                                            else -> "Отключить выбранные компоненты?"
+                                        }
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        when {
+                                            pendingCombinedCacheTrim && pendingCleanupPackages.isEmpty() ->
+                                                "Хранилище /data заполнено не менее чем на 90%. Будет выполнена только штатная очистка кэша приложений. Пакеты не отключаются, приложения и личные данные не удаляются. Продолжить?"
+                                            pendingCombinedCacheTrim ->
+                                                "Дополнительно будет выполнена штатная очистка только кэша приложений (без удаления приложений и личных данных).\n\nБудут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления и журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?"
+                                            else ->
+                                                "Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?"
+                                        }
+                                    )
+                                },
+                                confirmButton = {
+                                    TextButton(enabled = !busy, onClick = executePendingCleanup) { Text(if (pendingCleanupPackages.isEmpty()) "Очистить кэш" else "Отключить выбранные") }
                                 },
                                 dismissButton = {
                                     TextButton(onClick = {
                                         pendingCleanupPackages = emptyList()
+                                        pendingCleanupAutoExecute = false
                                         pendingCombinedCacheTrim = false
                                         installLauncherAfterMaintenance = false
                                         maintenanceReadyToInstallLauncher = false

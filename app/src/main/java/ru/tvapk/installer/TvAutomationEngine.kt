@@ -140,6 +140,15 @@ internal object TvAutomationEngine {
         return "cleanup_approved_packages_v1_$digest"
     }
 
+    /** Auto-run only the exact package set previously confirmed and verified on this TV. */
+    internal fun shouldAutoExecuteRememberedCleanup(
+        safePackages: Set<String>,
+        rememberedApprovals: Set<String>,
+        cacheTrimPending: Boolean
+    ): Boolean =
+        safePackages.isNotEmpty() && !cacheTrimPending &&
+            safePackages.all { it in rememberedApprovals }
+
     /** Only a verified successful cleanup result may advance the combined Launcher flow. */
     internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean =
         (result.contains("Отключено:") && Regex("Ошибок:\\s*0").containsMatchIn(result)) ||
