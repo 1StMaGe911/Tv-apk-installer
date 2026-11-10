@@ -129,7 +129,9 @@ internal object TvAutomationEngine {
 
     /** Stable, device-scoped preference key; raw hardware/build identity is never used as a key. */
     internal fun cleanupApprovalPreferenceKey(deviceIdentity: String): String {
-        require(deviceIdentity.isNotBlank() && deviceIdentity.length <= 2048) {
+        val identityParts = deviceIdentity.split("|")
+        require(deviceIdentity.length <= 2048 && identityParts.size == 4 &&
+            identityParts.none { it.isBlank() || it == "неизвестно" }) {
             "Некорректный идентификатор телевизора"
         }
         val digest = java.security.MessageDigest.getInstance("SHA-256")
