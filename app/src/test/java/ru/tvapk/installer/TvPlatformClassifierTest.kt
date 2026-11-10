@@ -37,6 +37,17 @@ class TvPlatformClassifierTest {
     }
 
     @Test
+    fun detectsAndroidTvByTelevisionHardwareFeatureAcrossOemBrands() {
+        val signals = TvPlatformSignals(
+            manufacturer = "Skyworth",
+            brand = "Coocaa",
+            systemFeatures = setOf("android.hardware.type.television")
+        )
+
+        assertEquals(TvPlatformKind.ANDROID_TV, TvPlatformClassifier.classify(signals))
+    }
+
+    @Test
     fun detectsAndroidTvByKnownTvLauncherPackage() {
         val signals = TvPlatformSignals(
             manufacturer = "Unknown OEM",
