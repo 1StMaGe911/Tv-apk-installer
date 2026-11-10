@@ -104,11 +104,20 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             isProtectedSystemPackage(packageName)
         ) return false
 
-        val reviewedCategories = setOf("ads", "tracking", "demo", "preloads")
-        fun normalizedCategory(value: String?): String? =
-            value?.trim()?.lowercase(java.util.Locale.ROOT)
-
-        if (normalizedCategories(factCategory, profileCategory).any { it in reviewedCategories }) {
+        // OEM catalogs and upstream profiles use different labels for the same
+        // reviewed cleanup classes. Normalize only explicit, known aliases;
+        // unknown categories remain review-only.
+        val reviewedCategoryAliases = mapOf(
+            "ads" to setOf("ads", "ad", "advertising", "advertisement", "advertisements"),
+            "tracking" to setOf("tracking", "telemetry", "analytics", "usage_reporting"),
+            "demo" to setOf("demo", "demos", "retail_demo"),
+            "preloads" to setOf("preloads", "preload", "preloaded", "preinstalled_junk")
+        )
+        val normalizedReviewedCategories = reviewedCategoryAliases.values.flatten().toSet()
+        val categories = normalizedCategories(factCategory, profileCategory)
+        if (categories.any { category ->
+                category in normalizedReviewedCategories
+            }) {
             return true
         }
 
