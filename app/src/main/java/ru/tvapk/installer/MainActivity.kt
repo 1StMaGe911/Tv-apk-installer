@@ -789,6 +789,9 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
 } catch (_: Exception) { emptyList() }
 
 private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunHistoryEntry): Boolean = try {
+    val existingRaw = prefs(context).getString("maintenance_run_history", null)
+    val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) return false
     val array = JSONArray()
     (listOf(entry) + loadMaintenanceRunHistory(context).filterNot { it.createdAt == entry.createdAt }.take(19)).forEach { item ->
         array.put(JSONObject()
@@ -814,6 +817,9 @@ private fun updateLatestMaintenanceCleanupHistory(
     outcome: String,
     changedPackages: List<String>
 ): Boolean = try {
+    val existingRaw = prefs(context).getString("maintenance_run_history", null)
+    val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) return false
     val existing = loadMaintenanceRunHistory(context).toMutableList()
     val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
     if (index >= 0) {
