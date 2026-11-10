@@ -2458,24 +2458,27 @@ private fun applyWallpaperRotationSettings(adb: Dadb, minutes: Int, order: Strin
     return "Ротация обоев: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}. $restart"
 }
 
-private fun readTvDiagnostics(adb: Dadb): String {
-    fun safe(command: String): String = try {
-        TvAutomationEngine.retryReadOnlyCommand(
-            maxAttempts = 2,
-            retryDelayMillis = 350L,
-            wait = { delay ->
-                try {
-                    Thread.sleep(delay)
-                } catch (interrupted: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw interrupted
-                }
-            }
-        ) {
-            shellText(adb, command).also { output ->
-                require(output.isNotBlank()) { "Пустой ответ диагностической команды" }
+private fun readOnlyShellText(adb: Dadb, command: String): String =
+    TvAutomationEngine.retryReadOnlyCommand(
+        maxAttempts = 2,
+        retryDelayMillis = 350L,
+        wait = { delay ->
+            try {
+                Thread.sleep(delay)
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw interrupted
             }
         }
+    ) {
+        shellText(adb, command).also { output ->
+            require(output.isNotBlank()) { "Пустой ответ команды чтения: $command" }
+        }
+    }
+
+private fun readTvDiagnostics(adb: Dadb): String {
+    fun safe(command: String): String = try {
+        readOnlyShellText(adb, command)
     } catch (_: Exception) { "Недоступно" }
 
     val memory = safe("cat /proc/meminfo | head -n 3")
@@ -2503,11 +2506,23 @@ private fun readTvDiagnostics(adb: Dadb): String {
 }
 
 
-private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSnapshot {
-    val output = shellText(adb, "df -k /data")
-    return TvAutomationEngine.parseDataStorageSnapshot(output)
-        ?: throw Exception("Не удалось надёжно прочитать размер и свободное место раздела /data")
-}
+private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSnapshot =
+    TvAutomationEngine.retryReadOnlyCommand(
+        maxAttempts = 2,
+        retryDelayMillis = 350L,
+        wait = { delay ->
+            try {
+                Thread.sleep(delay)
+            } catch (interrupted: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw interrupted
+            }
+        }
+    ) {
+        val output = shellText(adb, "df -k /data")
+        TvAutomationEngine.parseDataStorageSnapshot(output)
+            ?: throw Exception("Не удалось надёжно прочитать размер и свободное место раздела /data")
+    }
 
 private fun trimTvApplicationCaches(adb: Dadb): String {
     val before = readDataStorageSnapshot(adb)
@@ -2530,7 +2545,7 @@ private fun trimTvApplicationCaches(adb: Dadb): String {
 }
 
 private fun readTvIdentity(adb: Dadb): String {
-    fun prop(name: String) = try { shellText(adb, "getprop $name").trim().ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
+    fun prop(name: String) = try { readOnlyShellText(adb, "getprop $name").trim() } catch (_: Exception) { "неизвестно" }
     val manufacturer = prop("ro.product.manufacturer")
     val model = prop("ro.product.model")
     val device = prop("ro.product.device")
