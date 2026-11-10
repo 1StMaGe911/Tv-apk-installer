@@ -59,6 +59,39 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun curatedGlobalAdAndTrackingPackagesCanBeApprovedWithoutModelProfile() {
+        val globalFacts = setOf("com.vendor.ads", "com.vendor.telemetry")
+        assertEquals(
+            globalFacts,
+            TvAutomationEngine.automaticallyApprovedPackages(
+                packageReviewFlags = emptyMap(),
+                trustedProfile = false,
+                knownGlobalPackages = globalFacts
+            )
+        )
+    }
+
+    @Test
+    fun globalPackageApprovalStillRespectsProtectedAndNeverDisableLists() {
+        val approved = TvAutomationEngine.automaticallyApprovedPackages(
+            packageReviewFlags = emptyMap(),
+            trustedProfile = false,
+            knownGlobalPackages = setOf("com.vendor.ads", "com.android.tv.settings")
+        )
+        val plan = TvAutomationEngine.buildPlan(
+            installedPackages = approved,
+            disabledPackages = emptySet(),
+            detectedCandidates = approved,
+            profileApprovedPackages = approved,
+            protectedPackages = setOf("com.android.tv.settings"),
+            neverDisablePackages = setOf("com.vendor.ads")
+        )
+
+        assertTrue(plan.safeToDisable.isEmpty())
+        assertEquals(2, plan.blockedCount)
+    }
+
+    @Test
     fun cleanupJournalRejectsNonStringArrayValuesBeforeCoercion() {
         assertTrue(CleanupJournalValidator.areStringValues(listOf("com.example.app", "org.example.tv")))
         assertFalse(CleanupJournalValidator.areStringValues(listOf("com.example.app", 42)))
