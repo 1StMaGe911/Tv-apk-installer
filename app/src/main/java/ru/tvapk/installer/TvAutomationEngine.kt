@@ -235,9 +235,15 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         safePackages.isNotEmpty()
 
     /** Only a verified successful cleanup result may advance the combined Launcher flow. */
-    internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean =
-        (result.contains("Отключено:") && Regex("Ошибок:\\s*0").containsMatchIn(result)) ||
-            result.startsWith("Очистка кэша выполнена:")
+    internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean {
+        if (result.startsWith("Очистка кэша выполнена:")) return true
+        val match = Regex(
+            """Отключено:\s*(\d+)\s+из\s+(\d+)\.\s*Ошибок:\s*0(?:\s|$)"""
+        ).find(result) ?: return false
+        val disabled = match.groupValues[1].toIntOrNull() ?: return false
+        val planned = match.groupValues[2].toIntOrNull() ?: return false
+        return disabled == planned
+    }
 
     internal data class Plan(
         val detectedCount: Int,

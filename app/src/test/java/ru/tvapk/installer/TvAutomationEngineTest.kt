@@ -888,13 +888,22 @@ class TvAutomationEngineTest {
     @Test
     fun combinedLauncherFlowContinuesOnlyAfterVerifiedCleanupSuccess() {
         assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
-            "Отключено: 4 из 4. Ошибок: 0\\nИтоговая проверка на ТВ: 4 из 4"
+            "Отключено: 4 из 4. Ошибок: 0\nИтоговая проверка на ТВ: 4 из 4"
+        ))
+        assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Отключено: 0 из 0. Ошибок: 0\nИтоговая проверка на ТВ: 0 из 0"
         ))
         assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
             "Очистка кэша выполнена: удалено 12 МБ"
         ))
         assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
-            "Отключено: 3 из 4. Ошибок: 1\\nНе удалось отключить: package.one"
+            "Отключено: 3 из 4. Ошибок: 0\nИтоговая проверка на ТВ: 3 из 4"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Отключено: 0 из 4. Ошибок: 0\nИтоговая проверка на ТВ: 0 из 4"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Отключено: 3 из 4. Ошибок: 1\nНе удалось отключить: package.one"
         ))
         assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
             "Очистка кэша не выполнена: команда запрещена"
