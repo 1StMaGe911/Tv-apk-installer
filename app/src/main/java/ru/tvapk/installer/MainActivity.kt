@@ -4541,7 +4541,6 @@ fun TvInstallerApp() {
     var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
     var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
     var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
-    var maintenanceDeviceIdentity by remember { mutableStateOf<String?>(null) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -5047,7 +5046,6 @@ fun TvInstallerApp() {
                 }
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.REVIEW_READY))
                 activity.runOnUiThread {
-                    maintenanceDeviceIdentity = deviceIdentityForHistory
                     tvDetails = details
                     diagnostics = diagnosticsSnapshot
                     dataStorageUsedPercent = healthAssessment.dataUsedPercent
@@ -8947,6 +8945,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 check(saveCleanupJournal(context, journal)) {
                                                     "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
                                                 }
+                                                var approvalPersistenceWarning = false
                                                 if (failures.isEmpty()) {
                                                     // Remember only packages that were selected by the user and
                                                     // actually confirmed disabled on this exact TV.
@@ -8956,7 +8955,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             ?.toMutableSet() ?: mutableSetOf()
                                                         previousApprovals.addAll(confirmedDisabled)
                                                         if (!settings.edit().putStringSet(approvalKey, previousApprovals).commit()) {
-                                                            failures.add("не удалось сохранить разрешения для повторных запусков")
+                                                            approvalPersistenceWarning = true
                                                         }
                                                     }
                                                     check(appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)) {
@@ -9010,7 +9009,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 (if (combinedCacheResult.isBlank()) "" else combinedCacheResult + "\n") +
                                                     "Отключено: ${confirmedDisabled.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
-                                                    verificationSummary + healthSummary
+                                                    verificationSummary + healthSummary +
+                                                    (if (approvalPersistenceWarning) "\n⚠ Очистка выполнена, но разрешения для следующих запусков не сохранены." else "")
                                             }
                                         }, onFinished = { result ->
                                             val cleanupVerified =
