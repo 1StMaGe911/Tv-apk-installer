@@ -48,6 +48,45 @@ class TvAutomationEngineTest {
         assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("com.example.app"), listOf("com.example.app", "com.example.app")))
     }
     @Test
+    fun cleanupJournalValidatorRejectsInvalidBaselineDisabledPackages() {
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            baselineDisabledPackages = listOf("not a package")
+        ))
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            baselineDisabledPackages = listOf("com.example.app", "com.example.app")
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsRestoredPackagesOutsidePlanOrDuplicates() {
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            restoredPackages = listOf("org.example.other")
+        ))
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            restoredPackages = listOf("com.example.app", "com.example.app")
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsUnknownCacheTrimState() {
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            cacheTrimState = "succeeded_but_unverified"
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorAcceptsLegacyJournalDefaults() {
+        assertTrue(CleanupJournalValidator.isValid(
+            "tv", 1L, 1, listOf("com.example.app"), emptyList()
+        ))
+    }
+
+    @Test
     fun planOnlyIncludesInstalledApprovedAndUnprotectedPackages() {
         val plan = TvAutomationEngine.buildPlan(
             installedPackages = setOf("safe", "review", "blocked", "never", "disabled"),

@@ -217,8 +217,16 @@ private fun hasCorruptCleanupJournal(context: Context): Boolean {
         val json = JSONObject(raw)
         val planned = json.optJSONArray("planned") ?: return true
         val completed = json.optJSONArray("completed") ?: return true
+        if (json.has("baselineDisabled") && json.optJSONArray("baselineDisabled") == null) return true
+        if (json.has("restored") && json.optJSONArray("restored") == null) return true
         val plannedNames = (0 until planned.length()).map { planned.optString(it) }
         val completedNames = (0 until completed.length()).map { completed.optString(it) }
+        val baselineDisabled = json.optJSONArray("baselineDisabled")?.let { values ->
+            (0 until values.length()).map { values.optString(it) }
+        } ?: emptyList()
+        val restored = json.optJSONArray("restored")?.let { values ->
+            (0 until values.length()).map { values.optString(it) }
+        } ?: emptyList()
         val inFlight = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" }
         !CleanupJournalValidator.isValid(
             deviceIdentity = json.optString("deviceIdentity"),
@@ -226,7 +234,10 @@ private fun hasCorruptCleanupJournal(context: Context): Boolean {
             schemaVersion = json.optInt("schemaVersion", 1),
             plannedPackages = plannedNames,
             completedPackages = completedNames,
-            inFlightPackage = inFlight
+            inFlightPackage = inFlight,
+            baselineDisabledPackages = baselineDisabled,
+            restoredPackages = restored,
+            cacheTrimState = json.optString("cacheTrimState", "not_requested")
         )
     } catch (_: Exception) {
         true

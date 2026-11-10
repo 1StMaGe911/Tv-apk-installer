@@ -13,12 +13,19 @@ internal object CleanupJournalValidator {
         schemaVersion: Int,
         plannedPackages: List<String>,
         completedPackages: List<String>,
-        inFlightPackage: String? = null
+        inFlightPackage: String? = null,
+        baselineDisabledPackages: List<String> = emptyList(),
+        restoredPackages: List<String> = emptyList(),
+        cacheTrimState: String = "not_requested"
     ): Boolean {
         if (deviceIdentity.isBlank() || createdAt <= 0L || schemaVersion !in 1..3 || plannedPackages.isEmpty()) return false
         if (plannedPackages.any { !packageNamePattern.matches(it) } || plannedPackages.distinct().size != plannedPackages.size) return false
         if (completedPackages.any { it !in plannedPackages } || completedPackages.distinct().size != completedPackages.size) return false
         if (inFlightPackage != null && inFlightPackage !in plannedPackages) return false
+        if (baselineDisabledPackages.any { !packageNamePattern.matches(it) } ||
+            baselineDisabledPackages.distinct().size != baselineDisabledPackages.size) return false
+        if (restoredPackages.any { it !in plannedPackages } || restoredPackages.distinct().size != restoredPackages.size) return false
+        if (cacheTrimState !in setOf("not_requested", "running", "completed", "failed")) return false
         return true
     }
 }
