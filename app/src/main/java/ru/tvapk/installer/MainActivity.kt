@@ -2470,6 +2470,15 @@ private fun <T> retryTvReadOnly(action: () -> T): T =
                 throw interrupted
             }
         },
+        shouldRetry = { error ->
+            val message = error.message.orEmpty().lowercase()
+            error is java.io.IOException ||
+                error is java.net.SocketException ||
+                error is java.net.SocketTimeoutException ||
+                error is java.io.EOFException ||
+                message.contains("пустой ответ команды чтения") ||
+                message.contains("не удалось надёжно прочитать размер и свободное место")
+        },
         action = action
     )
 
