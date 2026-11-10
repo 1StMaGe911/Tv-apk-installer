@@ -3952,28 +3952,7 @@ private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String 
 private fun isProtectedSystemPackage(packageName: String): Boolean =
     TvAutomationEngine.isProtectedSystemPackage(packageName)
 
-private fun detectTvProfile(details: String): String {
-    val value = details.lowercase()
-    val brand = when {
-        "tcl" in value -> "TCL"
-        "hisense" in value -> "Hisense"
-        "xiaomi" in value || "redmi" in value -> "Xiaomi"
-        "sony" in value -> "Sony"
-        "philips" in value -> "Philips"
-        "amazon" in value || "fire" in value -> "Amazon Fire TV"
-        "samsung" in value -> "Samsung"
-        "lg" in value -> "LG"
-        else -> "Универсальный профиль"
-    }
-    val platform = when {
-        "fire" in value || "amazon" in value -> "Fire TV / Fire OS"
-        "google" in value -> "Google TV / Android TV"
-        "android" in value -> "Android TV / Android"
-        "vidaa" in value -> "VIDAA (не Android)"
-        else -> "Android-совместимое устройство"
-    }
-    return "$brand • $platform"
-}
+private fun detectTvProfile(details: String): String = TvPlatformClassifier.profileLabel(details)
 
 private data class PackageFact(
     val packageName: String,
