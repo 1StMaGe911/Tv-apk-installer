@@ -1164,6 +1164,7 @@ private fun checkLatestVersion(): UpdateInfo {
         return when {
             apkUrl == null -> UpdateInfo("Доступно обновление $tag, но APK ещё не прикреплён к релизу", releaseUrl, null, 0L)
             apkSha256 == null -> UpdateInfo("Доступно обновление $tag, но GitHub не предоставил SHA-256 APK", releaseUrl, null, 0L)
+            !UpdateArtifactPolicy.isValidSize(apkSize) -> UpdateInfo("Доступно обновление $tag, но размер APK в GitHub некорректен или превышает 200 МБ", releaseUrl, null, apkSize)
             else -> UpdateInfo("Доступно обновление: $tag", releaseUrl, apkUrl, apkSize, apkSha256)
         }
     } finally {
@@ -1171,7 +1172,7 @@ private fun checkLatestVersion(): UpdateInfo {
     }
 }
 
-private const val MAX_UPDATE_APK_BYTES = 200L * 1024L * 1024L
+private const val MAX_UPDATE_APK_BYTES = UpdateArtifactPolicy.MAX_APK_BYTES
 
 private val UPDATE_DOWNLOAD_HOSTS = setOf(
     "github.com",
@@ -1230,7 +1231,8 @@ private fun openUpdateDownloadConnection(initialUrl: URL): HttpURLConnection {
     }
 }
 
-private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha256: String): File {
+private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha256: String, expectedSize: Long): File {
+    require(UpdateArtifactPolicy.isValidSize(expectedSize)) { "Некорректный размер APK обновления" }
     require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Некорректная контрольная сумма APK" }
     val directory = File(context.cacheDir, "updates")
     if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
@@ -1250,6 +1252,9 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         val declaredLength = connection.contentLengthLong
         if (declaredLength > MAX_UPDATE_APK_BYTES) {
             throw Exception("APK превышает допустимый размер 200 МБ. Загрузка отменена")
+        }
+        if (declaredLength >= 0L && declaredLength != expectedSize) {
+            throw Exception("Размер APK на сервере не совпадает с метаданными релиза. Загрузка отменена")
         }
 
         val digest = MessageDigest.getInstance("SHA-256")
@@ -1272,8 +1277,9 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
                 output.fd.sync()
             }
         }
-        if (totalBytes < 1024L || (declaredLength >= 0 && totalBytes != declaredLength)) {
-            throw Exception("Загруженный APK повреждён, пуст или имеет неполный размер")
+        if (!UpdateArtifactPolicy.matchesSize(totalBytes, expectedSize) ||
+            (declaredLength >= 0L && totalBytes != declaredLength)) {
+            throw Exception("Фактический размер APK не совпадает с метаданными релиза")
         }
         val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
         if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
@@ -4441,6 +4447,7 @@ fun TvInstallerApp() {
     var releaseUrl by remember { mutableStateOf<String?>(null) }
     var updateApkUrl by remember { mutableStateOf<String?>(null) }
     var updateApkSha256 by remember { mutableStateOf<String?>(null) }
+    var updateApkSize by remember { mutableStateOf(0L) }
     var downloadedUpdatePath by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -4455,6 +4462,7 @@ fun TvInstallerApp() {
                 releaseUrl = result.releaseUrl
                 updateApkUrl = result.apkUrl
                 updateApkSha256 = result.expectedSha256
+                updateApkSize = result.apkSize
             }
         }.start()
     }
@@ -6045,8 +6053,9 @@ fun TvInstallerApp() {
                                         status = "Нет проверенной SHA-256. Загрузка отменена."
                                         return@Button
                                     }
+                                    val expectedSize = updateApkSize
                                     runTask(
-                                        action = { downloadUpdateApk(context, url, sha256).absolutePath },
+                                        action = { downloadUpdateApk(context, url, sha256, expectedSize).absolutePath },
                                         onFinished = { result ->
                                             if (!result.startsWith("Ошибка")) {
                                                 downloadedUpdatePath = result
