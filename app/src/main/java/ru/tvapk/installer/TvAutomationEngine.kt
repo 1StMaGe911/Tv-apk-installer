@@ -203,11 +203,15 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
     ): String? {
         if (address.isLoopbackAddress || address.isAnyLocalAddress) return null
         val host = address.hostAddress ?: return null
-        val normalizedHost = host.substringBefore('%').lowercase(java.util.Locale.ROOT)
-        val normalizedOwnAddresses = ownAddresses.map {
-            it.substringBefore('%').lowercase(java.util.Locale.ROOT)
-        }.toSet()
-        return host.takeIf { normalizedHost !in normalizedOwnAddresses }
+        // Compare address bytes rather than textual forms: IPv6 has multiple equivalent
+        // spellings (compressed/expanded), and scoped link-local addresses include a zone.
+        val isOwnAddress = ownAddresses.any { own ->
+            runCatching {
+                java.net.InetAddress.getByName(own.substringBefore('%')).address
+                    .contentEquals(address.address)
+            }.getOrDefault(false)
+        }
+        return host.takeUnless { isOwnAddress }
     }
 
     /** Auto-select only when LAN discovery found exactly one ADB device. */
