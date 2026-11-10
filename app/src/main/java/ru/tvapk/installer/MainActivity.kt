@@ -7938,6 +7938,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     verificationSummary + healthSummary
                                             }
                                         })
+                                        }
                                     }) { Text("Отключить выбранные") }
                                 },
                                 dismissButton = {
