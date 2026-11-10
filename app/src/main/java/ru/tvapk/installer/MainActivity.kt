@@ -60,7 +60,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.zip.ZipInputStream
 import java.net.HttpURLConnection
-import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
@@ -108,8 +107,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
     val ownAddresses = runCatching {
         NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
             .flatMap { it.inetAddresses.toList() }
-            .filterIsInstance<Inet4Address>()
-            .mapNotNull { it.hostAddress }
+            .mapNotNull { it.hostAddress?.substringBefore('%')?.lowercase(java.util.Locale.ROOT) }
             .toSet()
     }.getOrDefault(emptySet())
 
@@ -128,13 +126,11 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
                 }
 
                 override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                    val address = serviceInfo.host as? Inet4Address
-                    val host = address?.hostAddress
+                    val host = serviceInfo.host?.let {
+                        TvAutomationEngine.usableDiscoveredAddressHost(it, ownAddresses)
+                    }
                     val port = serviceInfo.port
-                    if (!stopped.get() && address != null && !address.isLoopbackAddress &&
-                        !address.isAnyLocalAddress && host != null && host !in ownAddresses &&
-                        port in 1..65535
-                    ) {
+                    if (!stopped.get() && host != null && port in 1..65535) {
                         val key = "$host:$port"
                         found[key] = TvDevice(serviceInfo.serviceName.ifBlank { "Android TV" }, host, port)
                     }
