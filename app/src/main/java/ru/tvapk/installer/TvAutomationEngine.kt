@@ -50,7 +50,7 @@ internal object TvAutomationEngine {
         installedPackages: Set<String>,
         disabledPackages: Set<String>
     ): RollbackVerification {
-        val restored = rollbackPackages intersect installedPackages - disabledPackages
+        val restored = (rollbackPackages intersect installedPackages) - disabledPackages
         return RollbackVerification(
             restoredPackages = restored,
             remainingPackages = rollbackPackages - restored
