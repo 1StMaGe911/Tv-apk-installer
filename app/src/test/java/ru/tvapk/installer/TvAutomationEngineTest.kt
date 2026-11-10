@@ -18,8 +18,9 @@ class TvAutomationEngineTest {
         assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.RESTORE, TvAutomationEngine.manualPackageRollbackDecision(
             installed = true, currentDisabled = true, wasDisabled = false, isDisabled = true
         ))
+        // A journal entry that claims no state transition is internally inconsistent.
         assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.CONFLICT, TvAutomationEngine.manualPackageRollbackDecision(
-            installed = true, currentDisabled = false, wasDisabled = true, isDisabled = false
+            installed = true, currentDisabled = true, wasDisabled = false, isDisabled = false
         ))
     }
 
