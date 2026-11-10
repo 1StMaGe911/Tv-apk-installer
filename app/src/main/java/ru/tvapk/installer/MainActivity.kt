@@ -2010,8 +2010,48 @@ private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
     val (archive, hasWallpaper, collectionCount) = exportLauncherBackup(context, adb)
     try {
         val destination = File(context.filesDir, "launcher-theme-rollback.zip")
+        val expectedLength = archive.length()
         archive.copyTo(destination, overwrite = true)
-        return "Автокопия прежнего оформления сохранена (${if (hasWallpaper) "с обоями" else "без файла обоев"}, коллекция: $collectionCount)."
+        require(destination.isFile && destination.length() == expectedLength) {
+            "Не удалось полностью сохранить автокопию оформления. Новая тема не применена."
+        }
+        java.util.zip.ZipFile(destination).use { zip ->
+            val names = linkedSetOf<String>()
+            val entries = zip.entries()
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                require(!entry.isDirectory && names.add(entry.name)) { "Автокопия содержит повторяющиеся или недопустимые записи." }
+                val limit = when {
+                    entry.name == "config.json" -> 1024L * 1024L
+                    entry.name == "wallpaper-state.txt" -> 16L
+                    entry.name == "wallpaper.jpg" -> 12L * 1024L * 1024L
+                    entry.name.matches(Regex("wallpapers/wallpaper-[0-9]{3}\\\\.(jpg|jpeg|png|webp)")) -> 10L * 1024L * 1024L
+                    else -> throw IllegalStateException("Неизвестная запись в автокопии: ${entry.name}")
+                }
+                require(entry.size in 1..limit) { "Некорректный размер записи ${entry.name} в автокопии." }
+                var copied = 0L
+                val buffer = ByteArray(8192)
+                zip.getInputStream(entry).use { input ->
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        require(copied <= limit) { "Запись ${entry.name} превышает допустимый размер." }
+                    }
+                }
+                require(copied == entry.size) { "Запись ${entry.name} повреждена или сохранена не полностью." }
+            }
+            require("config.json" in names && "wallpaper-state.txt" in names) { "В автокопии отсутствуют обязательные данные." }
+            require(("wallpaper.jpg" in names) == hasWallpaper) { "Состояние обоев в автокопии не совпадает с исходным." }
+            require(names.count { it.startsWith("wallpapers/") } == collectionCount) { "Количество файлов коллекции в автокопии не совпадает с исходным." }
+            val configText = zip.getInputStream(zip.getEntry("config.json")).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            require(JSONObject(configText).length() > 0) { "Конфигурация в автокопии повреждена." }
+            val state = zip.getInputStream(zip.getEntry("wallpaper-state.txt")).bufferedReader(Charsets.UTF_8).use { it.readText().trim() }
+            require(state in setOf("present", "absent", "unknown") && (state != "present" || hasWallpaper)) {
+                "Состояние обоев в автокопии некорректно."
+            }
+        }
+        return "Автокопия прежнего оформления сохранена и проверена (${if (hasWallpaper) "с обоями" else "без файла обоев"}, коллекция: $collectionCount)."
     } finally {
         archive.delete()
     }
