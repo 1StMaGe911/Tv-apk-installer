@@ -1045,7 +1045,16 @@ private fun connectWithRetry(
         AdbConnectionDiagnostics.retryConnection(
             maxAttempts = 3,
             retryDelayMillis = 1500L,
-            connect = { Dadb.create(host, port, getAdbKey(context)) },
+            connect = {
+                val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
+                if (pairedHost != null && pairedHost.equals(host.trim(), ignoreCase = true)) {
+                    // The selected endpoint is the TLS-connect port advertised separately
+                    // from the pairing port. Keep legacy ADB for devices not yet paired.
+                    KadbTlsTransport.connect(context, host, port)
+                } else {
+                    Dadb.create(host, port, getAdbKey(context))
+                }
+            },
             isRetryable = { error ->
                 AdbConnectionDiagnostics.classify(host, port, errorText(error)).retryable
             }
@@ -6613,8 +6622,8 @@ fun TvInstallerApp() {
                                             .putInt("adb_tls_pairing_port", p)
                                             .apply()
                                         "Беспроводное ADB-сопряжение успешно завершено для $host. Теперь найди порт подключения и подключись."
-                                    }, onFinished = {
-                                        pairingCode = ""
+                                    }, onFinished = { result ->
+                                        if (!result.startsWith("Ошибка")) pairingCode = ""
                                     })
                                 }
                             }, modifier = Modifier.fillMaxWidth()) {
