@@ -4245,6 +4245,7 @@ fun TvInstallerApp() {
     var trackedSystemSettingChanges by remember { mutableStateOf(runCatching { loadTrackedSystemSettingChanges(context) }.getOrDefault(emptyList())) }
     var pendingTrackedPackageRollback by remember { mutableStateOf(false) }
     var pendingCleanupRollback by remember { mutableStateOf(false) }
+    var pendingCleanupResumePackages by remember { mutableStateOf<List<String>?>(null) }
     var pendingCleanupHistoryUndo by remember { mutableStateOf<CleanupHistoryEntry?>(null) }
     var privacyAuditExpanded by remember { mutableStateOf(false) }
     var profileCatalogExpanded by remember { mutableStateOf(false) }
@@ -7639,6 +7640,178 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = { pendingCleanupRollback = true }) {
                                         Text("Откатить незавершённую очистку")
                                     }
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                        val host = journal.host
+                                        val p = journal.port
+                                        if (host.isBlank() || p !in 1..65535) {
+                                            status = "В журнале нет корректного адреса исходного телевизора"
+                                        } else runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                require(readTvIdentity(adb) == journal.deviceIdentity) {
+                                                    "Подключён другой телевизор. Продолжение отменено."
+                                                }
+                                                require(readPackageDisableCapability(adb)) {
+                                                    "Телевизор не подтвердил поддержку безопасного отключения пакетов."
+                                                }
+                                                val installed = readAllPackages(adb).toSet()
+                                                val disabledNow = readDisabledPackages(adb)
+                                                val details = readTvDetails(adb)
+                                                val profile = matchTvModelProfile(details, tvModelProfiles, packageFacts)?.profile
+                                                val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, profile).toSet()
+                                                val approved = profile?.packages?.filterValues { !it.ask }?.keys?.toSet().orEmpty() intersect freshCandidates
+                                                val attempted = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet()
+                                                val recovery = TvAutomationEngine.buildCleanupRecoveryPlan(
+                                                    plannedPackages = journal.plannedPackages.toSet(),
+                                                    completedPackages = attempted,
+                                                    installedPackages = installed,
+                                                    disabledPackages = disabledNow,
+                                                    baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                    restoredPackages = journal.restoredPackages.toSet()
+                                                )
+                                                require(recovery.conflictPackages.isEmpty()) {
+                                                    "Найдены противоречия в журнале: ${recovery.conflictPackages.sorted().joinToString()}. Сначала выполни ручную проверку."
+                                                }
+                                                val resume = TvAutomationEngine.buildCleanupResumePlan(
+                                                    retryablePackages = recovery.retryablePackages,
+                                                    installedPackages = installed,
+                                                    disabledPackages = disabledNow,
+                                                    profileApprovedPackages = approved,
+                                                    protectedPackages = installed.filter { isProtectedSystemPackage(it) }.toSet(),
+                                                    neverDisablePackages = profile?.neverDisable.orEmpty(),
+                                                    baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                    restoredPackages = journal.restoredPackages.toSet()
+                                                )
+                                                require(resume.rejectedPackages.isEmpty() && resume.safeToRetryPackages.isNotEmpty()) {
+                                                    "Нет пакетов, которые можно безопасно продолжить. Отклонено: ${resume.rejectedPackages.sorted().joinToString()}"
+                                                }
+                                                "Проверка готова. Безопасно продолжить: ${resume.safeToRetryPackages.sorted().joinToString()}"
+                                            }
+                                        }) { result ->
+                                            val prefix = "Проверка готова. Безопасно продолжить: "
+                                            if (result.startsWith(prefix)) {
+                                                pendingCleanupResumePackages = result.removePrefix(prefix).split(", ").filter { it.isNotBlank() }
+                                            }
+                                        }
+                                    }) { Text("Подготовить безопасное продолжение") }
+                                    pendingCleanupResumePackages?.let { packages ->
+                                        AlertDialog(
+                                            onDismissRequest = { pendingCleanupResumePackages = null },
+                                            title = { Text("Продолжить прерванную очистку?") },
+                                            text = { Text("Будут повторно проверены и отключены только эти пакеты: ${packages.joinToString()}. Перед каждым действием журнал будет сохранён, а после него состояние проверено. Продолжить?") },
+                                            confirmButton = {
+                                                TextButton(enabled = !busy, onClick = {
+                                                    pendingCleanupResumePackages = null
+                                                    val host = journal.host
+                                                    val p = journal.port
+                                                    runTask({
+                                                        connectWithRetry(context, host, p) { adb ->
+                                                            require(readTvIdentity(adb) == journal.deviceIdentity) {
+                                                                "Подключён другой телевизор. Продолжение отменено."
+                                                            }
+                                                            require(readPackageDisableCapability(adb)) {
+                                                                "Телевизор не подтвердил поддержку безопасного отключения пакетов."
+                                                            }
+                                                            val installed = readAllPackages(adb).toSet()
+                                                            val disabledNow = readDisabledPackages(adb)
+                                                            val details = readTvDetails(adb)
+                                                            val profile = matchTvModelProfile(details, tvModelProfiles, packageFacts)?.profile
+                                                            val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, profile).toSet()
+                                                            val approved = profile?.packages?.filterValues { !it.ask }?.keys?.toSet().orEmpty() intersect freshCandidates
+                                                            val attempted = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet()
+                                                            val recovery = TvAutomationEngine.buildCleanupRecoveryPlan(
+                                                                plannedPackages = journal.plannedPackages.toSet(),
+                                                                completedPackages = attempted,
+                                                                installedPackages = installed,
+                                                                disabledPackages = disabledNow,
+                                                                baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                                restoredPackages = journal.restoredPackages.toSet()
+                                                            )
+                                                            require(recovery.conflictPackages.isEmpty()) {
+                                                                "Состояние телевизора изменилось после предварительной проверки. Обнаружены конфликты: ${recovery.conflictPackages.sorted().joinToString()}. Ничего не изменено."
+                                                            }
+                                                            val resume = TvAutomationEngine.buildCleanupResumePlan(
+                                                                retryablePackages = recovery.retryablePackages,
+                                                                installedPackages = installed,
+                                                                disabledPackages = disabledNow,
+                                                                profileApprovedPackages = approved,
+                                                                protectedPackages = installed.filter { isProtectedSystemPackage(it) }.toSet(),
+                                                                neverDisablePackages = profile?.neverDisable.orEmpty(),
+                                                                baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                                restoredPackages = journal.restoredPackages.toSet()
+                                                            )
+                                                            require(resume.rejectedPackages.isEmpty() && resume.safeToRetryPackages == packages.toSet()) {
+                                                                "Список безопасных пакетов изменился после подтверждения. Ничего не изменено; выполни проверку ещё раз."
+                                                            }
+                                                            var currentJournal = journal
+                                                            val failures = mutableListOf<String>()
+                                                            resume.safeToRetryPackages.sorted().forEachIndexed { index, pkg ->
+                                                                updateMaintenanceProgress("Продолжаем очистку: пакет ${index + 1} из ${resume.safeToRetryPackages.size}: $pkg")
+                                                                currentJournal = currentJournal.copy(inFlightPackage = pkg)
+                                                                check(saveCleanupJournal(context, currentJournal)) {
+                                                                    "Не удалось сохранить журнал перед изменением $pkg. Команда не отправлена."
+                                                                }
+                                                                activity.runOnUiThread { cleanupJournal = currentJournal }
+                                                                runCatching { changePackageStateVerified(adb, pkg, false) }
+                                                                val installedAfter = readAllPackages(adb).toSet()
+                                                                val disabledAfter = readDisabledPackages(adb)
+                                                                if (pkg in installedAfter && pkg in disabledAfter) {
+                                                                    currentJournal = currentJournal.copy(
+                                                                        completedPackages = (currentJournal.completedPackages + pkg).distinct(),
+                                                                        inFlightPackage = null
+                                                                    )
+                                                                    check(saveCleanupJournal(context, currentJournal)) {
+                                                                        "Пакет $pkg отключён, но результат не удалось сохранить. Журнал оставлен для проверки."
+                                                                    }
+                                                                    activity.runOnUiThread { cleanupJournal = currentJournal }
+                                                                } else {
+                                                                    failures += pkg
+                                                                    // Keep inFlightPackage: command result is uncertain and must be reconciled later.
+                                                                    break
+                                                                }
+                                                            }
+                                                            if (failures.isEmpty()) {
+                                                                val finalInstalled = readAllPackages(adb).toSet()
+                                                                val finalDisabled = readDisabledPackages(adb)
+                                                                val verification = TvAutomationEngine.verifyCleanupState(
+                                                                    plannedPackages = currentJournal.plannedPackages.toSet(),
+                                                                    installedPackages = finalInstalled,
+                                                                    disabledPackages = finalDisabled
+                                                                )
+                                                                val confirmed = verification.confirmedDisabledPackages.toList().sorted()
+                                                                currentJournal = currentJournal.copy(completedPackages = confirmed, inFlightPackage = null)
+                                                                check(saveCleanupJournal(context, currentJournal)) {
+                                                                    "Не удалось сохранить итоговую проверку. Журнал оставлен."
+                                                                }
+                                                                if (verification.notConfirmedPackages.isEmpty()) {
+                                                                    check(appendCleanupHistory(context, currentJournal, "Очистка завершена после восстановления", confirmed)) {
+                                                                        "Не удалось сохранить историю. Журнал оставлен."
+                                                                    }
+                                                                    check(clearCleanupJournal(context)) {
+                                                                        "Операция завершена, но журнал не удалось очистить. Он сохранён для проверки."
+                                                                    }
+                                                                    activity.runOnUiThread {
+                                                                        cleanupJournal = null
+                                                                        cleanupHistory = loadCleanupHistory(context)
+                                                                    }
+                                                                    "Продолжение очистки завершено. Проверено пакетов: ${confirmed.size}."
+                                                                } else {
+                                                                    activity.runOnUiThread { cleanupJournal = currentJournal }
+                                                                    "Очистка продолжена частично. Не подтверждены: ${verification.notConfirmedPackages.sorted().joinToString()}"
+                                                                }
+                                                            } else {
+                                                                activity.runOnUiThread { cleanupJournal = currentJournal }
+                                                                "Очистка остановлена: состояние пакета ${failures.joinToString()} не подтверждено. Журнал сохранён."
+                                                            }
+                                                        }
+                                                    })
+                                                }) { Text("Подтвердить продолжение") }
+                                            },
+                                            dismissButton = {
+                                                TextButton(onClick = { pendingCleanupResumePackages = null }) { Text("Отмена") }
+                                            }
+                                        )
+                                    }
+
                                     if (pendingCleanupRollback) {
                                         AlertDialog(
                                             onDismissRequest = { pendingCleanupRollback = false },
