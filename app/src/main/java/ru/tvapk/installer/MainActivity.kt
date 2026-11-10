@@ -4689,6 +4689,7 @@ fun TvInstallerApp() {
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                     pendingCombinedCacheTrim = !cacheTrimWasAttempted && disableSupported && plan.safeToDisable.isNotEmpty() && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
                 }
@@ -7914,12 +7915,14 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                         cleanupJournal = null
                                                                         cleanupHistory = loadCleanupHistory(context)
                                                                         maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                     }
                                                                     "Продолжение очистки завершено. Проверено пакетов: ${confirmed.size}."
                                                                 } else {
                                                                     activity.runOnUiThread {
                                                                         cleanupJournal = currentJournal
                                                                         maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                     }
                                                                     "Очистка продолжена частично. Не подтверждены: ${verification.notConfirmedPackages.sorted().joinToString()}"
                                                                 }
@@ -8032,6 +8035,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             }
                                                             activity.runOnUiThread {
                                                                 maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                 cleanupJournal = if (remaining.isEmpty()) null else durableVerifiedJournal
                                                                 disabledOnDevice = actualDisabledAfterRestore
                                                                 disabledPackages = disabledPackages - verifiedRestored.toSet()
@@ -8423,6 +8427,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 )
                                                 activity.runOnUiThread {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                     if (confirmedDisabled.isNotEmpty()) {
                                                         val userDisabledNow = confirmedDisabled.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = confirmedDisabled.filter { it !in userPackages }.toSet()
