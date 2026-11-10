@@ -1282,7 +1282,7 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
             throw Exception("Фактический размер APK не совпадает с метаданными релиза")
         }
         val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
-        if (!actualSha256.equals(expectedSha256, ignoreCase = true)) {
+        if (!UpdateArtifactPolicy.matchesSha256(actualSha256, expectedSha256)) {
             throw Exception("SHA-256 APK не совпадает с GitHub. Установка отменена")
         }
 
@@ -1341,6 +1341,38 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         throw e
     } finally {
         connection.disconnect()
+    }
+}
+
+
+private fun verifyDownloadedUpdateApk(file: File, expectedSize: Long, expectedSha256: String) {
+    require(file.isFile) { "Файл обновления отсутствует или не является обычным файлом" }
+    require(UpdateArtifactPolicy.isValidSize(expectedSize)) { "Некорректный ожидаемый размер APK" }
+    require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) { "Некорректная ожидаемая SHA-256" }
+    require(file.length() == expectedSize) {
+        "Размер сохранённого APK изменился после загрузки. Скачай обновление заново."
+    }
+
+    val digest = MessageDigest.getInstance("SHA-256")
+    var totalBytes = 0L
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            totalBytes += count
+            require(totalBytes <= UpdateArtifactPolicy.MAX_APK_BYTES) {
+                "APK превышает допустимый размер. Установка отменена."
+            }
+            digest.update(buffer, 0, count)
+        }
+    }
+    val actualSha256 = digest.digest().joinToString("") { "%02x".format(it) }
+    require(UpdateArtifactPolicy.matchesSize(totalBytes, expectedSize) && file.length() == totalBytes) {
+        "Размер APK изменился во время повторной проверки. Установка отменена."
+    }
+    require(UpdateArtifactPolicy.matchesSha256(actualSha256, expectedSha256)) {
+        "SHA-256 сохранённого APK не совпадает с релизом. Установка отменена."
     }
 }
 
@@ -6091,20 +6123,39 @@ fun TvInstallerApp() {
                                             )
                                         )
                                     } else {
-                                        try {
-                                            val contentUri = FileProvider.getUriForFile(
-                                                context,
-                                                "${context.packageName}.fileprovider",
-                                                apk
-                                            )
-                                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                                setDataAndType(contentUri, "application/vnd.android.package-archive")
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            activity.startActivity(installIntent)
-                                        } catch (e: Exception) {
-                                            status = "Не удалось открыть установщик: ${errorText(e)}"
+                                        val expectedSize = updateApkSize
+                                        val expectedSha256 = updateApkSha256
+                                        if (expectedSha256.isNullOrBlank()) {
+                                            downloadedUpdatePath = null
+                                            status = "Нет контрольной суммы релиза. Скачай обновление заново."
+                                            return@Button
                                         }
+                                        runTask(
+                                            action = {
+                                                verifyDownloadedUpdateApk(apk, expectedSize, expectedSha256)
+                                                "APK повторно проверен: размер и SHA-256 совпадают."
+                                            },
+                                            onFinished = { result ->
+                                                if (result.startsWith("Ошибка")) {
+                                                    downloadedUpdatePath = null
+                                                } else {
+                                                    try {
+                                                        val contentUri = FileProvider.getUriForFile(
+                                                            context,
+                                                            "${context.packageName}.fileprovider",
+                                                            apk
+                                                        )
+                                                        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                            setDataAndType(contentUri, "application/vnd.android.package-archive")
+                                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                        }
+                                                        activity.startActivity(installIntent)
+                                                    } catch (e: Exception) {
+                                                        status = "Не удалось открыть установщик: ${errorText(e)}"
+                                                    }
+                                                }
+                                            }
+                                        )
                                     }
                                 }
                             ) {

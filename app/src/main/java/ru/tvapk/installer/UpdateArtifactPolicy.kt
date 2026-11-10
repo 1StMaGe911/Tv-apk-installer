@@ -8,4 +8,9 @@ internal object UpdateArtifactPolicy {
 
     fun matchesSize(actualSize: Long, expectedSize: Long): Boolean =
         isValidSize(expectedSize) && actualSize == expectedSize
+
+    fun matchesSha256(actualSha256: String, expectedSha256: String): Boolean =
+        expectedSha256.matches(Regex("[0-9a-fA-F]{64}")) &&
+            actualSha256.matches(Regex("[0-9a-fA-F]{64}")) &&
+            actualSha256.equals(expectedSha256, ignoreCase = true)
 }
