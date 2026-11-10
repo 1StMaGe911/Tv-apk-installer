@@ -814,6 +814,12 @@ class TvAutomationEngineTest {
         assertTrue(runCatching {
             TvAutomationEngine.cleanupApprovalPreferenceKey(" ")
         }.isFailure)
+        assertTrue(runCatching {
+            TvAutomationEngine.cleanupApprovalPreferenceKey("неизвестно")
+        }.isFailure)
+        assertTrue(runCatching {
+            TvAutomationEngine.cleanupApprovalPreferenceKey("Brand|Model|device|неизвестно")
+        }.isFailure)
     }
 
 }
