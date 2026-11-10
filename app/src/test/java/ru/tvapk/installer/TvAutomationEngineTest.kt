@@ -606,6 +606,10 @@ class TvAutomationEngineTest {
             tv,
             tv.copy(name = "Repeated service announcement")
         )))
+        assertEquals(tv, TvAutomationEngine.uniqueDiscoveredDevice(listOf(
+            tv,
+            tv.copy(name = "Whitespace in address", ip = "  ${tv.ip}  ")
+        )))
         assertNull(TvAutomationEngine.uniqueDiscoveredDevice(listOf(
             tv,
             TvDevice(name = "Bedroom TV", ip = "192.168.1.21", port = 5555)
