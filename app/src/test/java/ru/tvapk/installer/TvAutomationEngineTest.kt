@@ -797,6 +797,15 @@ class TvAutomationEngineTest {
         assertTrue(result.summary.contains("Недостаточно данных"))
     }
     @Test
+    fun discoversModernWirelessDebuggingAndLegacyAdbAdvertisements() {
+        assertEquals(
+            listOf("_adb-tls-connect._tcp.", "_adb._tcp."),
+            TvAutomationEngine.adbDiscoveryServiceTypes()
+        )
+        assertFalse(TvAutomationEngine.adbDiscoveryServiceTypes().contains("_adb-tls-pairing._tcp."))
+    }
+
+    @Test
     fun automaticDeviceDiscoverySelectsOnlyOneUnambiguousTv() {
         val tv = TvDevice(name = "Living Room TV", ip = "192.168.1.20", port = 5555)
         assertNull(TvAutomationEngine.uniqueDiscoveredDevice(emptyList()))
