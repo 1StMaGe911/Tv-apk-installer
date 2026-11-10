@@ -127,6 +127,11 @@ internal object TvAutomationEngine {
         return profileApproved + knownGlobalPackages
     }
 
+    /** Only a verified successful cleanup result may advance the combined Launcher flow. */
+    internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean =
+        (result.contains("Отключено:") && Regex("Ошибок:\\s*0").containsMatchIn(result)) ||
+            result.startsWith("Очистка кэша выполнена:")
+
     internal data class Plan(
         val detectedCount: Int,
         val approvedCount: Int,
