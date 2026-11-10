@@ -133,7 +133,7 @@ class TvAutomationEngineTest {
         val result = TvAutomationEngine.assessHealth(diagnostics)
 
         assertEquals(30, result.uptimeDays)
-        assertTrue(result.warnings.single().contains("обычную перезагрузку"))
+        assertTrue(result.warnings.single().contains("обычная перезагрузка"))
         assertTrue(result.summary.contains("требующие внимания"))
     }
 
