@@ -65,6 +65,16 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun formatsFreeStorageDeltaWithCorrectDirectionAndMissingValues() {
+        assertEquals("+2.0 МБ", TvAutomationEngine.formatStorageDelta(1_048_576L, 3_145_728L))
+        assertEquals("−1.5 МБ", TvAutomationEngine.formatStorageDelta(3_145_728L, 1_572_864L))
+        assertEquals("0 МБ", TvAutomationEngine.formatStorageDelta(2_097_152L, 2_097_152L))
+        assertEquals("н/д", TvAutomationEngine.formatStorageDelta(null, 1_024L))
+        assertEquals("н/д", TvAutomationEngine.formatStorageDelta(1_024L, null))
+        assertEquals("н/д", TvAutomationEngine.formatStorageDelta(-1L, 1_024L))
+    }
+
+    @Test
     fun ignoresImpossibleMemoryCountersInsteadOfReportingHealthyValues() {
         val diagnostics = """
             MemTotal: 1000 kB
