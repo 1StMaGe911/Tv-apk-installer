@@ -22,7 +22,9 @@ class TvAutomationEngineTest {
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("LG")))
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("bulge")))
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("TCL Electronics")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("HP")))
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("unknown", "неизвестно")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("N/A")))
     }
 
     @Test
