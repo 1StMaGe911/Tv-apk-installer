@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.110"
+private const val APP_VERSION = "0.9.111"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -698,7 +698,7 @@ private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outc
 }
 
 
-private data class MaintenanceRunHistoryEntry(
+internal data class MaintenanceRunHistoryEntry(
     val createdAt: Long, val deviceIdentity: String,
     val memoryBefore: Int?, val memoryAfter: Int?,
     val storageBefore: Int?, val storageAfter: Int?,
@@ -710,6 +710,14 @@ private data class MaintenanceRunHistoryEntry(
     val warningsBefore: List<String> = emptyList(),
     val cleanupOutcome: String = "Пакетные изменения не выполнялись",
     val changedPackages: List<String> = emptyList()
+)
+
+internal fun MaintenanceRunHistoryEntry.withCleanupResult(
+    outcome: String,
+    changedPackages: List<String>
+): MaintenanceRunHistoryEntry = copy(
+    cleanupOutcome = outcome,
+    changedPackages = changedPackages.distinct()
 )
 
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
@@ -766,10 +774,7 @@ private fun updateLatestMaintenanceCleanupHistory(
     val existing = loadMaintenanceRunHistory(context).toMutableList()
     val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
     if (index >= 0) {
-        existing[index] = existing[index].copy(
-            cleanupOutcome = outcome,
-            changedPackages = changedPackages.distinct()
-        )
+        existing[index] = existing[index].withCleanupResult(outcome, changedPackages)
     } else {
         existing.add(0, MaintenanceRunHistoryEntry(
             createdAt = System.currentTimeMillis(),
@@ -795,10 +800,13 @@ private fun updateLatestMaintenanceCleanupHistory(
             .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
             .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
             .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+            .put("storageAvailableBytesBefore", item.storageAvailableBytesBefore)
+            .put("storageAvailableBytesAfter", item.storageAvailableBytesAfter)
             .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
             .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
             .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
             .put("warnings", JSONArray(item.warnings))
+            .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
             .put("changedPackages", JSONArray(item.changedPackages)))
     }

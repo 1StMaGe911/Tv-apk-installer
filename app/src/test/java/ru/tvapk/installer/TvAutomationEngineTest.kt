@@ -65,6 +65,41 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupHistoryUpdatePreservesBeforeAndAfterMeasurementsAndWarnings() {
+        val original = MaintenanceRunHistoryEntry(
+            createdAt = 123L,
+            deviceIdentity = "tv-test",
+            memoryBefore = 42,
+            memoryAfter = 55,
+            storageBefore = 91,
+            storageAfter = 84,
+            storageAvailableBytesBefore = 100_000_000L,
+            storageAvailableBytesAfter = 120_000_000L,
+            cacheTrimAttempted = true,
+            cacheTrimOutcome = "Кэш очищен",
+            detectedCandidates = 8,
+            approvedCandidates = 3,
+            reviewCandidates = 4,
+            blockedCandidates = 1,
+            warnings = listOf("После очистки осталось предупреждение"),
+            warningsBefore = listOf("До очистки было предупреждение"),
+            cleanupOutcome = "Ожидает очистки",
+            changedPackages = emptyList()
+        )
+
+        val updated = original.withCleanupResult("Отключено 2 пакета", listOf("com.example.one", "com.example.two"))
+
+        assertEquals(100_000_000L, updated.storageAvailableBytesBefore)
+        assertEquals(120_000_000L, updated.storageAvailableBytesAfter)
+        assertEquals(listOf("До очистки было предупреждение"), updated.warningsBefore)
+        assertEquals(listOf("После очистки осталось предупреждение"), updated.warnings)
+        assertEquals(42, updated.memoryBefore)
+        assertEquals(55, updated.memoryAfter)
+        assertEquals("Отключено 2 пакета", updated.cleanupOutcome)
+        assertEquals(listOf("com.example.one", "com.example.two"), updated.changedPackages)
+    }
+
+    @Test
     fun formatsFreeStorageDeltaWithCorrectDirectionAndMissingValues() {
         assertEquals("+2.0 МБ", TvAutomationEngine.formatStorageDelta(1_048_576L, 3_145_728L))
         assertEquals("−1.5 МБ", TvAutomationEngine.formatStorageDelta(3_145_728L, 1_572_864L))
