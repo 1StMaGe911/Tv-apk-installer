@@ -696,6 +696,7 @@ private data class MaintenanceRunHistoryEntry(
     val detectedCandidates: Int, val approvedCandidates: Int,
     val reviewCandidates: Int, val blockedCandidates: Int,
     val warnings: List<String>,
+    val warningsBefore: List<String> = emptyList(),
     val cleanupOutcome: String = "Пакетные изменения не выполнялись",
     val changedPackages: List<String> = emptyList()
 )
@@ -716,6 +717,7 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
             detectedCandidates = item.optInt("detectedCandidates"), approvedCandidates = item.optInt("approvedCandidates"),
             reviewCandidates = item.optInt("reviewCandidates"), blockedCandidates = item.optInt("blockedCandidates"),
             warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() },
+            warningsBefore = (0 until (item.optJSONArray("warningsBefore") ?: JSONArray()).length()).map { (item.optJSONArray("warningsBefore") ?: JSONArray()).optString(it) }.filter { it.isNotBlank() },
             cleanupOutcome = item.optString("cleanupOutcome", "Пакетные изменения не выполнялись"),
             changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) }
         )
@@ -733,6 +735,7 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
             .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
             .put("warnings", JSONArray(item.warnings))
+            .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
             .put("changedPackages", JSONArray(item.changedPackages)))
     }
@@ -4335,6 +4338,7 @@ fun TvInstallerApp() {
                             .put("detectedCandidates", entry.detectedCandidates).put("approvedCandidates", entry.approvedCandidates)
                             .put("reviewCandidates", entry.reviewCandidates).put("blockedCandidates", entry.blockedCandidates)
                             .put("warnings", JSONArray(entry.warnings))
+                            .put("warningsBefore", JSONArray(entry.warningsBefore))
                             .put("cleanupOutcome", entry.cleanupOutcome)
                             .put("changedPackages", JSONArray(entry.changedPackages)))
                     }
@@ -4463,7 +4467,8 @@ fun TvInstallerApp() {
                     cacheTrimAttempted = cacheTrimWasAttempted, cacheTrimOutcome = cacheTrimOutcome,
                     detectedCandidates = plan.detectedCount, approvedCandidates = plan.approvedCount,
                     reviewCandidates = plan.reviewCount, blockedCandidates = plan.blockedCount,
-                    warnings = healthAssessment.warnings
+                    warnings = healthAssessment.warnings,
+                    warningsBefore = healthBeforeMaintenance.warnings
                 )
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
@@ -8019,7 +8024,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
                                             if (entry.changedPackages.isNotEmpty()) Text("Изменено: ${entry.changedPackages.joinToString()}", color = TextMuted, fontSize = 10.sp)
 
-                                            if (entry.warnings.isNotEmpty()) Text(entry.warnings.joinToString(" · "), color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                            if (entry.warningsBefore.isNotEmpty()) Text("До обслуживания: ${entry.warningsBefore.joinToString(" · ")}", color = Color(0xFFFFD98A), fontSize = 10.sp)
+                                            if (entry.warnings.isNotEmpty()) Text("После обслуживания: ${entry.warnings.joinToString(" · "), color = Color(0xFFFFD98A), fontSize = 10.sp)}
                                         }
                                     }
                                 }
