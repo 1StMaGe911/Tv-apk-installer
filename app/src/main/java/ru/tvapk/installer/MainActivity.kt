@@ -4840,6 +4840,13 @@ fun TvInstallerApp() {
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
+                    // Continue the one-button flow directly to the review screen when
+                    // the scan produced trusted, executable cleanup candidates.
+                    // The existing confirmation dialog remains mandatory before changes.
+                    if (disableSupported && plan.safeToDisable.isNotEmpty()) {
+                        showSettings = false
+                        activeSection = "clean"
+                    }
                     pendingCombinedCacheTrim = !cacheTrimWasAttempted && disableSupported && plan.safeToDisable.isNotEmpty() && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
                 }
                 report
