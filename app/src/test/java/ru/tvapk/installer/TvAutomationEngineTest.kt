@@ -421,6 +421,15 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun apkStoragePreflightRequiresAtLeastTwoApkCopiesAndTwoHundredMiB() {
+        assertEquals(200L * 1024L * 1024L, TvAutomationEngine.requiredStorageBytesForApk(1L))
+        assertEquals(400L * 1024L * 1024L, TvAutomationEngine.requiredStorageBytesForApk(200L * 1024L * 1024L))
+        assertNull(TvAutomationEngine.requiredStorageBytesForApk(0L))
+        assertNull(TvAutomationEngine.requiredStorageBytesForApk(-1L))
+        assertNull(TvAutomationEngine.requiredStorageBytesForApk(Long.MAX_VALUE))
+    }
+
+    @Test
     fun parsesMachineReadableDataStorageSnapshot() {
         val result = TvAutomationEngine.parseDataStorageSnapshot(
             "Filesystem 1K-blocks Used Available Use% Mounted on\n/dev/block/dm-1 16777216 15728640 1048576 94% /data"
