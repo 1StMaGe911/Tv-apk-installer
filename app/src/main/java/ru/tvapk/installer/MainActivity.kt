@@ -4399,22 +4399,14 @@ private fun findCleanupCandidates(
     facts: Map<String, PackageFact>,
     profile: TvModelProfile? = null
 ): List<String> {
-    val protected = setOf(
-        "com.google.android.tvlauncher",
-        "com.google.android.gms",
-        "com.google.android.gsf",
-        "com.android.tv.settings",
-        "com.android.systemui",
-        "com.android.providers.settings"
-    )
-    val reviewedCategories = setOf("ads", "tracking", "demo", "preloads")
-    val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
+    val neverDisable = profile?.neverDisable ?: emptySet()
     return packages.filter { pkg ->
-        pkg !in protected && pkg !in (profile?.neverDisable ?: emptySet()) && (
-            facts[pkg]?.category?.let { it in reviewedCategories } == true ||
-                profile?.packages?.get(pkg)?.category?.let { it in reviewedCategories } == true ||
-                markers.any { marker -> pkg.substringAfterLast('.').contains(marker) || pkg.contains(".$marker") }
-            )
+        TvAutomationEngine.isCleanupCandidate(
+            packageName = pkg,
+            factCategory = facts[pkg]?.category,
+            profileCategory = profile?.packages?.get(pkg)?.category,
+            neverDisablePackages = neverDisable
+        )
     }.distinct().sorted()
 }
 

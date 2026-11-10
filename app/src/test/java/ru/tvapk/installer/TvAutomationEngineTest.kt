@@ -92,6 +92,51 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupCandidateClassifierRecognizesReviewedCatalogCategoriesCaseInsensitively() {
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = "ads"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = " TRACKING "))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = "demo"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = "preloads"))
+    }
+
+    @Test
+    fun cleanupCandidateClassifierUsesModelProfileCategoryWhenFactsAreMissing() {
+        assertTrue(TvAutomationEngine.isCleanupCandidate(
+            packageName = "com.vendor.component",
+            profileCategory = "tracking"
+        ))
+    }
+
+    @Test
+    fun cleanupCandidateClassifierKeepsPackageNameFallbackCaseInsensitive() {
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.AdvertService"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.analytics"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.promo"))
+    }
+
+    @Test
+    fun cleanupCandidateClassifierExcludesProtectedAndNeverDisablePackages() {
+        assertFalse(TvAutomationEngine.isCleanupCandidate(
+            packageName = "com.google.android.tvlauncher",
+            factCategory = "ads"
+        ))
+        assertFalse(TvAutomationEngine.isCleanupCandidate(
+            packageName = "com.vendor.component",
+            factCategory = "tracking",
+            neverDisablePackages = setOf("com.vendor.component")
+        ))
+    }
+
+    @Test
+    fun cleanupCandidateClassifierDoesNotTreatUnreviewedCategoryAsAutomaticCandidate() {
+        assertFalse(TvAutomationEngine.isCleanupCandidate(
+            packageName = "com.vendor.video",
+            factCategory = "streaming",
+            profileCategory = "brand"
+        ))
+    }
+
+    @Test
     fun cleanupJournalRejectsNonStringArrayValuesBeforeCoercion() {
         assertTrue(CleanupJournalValidator.areStringValues(listOf("com.example.app", "org.example.tv")))
         assertFalse(CleanupJournalValidator.areStringValues(listOf("com.example.app", 42)))
