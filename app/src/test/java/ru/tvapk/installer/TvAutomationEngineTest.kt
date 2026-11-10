@@ -629,4 +629,67 @@ class TvAutomationEngineTest {
         )))
     }
 
+    @Test
+    fun readOnlyCommandRetriesTransientFailuresAndReturnsSuccessfulResult() {
+        var attempts = 0
+        val waits = mutableListOf<Long>()
+
+        val result = TvAutomationEngine.retryReadOnlyCommand(
+            maxAttempts = 3,
+            retryDelayMillis = 250L,
+            wait = { waits += it }
+        ) {
+            attempts++
+            if (attempts < 3) throw IllegalStateException("temporary ADB read failure")
+            "diagnostics"
+        }
+
+        assertEquals("diagnostics", result)
+        assertEquals(3, attempts)
+        assertEquals(listOf(250L, 250L), waits)
+    }
+
+    @Test
+    fun readOnlyCommandStopsAfterConfiguredAttemptsAndPropagatesLastError() {
+        var attempts = 0
+        val waits = mutableListOf<Long>()
+
+        val error = runCatching {
+            TvAutomationEngine.retryReadOnlyCommand(
+                maxAttempts = 2,
+                retryDelayMillis = 100L,
+                wait = { waits += it }
+            ) {
+                attempts++
+                throw IllegalStateException("ADB unavailable")
+            }
+        }.exceptionOrNull()
+
+        assertEquals("ADB unavailable", error?.message)
+        assertEquals(2, attempts)
+        assertEquals(listOf(100L), waits)
+    }
+
+    @Test
+    fun readOnlyCommandDoesNotWaitWhenFirstAttemptSucceeds() {
+        var waits = 0
+        val result = TvAutomationEngine.retryReadOnlyCommand(
+            maxAttempts = 3,
+            wait = { waits++ }
+        ) { "ok" }
+
+        assertEquals("ok", result)
+        assertEquals(0, waits)
+    }
+
+    @Test
+    fun readOnlyCommandRejectsUnboundedRetryConfiguration() {
+        assertTrue(runCatching {
+            TvAutomationEngine.retryReadOnlyCommand(maxAttempts = 6) { "ok" }
+        }.isFailure)
+        assertTrue(runCatching {
+            TvAutomationEngine.retryReadOnlyCommand(retryDelayMillis = -1L) { "ok" }
+        }.isFailure)
+    }
+
 }
