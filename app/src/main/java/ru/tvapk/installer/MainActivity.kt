@@ -8489,18 +8489,62 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     require(includeCacheTrim) {
                                                         "Не выбраны пакеты для отключения и не запрошена очистка кэша."
                                                     }
+                                                    updateMaintenanceProgress("Снимаем показатели до очистки кэша…")
+                                                    val deviceIdentity = runCatching { readTvIdentity(adb) }.getOrDefault("неизвестно")
+                                                    val diagnosticsBefore = runCatching { readTvDiagnostics(adb) }.getOrDefault("")
+                                                    val healthBefore = TvAutomationEngine.assessHealth(diagnosticsBefore)
+                                                    val storageBefore = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
+
                                                     updateMaintenanceProgress("Очищаем только кэш приложений…")
-                                                    val cacheResult = trimTvApplicationCaches(adb)
-                                                    val refreshedDiagnostics = readTvDiagnostics(adb)
-                                                    val refreshedHealth = TvAutomationEngine.assessHealth(refreshedDiagnostics)
+                                                    val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
+                                                    val cacheOutcome = trimAttempt.fold(
+                                                        { "Очистка кэша выполнена: $it" },
+                                                        { "Очистка кэша не выполнена: ${errorText(it)}" }
+                                                    )
+                                                    val refreshedDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
+                                                    val refreshedHealth = refreshedDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
+                                                    val storageAfter = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
+                                                    val historyEntry = MaintenanceRunHistoryEntry(
+                                                        createdAt = System.currentTimeMillis(),
+                                                        deviceIdentity = deviceIdentity,
+                                                        memoryBefore = healthBefore.memoryAvailablePercent,
+                                                        memoryAfter = refreshedHealth?.memoryAvailablePercent,
+                                                        storageBefore = healthBefore.dataUsedPercent,
+                                                        storageAfter = refreshedHealth?.dataUsedPercent,
+                                                        storageAvailableBytesBefore = storageBefore?.availableBytes,
+                                                        storageAvailableBytesAfter = storageAfter?.availableBytes,
+                                                        cacheTrimAttempted = true,
+                                                        cacheTrimOutcome = cacheOutcome,
+                                                        detectedCandidates = 0,
+                                                        approvedCandidates = 0,
+                                                        reviewCandidates = 0,
+                                                        blockedCandidates = 0,
+                                                        warnings = refreshedHealth?.warnings.orEmpty(),
+                                                        warningsBefore = healthBefore.warnings
+                                                    )
+                                                    val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                                                     activity.runOnUiThread {
-                                                        diagnostics = refreshedDiagnostics
-                                                        dataStorageUsedPercent = refreshedHealth.dataUsedPercent
+                                                        refreshedDiagnostics?.let { diagnostics = it }
+                                                        dataStorageUsedPercent = refreshedHealth?.dataUsedPercent
+                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                        maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(
+                                                            prefs(context).getString("maintenance_run_history", null)
+                                                        )
                                                     }
-                                                    return@connectWithRetry cacheResult +
-                                                        "\nПовторная оценка ресурсов: ${refreshedHealth.summary}." +
-                                                        if (refreshedHealth.warnings.isEmpty()) "" else
-                                                            "\n" + refreshedHealth.warnings.joinToString("\n")
+                                                    return@connectWithRetry buildString {
+                                                        appendLine(cacheOutcome)
+                                                        if (!historySaved) appendLine("⚠ Не удалось сохранить результат в истории обслуживания.")
+                                                        refreshedHealth?.let {
+                                                            appendLine("Повторная оценка ресурсов: ${it.summary}.")
+                                                            it.warnings.forEach { warning -> appendLine("⚠ $warning") }
+                                                        } ?: appendLine("Повторная диагностика недоступна; показатели после очистки не записаны.")
+                                                        append(
+                                                            "Свободное место /data: " +
+                                                                "${storageBefore?.availableBytes?.let { String.format(java.util.Locale.getDefault(), "%.1f МБ", it / 1048576.0) } ?: "н/д"} → " +
+                                                                "${storageAfter?.availableBytes?.let { String.format(java.util.Locale.getDefault(), "%.1f МБ", it / 1048576.0) } ?: "н/д"} " +
+                                                                "(${TvAutomationEngine.formatStorageDelta(storageBefore?.availableBytes, storageAfter?.availableBytes)})"
+                                                        )
+                                                    }
                                                 }
                                                 updateMaintenanceProgress("Повторно проверяем совместимость и список пакетов…")
                                                 require(readPackageDisableCapability(adb)) {
