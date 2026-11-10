@@ -59,7 +59,32 @@ class AdbConnectionDiagnosticsTest {
         )
         assertEquals("connected", connected)
         assertEquals(3, attempts)
-        assertEquals(listOf(250L, 250L), pauses)
+        assertEquals(listOf(250L, 500L), pauses)
+    }
+
+    @Test
+    fun connectionRetryDelayGrowsExponentiallyAndIsCapped() {
+        assertEquals(1_000L, AdbConnectionDiagnostics.retryDelayForAttempt(1_000L, 1))
+        assertEquals(2_000L, AdbConnectionDiagnostics.retryDelayForAttempt(1_000L, 2))
+        assertEquals(4_000L, AdbConnectionDiagnostics.retryDelayForAttempt(1_000L, 3))
+        assertEquals(8_000L, AdbConnectionDiagnostics.retryDelayForAttempt(1_000L, 4))
+        assertEquals(10_000L, AdbConnectionDiagnostics.retryDelayForAttempt(1_000L, 5))
+        assertEquals(10_000L, AdbConnectionDiagnostics.retryDelayForAttempt(Long.MAX_VALUE, 5))
+        assertEquals(0L, AdbConnectionDiagnostics.retryDelayForAttempt(0L, 3))
+    }
+
+    @Test
+    fun rejectsUnboundedConnectionRetryConfiguration() {
+        assertTrue(runCatching {
+            AdbConnectionDiagnostics.retryConnection(
+                maxAttempts = 6,
+                connect = { "connected" },
+                isRetryable = { true }
+            )
+        }.isFailure)
+        assertTrue(runCatching {
+            AdbConnectionDiagnostics.retryDelayForAttempt(100L, 0)
+        }.isFailure)
     }
 
     @Test
