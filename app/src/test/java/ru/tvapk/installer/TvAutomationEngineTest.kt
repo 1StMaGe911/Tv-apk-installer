@@ -131,6 +131,65 @@ class TvAutomationEngineTest {
         assertEquals(setOf("safe"), plan.safeToDisable)
     }
 
+
+    @Test
+    fun recoveryReconcilesInFlightPackageAlreadyDisabledWithoutRepeatingIt() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
+            completedPackages = setOf("com.example.done"),
+            installedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
+            disabledPackages = setOf("com.example.done", "com.example.inFlight"),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+        assertEquals(setOf("com.example.done", "com.example.inFlight"), result.confirmedCompletedPackages)
+        assertEquals(setOf("com.example.pending"), result.retryablePackages)
+        assertTrue(result.conflictPackages.isEmpty())
+    }
+
+    @Test
+    fun recoveryDoesNotRetryPreviouslyCompletedPackageThatIsNowEnabled() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.app"),
+            completedPackages = setOf("com.example.app"),
+            installedPackages = setOf("com.example.app"),
+            disabledPackages = emptySet(),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+        assertTrue(result.retryablePackages.isEmpty())
+        assertEquals(setOf("com.example.app"), result.conflictPackages)
+    }
+
+    @Test
+    fun recoveryReportsMissingPackageAsConflict() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.missing"),
+            completedPackages = emptySet(),
+            installedPackages = emptySet(),
+            disabledPackages = emptySet(),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+        assertEquals(setOf("com.example.missing"), result.conflictPackages)
+        assertTrue(result.retryablePackages.isEmpty())
+    }
+
+    @Test
+    fun recoveryExcludesBaselineAndAlreadyRestoredPackages() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.baseline", "com.example.restored", "com.example.pending"),
+            completedPackages = emptySet(),
+            installedPackages = setOf("com.example.baseline", "com.example.restored", "com.example.pending"),
+            disabledPackages = setOf("com.example.baseline"),
+            baselineDisabledPackages = setOf("com.example.baseline"),
+            restoredPackages = setOf("com.example.restored")
+        )
+        assertEquals(setOf("com.example.pending"), result.retryablePackages)
+        assertTrue(result.confirmedCompletedPackages.isEmpty())
+        assertTrue(result.conflictPackages.isEmpty())
+    }
+
     @Test
     fun rollbackFinalSnapshotConfirmsOnlyInstalledAndEnabledPackages() {
         val result = TvAutomationEngine.verifyRollbackState(

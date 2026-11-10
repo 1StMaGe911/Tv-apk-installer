@@ -68,6 +68,41 @@ internal object TvAutomationEngine {
             safeToDisable = safe
         )
     }
+
+    internal data class CleanupRecoveryPlan(
+        val confirmedCompletedPackages: Set<String>,
+        val retryablePackages: Set<String>,
+        val conflictPackages: Set<String>
+    )
+
+    /**
+     * Reconciles an interrupted journal with a fresh Package Manager snapshot.
+     * A package is never retried if it was previously marked complete but is now enabled.
+     * Packages disabled before this operation or already restored are excluded.
+     */
+    internal fun buildCleanupRecoveryPlan(
+        plannedPackages: Set<String>,
+        completedPackages: Set<String>,
+        installedPackages: Set<String>,
+        disabledPackages: Set<String>,
+        baselineDisabledPackages: Set<String>,
+        restoredPackages: Set<String>
+    ): CleanupRecoveryPlan {
+        val confirmed = sortedSetOf<String>()
+        val retryable = sortedSetOf<String>()
+        val conflicts = sortedSetOf<String>()
+        plannedPackages.forEach { packageName ->
+            if (packageName in baselineDisabledPackages || packageName in restoredPackages) return@forEach
+            when {
+                packageName !in installedPackages -> conflicts += packageName
+                packageName in disabledPackages -> confirmed += packageName
+                packageName in completedPackages -> conflicts += packageName
+                else -> retryable += packageName
+            }
+        }
+        return CleanupRecoveryPlan(confirmed, retryable, conflicts)
+    }
+
     internal data class RollbackVerification(
         val restoredPackages: Set<String>,
         val remainingPackages: Set<String>
