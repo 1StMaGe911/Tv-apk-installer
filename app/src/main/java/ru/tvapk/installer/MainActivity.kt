@@ -5060,18 +5060,16 @@ fun TvInstallerApp() {
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
-                    pendingCleanupAutoExecute = TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-                        safePackages = plan.safeToDisable,
-                        rememberedApprovals = rememberedDeviceApprovals,
-                        cacheTrimPending = !cacheTrimWasAttempted && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
+                    pendingCleanupAutoExecute = TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
+                        safePackages = plan.safeToDisable
                     )
-                    // Offer cache-only cleanup even when no package can be safely disabled.
-                    // Cache trimming does not depend on package-disable support.
-                    pendingCombinedCacheTrim = !cacheTrimWasAttempted &&
+                    // Keep optional cache trimming separate from package cleanup consent.
+                    // When safe packages exist, run them now and leave cache trim as a separate opt-in.
+                    pendingCombinedCacheTrim = plan.safeToDisable.isEmpty() &&
+                        !cacheTrimWasAttempted &&
                         healthAssessment.dataUsedPercent?.let { it >= 90 } == true
-                    // Continue the one-button flow directly to the review screen when
-                    // there are trusted package candidates or a cache-only recommendation.
-                    // The existing confirmation dialog remains mandatory before changes.
+                    // The user's one-button action authorizes only the pre-approved package plan.
+                    // New / review-only packages never enter safeToDisable and remain untouched.
                     val hasPendingCleanupWork =
                         (disableSupported && plan.safeToDisable.isNotEmpty()) || pendingCombinedCacheTrim
                     if (hasPendingCleanupWork) {
@@ -7606,7 +7604,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("АВТОМАТИЧЕСКОЕ ОБСЛУЖИВАНИЕ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                        Text("Одна кнопка проверит Android TV, оценит память и хранилище, найдёт безопасные кандидаты для очистки и покажет подтверждение перед изменениями.", color = TextMuted, fontSize = 12.sp)
+                        Text("Одна кнопка проверит Android TV, оценит память и хранилище и автоматически отключит только точные пакеты рекламы и отслеживания из проверенного плана. Новые и неоднозначные компоненты останутся без изменений и потребуют отдельного подтверждения.", color = TextMuted, fontSize = 12.sp)
                         val canStartMaintenance = MaintenanceDashboardPolicy.canStartMaintenance(
                             busy = busy,
                             cleanupJournalCorrupt = cleanupJournalCorrupt,
