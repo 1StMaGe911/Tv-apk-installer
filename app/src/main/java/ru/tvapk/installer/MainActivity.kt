@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.117"
+private const val APP_VERSION = "0.9.118"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
