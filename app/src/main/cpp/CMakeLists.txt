@@ -6,6 +6,7 @@ include(FetchContent)
 # Pin BoringSSL to a reviewed commit. BoringSSL does not promise a stable ABI.
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_Declare(
     boringssl
     GIT_REPOSITORY https://github.com/google/boringssl.git
