@@ -128,6 +128,10 @@ class UpdateCheckWorker(
             )
         }
 
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(UPDATE_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        ) return false
+
         val openApp = PendingIntent.getActivity(
             applicationContext,
             1001,
