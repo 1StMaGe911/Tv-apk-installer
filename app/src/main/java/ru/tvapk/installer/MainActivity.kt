@@ -7719,12 +7719,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 }
                                                                 activity.runOnUiThread { cleanupHistory = loadCleanupHistory(context) }
                                                                 "Откат завершён: восстановлено ${restored.size} пакетов." +
-                                                                    if (recoveryConflicts.isNotEmpty()) " Требуют ручной проверки: ${recoveryConflicts.joinToString()}." else "" +
-                                                                    if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
+                                                                    (if (recoveryConflicts.isNotEmpty()) " Требуют ручной проверки: ${recoveryConflicts.joinToString()}." else "") +
+                                                                    (if (historyUpdated) "" else " Не удалось обновить историю обслуживания.")
                                                             } else {
                                                                 "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}" +
-                                                                    if (recoveryConflicts.isNotEmpty()) " Противоречия журнала: ${recoveryConflicts.joinToString()}." else "" +
-                                                                    if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
+                                                                    (if (recoveryConflicts.isNotEmpty()) " Противоречия журнала: ${recoveryConflicts.joinToString()}." else "") +
+                                                                    (if (historyUpdated) "" else " Не удалось обновить историю обслуживания.")
                                                             }
                                                         }
                                                     }, { cleanupJournal = loadCleanupJournal(context); cleanupJournalCorrupt = hasCorruptCleanupJournal(context) })
