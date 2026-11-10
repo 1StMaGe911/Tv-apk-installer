@@ -8,6 +8,15 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun portableRestoreScriptsRequireExactInteractiveConfirmation() {
+        assertEquals(3, TvAutomationEngine.portableRestoreConfirmationGuard("bash").size)
+        assertTrue(TvAutomationEngine.portableRestoreConfirmationGuard("bash").last().contains("RESTORE"))
+        assertEquals(2, TvAutomationEngine.portableRestoreConfirmationGuard("powershell").size)
+        assertTrue(TvAutomationEngine.portableRestoreConfirmationGuard("powershell").last().contains("-cne 'RESTORE'"))
+        assertTrue(TvAutomationEngine.portableRestoreConfirmationGuard("unknown").isEmpty())
+    }
+
+    @Test
     fun manualPackageRollbackDecisionRequiresInstalledPackageAndExpectedState() {
         assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.MISSING, TvAutomationEngine.manualPackageRollbackDecision(
             installed = false, currentDisabled = true, wasDisabled = false, isDisabled = true
