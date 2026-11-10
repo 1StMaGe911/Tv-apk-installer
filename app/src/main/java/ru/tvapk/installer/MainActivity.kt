@@ -104,6 +104,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
     val stopped = java.util.concurrent.atomic.AtomicBoolean(false)
     val accepting = java.util.concurrent.atomic.AtomicBoolean(true)
     val finished = java.util.concurrent.CountDownLatch(1)
+    val activeDiscoveryStarts = java.util.concurrent.atomic.AtomicInteger(0)
     val ownAddresses = runCatching {
         NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
             .flatMap { it.inetAddresses.toList() }
@@ -159,15 +160,21 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
             override fun onDiscoveryStopped(type: String) = Unit
-            override fun onStartDiscoveryFailed(type: String, errorCode: Int) { finished.countDown() }
+            override fun onStartDiscoveryFailed(type: String, errorCode: Int) {
+                if (activeDiscoveryStarts.decrementAndGet() <= 0) finished.countDown()
+            }
             override fun onStopDiscoveryFailed(type: String, errorCode: Int) = Unit
         }
     }
 
     val started = mutableListOf<NsdManager.DiscoveryListener>()
     listeners.forEach { (type, listener) ->
+        activeDiscoveryStarts.incrementAndGet()
         runCatching { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
             .onSuccess { started += listener }
+            .onFailure {
+                if (activeDiscoveryStarts.decrementAndGet() <= 0) finished.countDown()
+            }
     }
     try {
         finished.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
