@@ -72,7 +72,22 @@ internal object KadbTlsTransport {
         configureIdentity(context)
         val connected = Kadb.tryConnection(host.trim(), connectPort)
             ?: throw IOException("TLS ADB handshake failed for $host:$connectPort")
-        return KadbDadbAdapter(connected)
+        val adapter = KadbDadbAdapter(connected)
+        try {
+            // A successful TLS socket is not enough: verify that the ADB shell
+            // service is usable before the UI reports the television as connected.
+            val probe = adapter.shell("echo TV_APK_INSTALLER_TLS_OK")
+            if (probe.exitCode != 0 || probe.output.trim() != "TV_APK_INSTALLER_TLS_OK") {
+                throw IOException(
+                    "TLS ADB shell verification failed: " +
+                        probe.output.take(240).ifBlank { "unexpected probe response" }
+                )
+            }
+            return adapter
+        } catch (error: Exception) {
+            runCatching { adapter.close() }
+            throw error
+        }
     }
 
     private fun validateEndpoint(host: String, port: Int) {
