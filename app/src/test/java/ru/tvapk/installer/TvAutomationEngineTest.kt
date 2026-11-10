@@ -8,6 +8,14 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun cleanupJournalRejectsNonStringArrayValuesBeforeCoercion() {
+        assertTrue(CleanupJournalValidator.areStringValues(listOf("com.example.app", "org.example.tv")))
+        assertFalse(CleanupJournalValidator.areStringValues(listOf("com.example.app", 42)))
+        assertFalse(CleanupJournalValidator.areStringValues(listOf("com.example.app", null)))
+        assertTrue(CleanupJournalValidator.areStringValues(emptyList()))
+    }
+
+    @Test
     fun cleanupJournalValidatorAcceptsValidJournal() {
         assertTrue(CleanupJournalValidator.isValid(
             deviceIdentity = "Hisense/TV/build",

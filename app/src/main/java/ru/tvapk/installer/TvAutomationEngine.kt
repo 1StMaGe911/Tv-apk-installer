@@ -5,6 +5,8 @@ package ru.tvapk.installer
  * It never performs ADB operations; execution remains a separate, verified step.
  */
 internal object CleanupJournalValidator {
+    internal fun areStringValues(values: List<Any?>): Boolean = values.all { it is String }
+
     private val packageNamePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
 
     internal fun isValid(
