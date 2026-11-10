@@ -5,8 +5,11 @@ plugins {
 }
 
 android {
+    // Kadb 2.1.5 publishes AAR metadata requiring API 37 at compile time.
+    // Keep targetSdk unchanged; this does not opt the app into API 37 runtime behavior.
+    compileSdk = 37
+
     namespace = "ru.tvapk.installer"
-    compileSdk = 35
 
     defaultConfig {
         applicationId = "ru.tvapk.installer"
