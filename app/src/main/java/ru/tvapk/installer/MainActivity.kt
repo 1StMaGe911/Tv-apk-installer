@@ -8999,7 +8999,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 } else {
                                                     installLauncherAfterMaintenance = false
                                                     maintenanceReadyToInstallLauncher = false
-                                                    status = "$result\\nLauncher не установлен: этап очистки не завершился успешно."
+                                                    status = "$result\nLauncher не установлен: этап очистки не завершился успешно."
                                                 }
                                             }
                                         })
