@@ -112,11 +112,20 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             return true
         }
 
-        val normalizedPackage = packageName.lowercase(java.util.Locale.ROOT)
-        val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
-        return markers.any { marker ->
-            normalizedPackage.substringAfterLast('.').contains(marker) ||
-                normalizedPackage.contains(".$marker")
+        // Match package components, not arbitrary substrings: "downloads" and
+        // "adidas" are unrelated names. Prefix matching retains common service names.
+        val components = packageName.lowercase(java.util.Locale.ROOT)
+            .split(Regex("[._]"))
+            .filter { it.isNotBlank() }
+        val markers = listOf(
+            "ads", "adservice", "adservices", "adid", "advert",
+            "tracking", "analytics", "promo", "promotion", "feedback", "demo"
+        )
+        return components.any { component ->
+            markers.any { marker ->
+                if (marker == "adid") component == marker
+                else component.startsWith(marker)
+            }
         }
     }
 
