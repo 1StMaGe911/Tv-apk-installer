@@ -775,4 +775,23 @@ class TvAutomationEngineTest {
         }.isFailure)
     }
 
+    @Test
+    fun combinedLauncherFlowContinuesOnlyAfterVerifiedCleanupSuccess() {
+        assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Отключено: 4 из 4. Ошибок: 0\\nИтоговая проверка на ТВ: 4 из 4"
+        ))
+        assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Очистка кэша выполнена: удалено 12 МБ"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Отключено: 3 из 4. Ошибок: 1\\nНе удалось отключить: package.one"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Очистка кэша не выполнена: команда запрещена"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Ошибка: устройство не отвечает"
+        ))
+    }
+
 }
