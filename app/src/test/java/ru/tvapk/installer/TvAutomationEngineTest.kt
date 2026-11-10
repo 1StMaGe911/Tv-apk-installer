@@ -12,6 +12,7 @@ class TvAutomationEngineTest {
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("Sony Corporation", "BRAVIA")))
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("TCL", "FFALCON")))
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", emptyList()))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("неизвестно", "unknown")))
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("", listOf("TCL")))
     }
 
