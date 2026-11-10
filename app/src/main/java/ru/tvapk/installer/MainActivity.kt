@@ -5060,9 +5060,10 @@ fun TvInstallerApp() {
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
-                    pendingCleanupAutoExecute = TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
-                        safePackages = plan.safeToDisable
-                    )
+                    pendingCleanupAutoExecute = disableSupported &&
+                        TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
+                            safePackages = plan.safeToDisable
+                        )
                     // Keep optional cache trimming separate from package cleanup consent.
                     // When safe packages exist, run them now and leave cache trim as a separate opt-in.
                     pendingCombinedCacheTrim = plan.safeToDisable.isEmpty() &&
