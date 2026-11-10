@@ -7572,27 +7572,39 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                     "Не удалось надёжно сохранить результат восстановления $pkg. Журнал оставлен для повторной проверки."
                                                                 }
                                                             }
-                                                            val remaining = rollbackPackages - restored.toSet()
+                                                            val actualDisabledAfterRestore = readDisabledPackages(adb)
+                                                            val rollbackVerification = TvAutomationEngine.verifyRollbackState(
+                                                                rollbackPackages = rollbackPackages.toSet(),
+                                                                installedPackages = installed,
+                                                                disabledPackages = actualDisabledAfterRestore
+                                                            )
+                                                            val verifiedRestored = rollbackVerification.restoredPackages.toList().sorted()
+                                                            val remaining = rollbackVerification.remainingPackages.toList().sorted()
                                                             val rollbackOutcome = if (remaining.isEmpty()) "Откат завершён" else "Откат частичный"
                                                             val historyUpdated = updateLatestMaintenanceCleanupHistory(
-                                                                context, journal.deviceIdentity, rollbackOutcome, restored
+                                                                context, journal.deviceIdentity, rollbackOutcome, verifiedRestored
                                                             )
-                                                            val actualDisabledAfterRestore = readDisabledPackages(adb)
+                                                            val durableVerifiedJournal = durableRollbackJournal.copy(
+                                                                completedPackages = remaining,
+                                                                inFlightPackage = null,
+                                                                restoredPackages = (journal.restoredPackages + verifiedRestored).distinct()
+                                                            )
+                                                            if (remaining.isNotEmpty()) {
+                                                                check(saveCleanupJournal(context, durableVerifiedJournal)) {
+                                                                    "Не удалось сохранить итоговую проверку восстановления. Журнал оставлен для повторной попытки."
+                                                                }
+                                                            }
                                                             activity.runOnUiThread {
                                                                 maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                                                                cleanupJournal = if (remaining.isEmpty()) null else durableRollbackJournal.copy(
-                                                                    completedPackages = remaining.toList(),
-                                                                    inFlightPackage = null,
-                                                                    restoredPackages = (journal.restoredPackages + restored).distinct()
-                                                                )
+                                                                cleanupJournal = if (remaining.isEmpty()) null else durableVerifiedJournal
                                                                 disabledOnDevice = actualDisabledAfterRestore
-                                                                disabledPackages = disabledPackages - restored.toSet()
-                                                                managedSystemDisabledPackages = managedSystemDisabledPackages - restored.toSet()
+                                                                disabledPackages = disabledPackages - verifiedRestored.toSet()
+                                                                managedSystemDisabledPackages = managedSystemDisabledPackages - verifiedRestored.toSet()
                                                                 settings.edit().putStringSet("disabled_packages", disabledPackages)
                                                                     .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
                                                             }
                                                             if (remaining.isEmpty()) {
-                                                                appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + restored).distinct())
+                                                                appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + verifiedRestored).distinct())
                                                                 check(clearCleanupJournal(context)) {
                                                                     "Пакеты восстановлены, но не удалось удалить журнал. Он сохранён для повторной проверки."
                                                                 }

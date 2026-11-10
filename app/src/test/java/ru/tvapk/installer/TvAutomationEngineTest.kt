@@ -27,6 +27,42 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun rollbackFinalSnapshotConfirmsOnlyInstalledAndEnabledPackages() {
+        val result = TvAutomationEngine.verifyRollbackState(
+            rollbackPackages = setOf("restored", "still-disabled", "missing"),
+            installedPackages = setOf("restored", "still-disabled"),
+            disabledPackages = setOf("still-disabled")
+        )
+
+        assertEquals(setOf("restored"), result.restoredPackages)
+        assertEquals(setOf("still-disabled", "missing"), result.remainingPackages)
+    }
+
+    @Test
+    fun rollbackFinalSnapshotCanConfirmRecoveryAfterAnUncertainCommand() {
+        val result = TvAutomationEngine.verifyRollbackState(
+            rollbackPackages = setOf("enabled-after-command-error"),
+            installedPackages = setOf("enabled-after-command-error"),
+            disabledPackages = emptySet()
+        )
+
+        assertEquals(setOf("enabled-after-command-error"), result.restoredPackages)
+        assertTrue(result.remainingPackages.isEmpty())
+    }
+
+    @Test
+    fun rollbackFinalSnapshotKeepsPackagesWhenDeviceStillReportsThemDisabled() {
+        val result = TvAutomationEngine.verifyRollbackState(
+            rollbackPackages = setOf("not-restored"),
+            installedPackages = setOf("not-restored"),
+            disabledPackages = setOf("not-restored")
+        )
+
+        assertTrue(result.restoredPackages.isEmpty())
+        assertEquals(setOf("not-restored"), result.remainingPackages)
+    }
+
+    @Test
     fun automaticCacheTrimRequiresOptInAndAtLeastNinetyPercentUsage() {
         assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(false, 95))
         assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, null))

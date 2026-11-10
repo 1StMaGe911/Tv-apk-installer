@@ -39,6 +39,24 @@ internal object TvAutomationEngine {
             safeToDisable = safe
         )
     }
+    internal data class RollbackVerification(
+        val restoredPackages: Set<String>,
+        val remainingPackages: Set<String>
+    )
+
+    /** Reconciles rollback results against the final Package Manager snapshot. */
+    internal fun verifyRollbackState(
+        rollbackPackages: Set<String>,
+        installedPackages: Set<String>,
+        disabledPackages: Set<String>
+    ): RollbackVerification {
+        val restored = (rollbackPackages intersect installedPackages) - disabledPackages
+        return RollbackVerification(
+            restoredPackages = restored,
+            remainingPackages = rollbackPackages - restored
+        )
+    }
+
     internal fun shouldAutomaticallyTrimCache(enabled: Boolean, dataUsedPercent: Int?): Boolean =
         enabled && dataUsedPercent != null && dataUsedPercent in 90..100
 
