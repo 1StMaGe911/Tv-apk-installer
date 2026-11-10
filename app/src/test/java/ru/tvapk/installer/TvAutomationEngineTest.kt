@@ -190,6 +190,7 @@ class TvAutomationEngineTest {
     @Test
     fun cleanupCandidateClassifierRecognizesMarkersAtComponentBoundaries() {
         assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.AdServices"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.adid"))
         assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.partner_ads_service"))
         assertTrue(TvAutomationEngine.isCleanupCandidate("com.ads.provider"))
     }
