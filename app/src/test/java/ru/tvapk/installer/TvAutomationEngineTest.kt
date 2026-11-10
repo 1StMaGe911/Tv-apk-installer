@@ -72,6 +72,32 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupJournalValidatorRejectsBaselinePackagesIncludedInThePlan() {
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            baselineDisabledPackages = listOf("com.example.app")
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsRestoringPackagesDisabledBeforeMaintenance() {
+        assertFalse(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.app"), emptyList(),
+            baselineDisabledPackages = listOf("com.example.previouslydisabled"),
+            restoredPackages = listOf("com.example.previouslydisabled")
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorAcceptsDisjointBaselineAndChangedPackages() {
+        assertTrue(CleanupJournalValidator.isValid(
+            "tv", 1L, 3, listOf("com.example.changed"), emptyList(),
+            baselineDisabledPackages = listOf("com.example.previouslydisabled"),
+            restoredPackages = listOf("com.example.changed")
+        ))
+    }
+
+    @Test
     fun cleanupJournalValidatorRejectsUnknownCacheTrimState() {
         assertFalse(CleanupJournalValidator.isValid(
             "tv", 1L, 3, listOf("com.example.app"), emptyList(),
