@@ -795,33 +795,14 @@ class TvAutomationEngineTest {
     }
 
     @Test
-    fun rememberedCleanupRunsAutomaticallyOnlyWhenEveryPackageWasPreviouslyApproved() {
-        val remembered = setOf("com.vendor.ads", "com.vendor.tracking")
-        assertTrue(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-            safePackages = remembered,
-            rememberedApprovals = remembered,
-            cacheTrimPending = false
+    fun oneButtonCleanupAutomaticallyRunsOnlyThePreApprovedPackagePlan() {
+        assertTrue(TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
+            setOf("com.vendor.ads", "com.vendor.tracking")
         ))
-        assertTrue(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-            safePackages = setOf("com.vendor.ads"),
-            rememberedApprovals = remembered,
-            cacheTrimPending = false
+        assertTrue(TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
+            setOf("com.vendor.ads")
         ))
-        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-            safePackages = emptySet(),
-            rememberedApprovals = remembered,
-            cacheTrimPending = false
-        ))
-        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-            safePackages = setOf("com.vendor.ads", "com.unknown.new"),
-            rememberedApprovals = remembered,
-            cacheTrimPending = false
-        ))
-        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
-            safePackages = remembered,
-            rememberedApprovals = remembered,
-            cacheTrimPending = true
-        ))
+        assertFalse(TvAutomationEngine.shouldAutoExecuteApprovedCleanup(emptySet()))
     }
 
     @Test
