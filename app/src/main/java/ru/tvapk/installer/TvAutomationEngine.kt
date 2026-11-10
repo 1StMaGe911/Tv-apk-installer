@@ -141,6 +141,19 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         return true
     }
 
+    /**
+     * Compares complete hardware identifiers while ignoring case and separators.
+     * Unicode letters and digits are retained; empty identifiers never match.
+     */
+    internal fun isSameHardwareIdentifier(expected: String, actual: String): Boolean {
+        fun canonical(value: String): String = value.trim()
+            .lowercase(java.util.Locale.ROOT)
+            .filter { it.isLetterOrDigit() }
+        val expectedId = canonical(expected)
+        val actualId = canonical(actual)
+        return expectedId.isNotEmpty() && expectedId == actualId
+    }
+
     private fun normalizedCategories(vararg categories: String?): List<String> =
         categories.mapNotNull { it?.trim()?.lowercase(java.util.Locale.ROOT) }
 
