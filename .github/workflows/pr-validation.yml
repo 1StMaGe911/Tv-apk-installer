@@ -42,7 +42,7 @@ jobs:
       - name: Проверить совместимость SPAKE2 на BoringSSL
         run: |
           CC=clang CXX=clang++ cmake -S app/src/main/cpp -B "$RUNNER_TEMP/spake2-host" -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/spake2-host" --target adb_spake2 spake2_host_test --parallel 2
+          cmake --build "$RUNNER_TEMP/spake2-host" --target adb_spake2 spake2_host_test --parallel 4
           "$RUNNER_TEMP/spake2-host/spake2_host_test"
           mkdir -p "$RUNNER_TEMP/spake2-classes"
           javac -d "$RUNNER_TEMP/spake2-classes" \
