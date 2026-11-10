@@ -140,14 +140,12 @@ internal object TvAutomationEngine {
         return "cleanup_approved_packages_v1_$digest"
     }
 
-    /** Auto-run only the exact package set previously confirmed and verified on this TV. */
-    internal fun shouldAutoExecuteRememberedCleanup(
-        safePackages: Set<String>,
-        rememberedApprovals: Set<String>,
-        cacheTrimPending: Boolean
-    ): Boolean =
-        safePackages.isNotEmpty() && !cacheTrimPending &&
-            safePackages.all { it in rememberedApprovals }
+    /**
+     * A deliberate one-button maintenance run authorizes the exact pre-approved plan.
+     * Review-only packages never enter safePackages; optional cache trimming has its own consent.
+     */
+    internal fun shouldAutoExecuteApprovedCleanup(safePackages: Set<String>): Boolean =
+        safePackages.isNotEmpty()
 
     /** Only a verified successful cleanup result may advance the combined Launcher flow. */
     internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean =
