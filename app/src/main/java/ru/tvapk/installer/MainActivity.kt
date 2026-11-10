@@ -8769,11 +8769,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val freshDetails = readTvDetails(adb)
                                                 val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles, packageFacts)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
+                                                val freshGlobalApprovals = packageFacts.values.asSequence()
+                                                    .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
+                                                    .map { it.packageName }
+                                                    .toSet()
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
+                                                    val trustedModelApproval = freshProfile?.automaticDisableTrusted == true &&
+                                                        freshProfile.packages[pkg]?.ask == false
                                                     pkg in installed && pkg !in alreadyDisabled && pkg in freshCandidates &&
-                                                        freshProfile?.automaticDisableTrusted == true &&
-                                                        freshProfile.packages[pkg]?.ask == false &&
+                                                        (pkg in freshGlobalApprovals || trustedModelApproval) &&
                                                         !isProtectedSystemPackage(pkg) && pkg !in (freshProfile?.neverDisable ?: emptySet())
                                                 }
                                                 require(safeSelected.size == selected.size) {
