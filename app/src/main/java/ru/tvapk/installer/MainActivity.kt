@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import dadb.AdbKeyPair
 import dadb.Dadb
 import dadb.InstallResult
@@ -4445,6 +4446,9 @@ fun TvInstallerApp() {
     }
     var tvName by remember { mutableStateOf("") }
     var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var pairingEndpoints by remember { mutableStateOf(emptyList<AdbPairingEndpoint>()) }
+    var pairingPort by remember { mutableStateOf(settings.getInt("adb_tls_pairing_port", 0).takeIf { it in 1..65535 }?.toString() ?: "") }
+    var pairingCode by remember { mutableStateOf("") }
 
     var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -6542,6 +6546,79 @@ fun TvInstallerApp() {
                                         Text("${device.name} — ${device.ip}:${device.port}")
                                     }
                                 }
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                pairingEndpoints = emptyList()
+                                val host = ip.trim()
+                                if (host.isBlank()) {
+                                    status = "Сначала укажи или выбери IP телевизора."
+                                } else {
+                                    runTask(action = {
+                                        val found = discoverAdbPairingEndpoints(context)
+                                        val matching = matchingAdbPairingEndpoints(host, found)
+                                        activity.runOnUiThread { pairingEndpoints = matching }
+                                        when (matching.size) {
+                                            0 -> "Порт сопряжения не найден для $host. Включи «Беспроводную отладку» на ТВ и убедись, что телефон и телевизор в одной сети."
+                                            1 -> "Найден порт сопряжения: " + matching.single().port + ". Введи код с экрана телевизора."
+                                            else -> "Найдено несколько портов сопряжения для $host. Выбери нужный."
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Поиск порта сопряжения..." else "Найти порт беспроводного сопряжения")
+                            }
+                            if (pairingEndpoints.isNotEmpty()) {
+                                Text("ПОРТЫ СОПРЯЖЕНИЯ", color = GoldLight, style = MaterialTheme.typography.labelLarge)
+                                pairingEndpoints.forEach { endpoint ->
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        onClick = {
+                                            pairingPort = endpoint.port.toString()
+                                            settings.edit().putInt("adb_tls_pairing_port", endpoint.port).apply()
+                                            status = "Выбран порт сопряжения " + endpoint.port + " для " + endpoint.host + "."
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(endpoint.name + " — " + endpoint.host + ":" + endpoint.port)
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = pairingPort,
+                                onValueChange = { pairingPort = it.filter(Char::isDigit).take(5) },
+                                label = { Text("Порт сопряжения (Wireless Debugging)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = pairingCode,
+                                onValueChange = { pairingCode = it.filter(Char::isDigit).take(6) },
+                                label = { Text("Шестизначный код с экрана телевизора") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = pairingPort.toIntOrNull()
+                                val code = pairingCode
+                                if (host.isBlank() || p == null || p !in 1..65535 || !code.matches(Regex("^[0-9]{6}$"))) {
+                                    status = "Укажи IP, порт сопряжения и шестизначный код с экрана ТВ."
+                                } else {
+                                    runTask(action = {
+                                        runBlocking {
+                                            KadbTlsTransport.pair(context, host, p, code, tvName)
+                                        }
+                                        settings.edit()
+                                            .putString("adb_tls_paired_host", host)
+                                            .putInt("adb_tls_pairing_port", p)
+                                            .apply()
+                                        "Беспроводное ADB-сопряжение успешно завершено для $host. Теперь найди порт подключения и подключись."
+                                    }, onFinished = {
+                                        pairingCode = ""
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Сопряжение..." else "Сопрячь телевизор по TLS")
                             }
                             Button(enabled = !busy, onClick = {
                                 val host = ip.trim()
