@@ -948,22 +948,32 @@ private fun connectWithRetry(
     port: Int,
     action: (Dadb) -> String
 ): String {
+    require(host.isNotBlank() && port in 1..65535) { "Проверь IP-адрес и порт ADB" }
     var lastError: Throwable? = null
+    var attempts = 0
 
     repeat(3) { attempt ->
+        attempts = attempt + 1
         try {
             return Dadb.create(host, port, getAdbKey(context)).use {
                 action(it)
             }
         } catch (e: Exception) {
             lastError = e
+            val rawError = errorText(e)
+            val diagnosis = AdbConnectionDiagnostics.classify(host, port, rawError)
+            if (!diagnosis.retryable) {
+                throw Exception(AdbConnectionDiagnostics.format(host, port, rawError), e)
+            }
             if (attempt < 2) Thread.sleep(1500)
         }
     }
 
+    val rawError = errorText(lastError ?: Exception("Неизвестная ошибка"))
     throw Exception(
-        "Не удалось подключиться после 3 попыток: " +
-            errorText(lastError ?: Exception("Неизвестная ошибка"))
+        "Не удалось подключиться после $attempts попыток. " +
+            AdbConnectionDiagnostics.format(host, port, rawError),
+        lastError
     )
 }
 
