@@ -89,6 +89,40 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         packageName.startsWith("com.google.android.overlay.modules")
 }
 
+    /**
+     * Shared candidate classifier for bundled facts and model metadata.
+     * Category labels are normalized, while package-name markers remain a
+     * fallback for packages absent from the curated catalog.
+     */
+    internal fun isCleanupCandidate(
+        packageName: String,
+        factCategory: String? = null,
+        profileCategory: String? = null,
+        neverDisablePackages: Set<String> = emptySet()
+    ): Boolean {
+        if (packageName.isBlank() || packageName in neverDisablePackages ||
+            isProtectedSystemPackage(packageName)
+        ) return false
+
+        val reviewedCategories = setOf("ads", "tracking", "demo", "preloads")
+        fun normalizedCategory(value: String?): String? =
+            value?.trim()?.lowercase(java.util.Locale.ROOT)
+
+        if (normalizedCategories(factCategory, profileCategory).any { it in reviewedCategories }) {
+            return true
+        }
+
+        val normalizedPackage = packageName.lowercase(java.util.Locale.ROOT)
+        val markers = listOf("ads", "advert", "tracking", "analytics", "promo", "promotion", "feedback", "demo")
+        return markers.any { marker ->
+            normalizedPackage.substringAfterLast('.').contains(marker) ||
+                normalizedPackage.contains(".$marker")
+        }
+    }
+
+    private fun normalizedCategories(vararg categories: String?): List<String> =
+        categories.mapNotNull { it?.trim()?.lowercase(java.util.Locale.ROOT) }
+
     /** Auto-select only when LAN discovery found exactly one ADB device. */
     internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? {
         // NSD can report the same endpoint more than once (for example, repeated
