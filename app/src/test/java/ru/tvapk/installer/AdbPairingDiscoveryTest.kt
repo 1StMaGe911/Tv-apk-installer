@@ -36,4 +36,28 @@ class AdbPairingDiscoveryTest {
 
         assertTrue(matchingAdbPairingEndpoints("not-an-ip-address", endpoints).isEmpty())
     }
+    @Test
+    fun hostnameIsRejectedWithoutAttemptingDnsResolution() {
+        val endpoints = listOf(AdbPairingEndpoint("TV", "tv.example.invalid", 37123))
+
+        assertTrue(matchingAdbPairingEndpoints("tv.example.invalid", endpoints).isEmpty())
+    }
+
+    @Test
+    fun nonCanonicalIpv4ShorthandIsRejected() {
+        val endpoints = listOf(AdbPairingEndpoint("TV", "192.168.1.40", 37123))
+
+        assertTrue(matchingAdbPairingEndpoints("192.168.1", endpoints).isEmpty())
+    }
+
+    @Test
+    fun scopedIpv6AddressMatchesSameAddressWithoutZone() {
+        val endpoints = listOf(AdbPairingEndpoint("TV", "fe80::40%wlan0", 37123))
+
+        assertEquals(
+            listOf(37123),
+            matchingAdbPairingEndpoints("fe80:0:0:0:0:0:0:40%wlan1", endpoints).map { it.port }
+        )
+    }
+
 }
