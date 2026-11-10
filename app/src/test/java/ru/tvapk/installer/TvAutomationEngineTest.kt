@@ -826,6 +826,13 @@ class TvAutomationEngineTest {
                 java.net.InetAddress.getByName("2001:db8::10"), ownAddresses
             )
         )
+        // Expanded and compressed IPv6 forms represent the same address.
+        assertNull(
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("2001:0db8:0000:0000:0000:0000:0000:0010"),
+                ownAddresses
+            )
+        )
         assertNull(
             TvAutomationEngine.usableDiscoveredAddressHost(
                 java.net.InetAddress.getByName("127.0.0.1"), ownAddresses
