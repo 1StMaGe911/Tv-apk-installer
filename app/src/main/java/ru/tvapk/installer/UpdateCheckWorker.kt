@@ -94,12 +94,12 @@ class UpdateCheckWorker(
                 ?: throw IllegalStateException("GitHub returned an invalid release version")
             val installedVersion = appVersionName()
 
-            if (AppVersionComparator.compare(latestTag, installedVersion) > 0) {
-                val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
-                val alreadyNotified = preferences.getString("last_notified_update_version", null)
-                if (alreadyNotified != latestTag && showUpdateNotification(latestTag)) {
-                    preferences.edit().putString("last_notified_update_version", latestTag).apply()
-                }
+            val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
+            val alreadyNotified = preferences.getString("last_notified_update_version", null)
+            if (UpdateCheckNotificationPolicy.shouldNotify(latestTag, installedVersion, alreadyNotified) &&
+                showUpdateNotification(latestTag)
+            ) {
+                preferences.edit().putString("last_notified_update_version", latestTag).apply()
             }
             Result.success()
         } catch (_: IOException) {
