@@ -307,19 +307,35 @@ private fun loadTrackedPackageChanges(context: Context): List<TrackedPackageChan
     return try {
         val array = JSONArray(raw)
         require(array.length() <= 500) { "Журнал ручных изменений превышает допустимый размер" }
-        (0 until array.length()).mapNotNull { index ->
-            val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val parsed = (0 until array.length()).map { index ->
+            val item = array.optJSONObject(index)
+                ?: throw IllegalArgumentException("Запись ${index + 1} не является объектом")
             val identity = item.optString("deviceIdentity")
             val packageName = item.optString("packageName")
-            if (identity.isBlank() || !trackedPackageNamePattern.matches(packageName)) return@mapNotNull null
+            require(identity.isNotBlank() && trackedPackageNamePattern.matches(packageName)) {
+                "Некорректный телевизор или имя пакета в записи ${index + 1}"
+            }
+            require(item.has("wasDisabled") && item.opt("wasDisabled") is Boolean &&
+                item.has("isDisabled") && item.opt("isDisabled") is Boolean) {
+                "Отсутствует корректное состояние пакета в записи ${index + 1}"
+            }
+            require(item.has("changedAt") && item.opt("changedAt") is Number &&
+                item.optLong("changedAt", -1L) >= 0L) {
+                "Некорректное время записи ${index + 1}"
+            }
             TrackedPackageChange(
                 deviceIdentity = identity,
                 packageName = packageName,
                 wasDisabled = item.optBoolean("wasDisabled"),
                 isDisabled = item.optBoolean("isDisabled"),
-                changedAt = item.optLong("changedAt", 0L)
+                changedAt = item.optLong("changedAt")
             )
-        }.distinctBy { it.deviceIdentity + "|" + it.packageName }.sortedByDescending { it.changedAt }
+        }
+        ManualChangeJournalPolicy.validateEntries(
+            entries = parsed,
+            key = { it.deviceIdentity + "|" + it.packageName },
+            isValid = { it.deviceIdentity.isNotBlank() && trackedPackageNamePattern.matches(it.packageName) && it.changedAt >= 0L }
+        ).sortedByDescending { it.changedAt }
     } catch (e: Exception) {
         throw Exception("Не удалось прочитать журнал ручных изменений. Исходные данные сохранены; новые записи и откат заблокированы: ${e.message}", e)
     }
@@ -439,17 +455,31 @@ private fun loadTrackedAutoStartChanges(context: Context): List<TrackedAutoStart
     return try {
         val array = JSONArray(raw)
         require(array.length() <= 500) { "Журнал автозапуска превышает допустимый размер" }
-        (0 until array.length()).mapNotNull { index ->
-            val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val parsed = (0 until array.length()).map { index ->
+            val item = array.optJSONObject(index)
+                ?: throw IllegalArgumentException("Запись ${index + 1} не является объектом")
             val identity = item.optString("deviceIdentity")
             val component = item.optString("component")
             val wasState = item.optString("wasState")
             val isState = item.optString("isState")
-            if (identity.isBlank() || !trackedComponentPattern.matches(component) ||
-                wasState !in setOf("default", "enabled", "disabled") ||
-                isState !in setOf("default", "enabled", "disabled")) return@mapNotNull null
-            TrackedAutoStartChange(identity, component, wasState, isState, item.optLong("changedAt", 0L))
-        }.distinctBy { it.deviceIdentity + "|" + it.component }.sortedByDescending { it.changedAt }
+            require(identity.isNotBlank() && trackedComponentPattern.matches(component) &&
+                wasState in setOf("default", "enabled", "disabled") &&
+                isState in setOf("default", "enabled", "disabled")) {
+                "Некорректное состояние компонента в записи ${index + 1}"
+            }
+            require(item.has("changedAt") && item.opt("changedAt") is Number &&
+                item.optLong("changedAt", -1L) >= 0L) {
+                "Некорректное время записи ${index + 1}"
+            }
+            TrackedAutoStartChange(identity, component, wasState, isState, item.optLong("changedAt"))
+        }
+        ManualChangeJournalPolicy.validateEntries(
+            entries = parsed,
+            key = { it.deviceIdentity + "|" + it.component },
+            isValid = { it.deviceIdentity.isNotBlank() && trackedComponentPattern.matches(it.component) &&
+                it.wasState in setOf("default", "enabled", "disabled") &&
+                it.isState in setOf("default", "enabled", "disabled") && it.changedAt >= 0L }
+        ).sortedByDescending { it.changedAt }
     } catch (e: Exception) {
         throw Exception("Не удалось прочитать журнал автозапуска. Исходные данные сохранены; новые записи и откат заблокированы: ${e.message}", e)
     }
@@ -615,16 +645,31 @@ private fun loadTrackedSystemSettingChanges(context: Context): List<TrackedSyste
     val raw = prefs(context).getString("manual_system_setting_change_journal", null) ?: return emptyList()
     val array = JSONArray(raw)
     require(array.length() <= 500) { "Журнал системных настроек превышает допустимый размер" }
-    return (0 until array.length()).mapNotNull { index ->
-        val item = array.optJSONObject(index) ?: return@mapNotNull null
+    val parsed = (0 until array.length()).map { index ->
+        val item = array.optJSONObject(index)
+            ?: throw IllegalArgumentException("Запись ${index + 1} не является объектом")
         val id = item.optString("deviceIdentity")
         val ns = item.optString("namespace")
         val key = item.optString("key")
         val before = if (item.isNull("wasValue")) null else item.optString("wasValue")
         val after = item.optString("isValue")
-        if (id.isBlank() || ns != "secure" || key !in trackedSystemSettingKeys) return@mapNotNull null
-        TrackedSystemSettingChange(id, ns, key, before, after, item.optLong("changedAt", 0L))
-    }.distinctBy { it.deviceIdentity + "|" + it.namespace + "|" + it.key }.sortedByDescending { it.changedAt }
+        require(id.isNotBlank() && ns == "secure" && key in trackedSystemSettingKeys &&
+            after.length <= 4096 && (before == null || before.length <= 4096)) {
+            "Некорректная системная настройка в записи ${index + 1}"
+        }
+        require(item.has("changedAt") && item.opt("changedAt") is Number &&
+            item.optLong("changedAt", -1L) >= 0L) {
+            "Некорректное время записи ${index + 1}"
+        }
+        TrackedSystemSettingChange(id, ns, key, before, after, item.optLong("changedAt"))
+    }
+    return ManualChangeJournalPolicy.validateEntries(
+        entries = parsed,
+        key = { it.deviceIdentity + "|" + it.namespace + "|" + it.key },
+        isValid = { it.deviceIdentity.isNotBlank() && it.namespace == "secure" &&
+            it.key in trackedSystemSettingKeys && it.isValue.length <= 4096 &&
+            (it.wasValue == null || it.wasValue.length <= 4096) && it.changedAt >= 0L }
+    ).sortedByDescending { it.changedAt }
 }
 private fun saveTrackedSystemSettingChanges(context: Context, changes: List<TrackedSystemSettingChange>) {
     require(changes.size <= 500) { "Журнал системных настроек достиг лимита в 500 записей" }
