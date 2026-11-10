@@ -147,8 +147,8 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
         }
     }
 
-    val listeners = listOf("_adb._tcp.").map { serviceType ->
-        object : NsdManager.DiscoveryListener {
+    val listeners = TvAutomationEngine.adbDiscoveryServiceTypes().map { serviceType ->
+        serviceType to object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(type: String) = Unit
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val key = "${serviceInfo.serviceType}/${serviceInfo.serviceName}"
@@ -165,8 +165,7 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
     }
 
     val started = mutableListOf<NsdManager.DiscoveryListener>()
-    listeners.forEachIndexed { index, listener ->
-        val type = "_adb._tcp."
+    listeners.forEach { (type, listener) ->
         runCatching { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
             .onSuccess { started += listener }
     }
