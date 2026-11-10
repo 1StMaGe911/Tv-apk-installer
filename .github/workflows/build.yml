@@ -38,6 +38,11 @@ jobs:
         with:
           cache-disabled: false
 
+      - name: Установить Android SDK Platform 37
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37"
+
       - name: Проверить логику автоматизации
         run: gradle :app:testDebugUnitTest --no-daemon
 
