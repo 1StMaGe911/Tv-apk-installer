@@ -949,32 +949,22 @@ private fun connectWithRetry(
     action: (Dadb) -> String
 ): String {
     require(host.isNotBlank() && port in 1..65535) { "Проверь IP-адрес и порт ADB" }
-    var lastError: Throwable? = null
-    var attempts = 0
-
-    repeat(3) { attempt ->
-        attempts = attempt + 1
-        try {
-            return Dadb.create(host, port, getAdbKey(context)).use {
-                action(it)
+    val adb = try {
+        AdbConnectionDiagnostics.retryConnection(
+            maxAttempts = 3,
+            retryDelayMillis = 1500L,
+            connect = { Dadb.create(host, port, getAdbKey(context)) },
+            isRetryable = { error ->
+                AdbConnectionDiagnostics.classify(host, port, errorText(error)).retryable
             }
-        } catch (e: Exception) {
-            lastError = e
-            val rawError = errorText(e)
-            val diagnosis = AdbConnectionDiagnostics.classify(host, port, rawError)
-            if (!diagnosis.retryable) {
-                throw Exception(AdbConnectionDiagnostics.format(host, port, rawError), e)
-            }
-            if (attempt < 2) Thread.sleep(1500)
-        }
+        )
+    } catch (error: Exception) {
+        val rawError = errorText(error)
+        throw Exception(AdbConnectionDiagnostics.format(host, port, rawError), error)
     }
 
-    val rawError = errorText(lastError ?: Exception("Неизвестная ошибка"))
-    throw Exception(
-        "Не удалось подключиться после $attempts попыток. " +
-            AdbConnectionDiagnostics.format(host, port, rawError),
-        lastError
-    )
+    // Never retry the device action: a timeout may happen after the TV already applied it.
+    return adb.use { connection -> action(connection) }
 }
 
 private fun loadDevices(context: Context): List<TvDevice> {
