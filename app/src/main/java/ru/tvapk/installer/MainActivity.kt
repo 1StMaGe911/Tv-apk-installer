@@ -219,7 +219,7 @@ private fun hasCorruptCleanupJournal(context: Context): Boolean {
         val identity = json.optString("deviceIdentity")
         val createdAt = json.optLong("createdAt", 0L)
         if (identity.isBlank() || createdAt <= 0L || planned.length() == 0) return true
-        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
         val plannedNames = (0 until planned.length()).map { planned.optString(it) }
         if (plannedNames.any { !packagePattern.matches(it) } || plannedNames.distinct().size != plannedNames.size) return true
         val completed = json.optJSONArray("completed") ?: return true
