@@ -242,7 +242,7 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         // is confirmed disabled. A zero error counter alone is not sufficient:
         // partial verification must never be reported as a successful cleanup.
         val match = Regex(
-            """Отключено:\\s*(\\d+)\\s+из\\s+(\\d+)\\.\\s*Ошибок:\\s*0(?:\\s|$)"""
+            """Отключено:\s*(\d+)\s+из\s+(\d+)\.\s*Ошибок:\s*0(?:\s|$)"""
         ).find(result) ?: return false
         val disabled = match.groupValues[1].toIntOrNull() ?: return false
         val planned = match.groupValues[2].toIntOrNull() ?: return false
