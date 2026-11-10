@@ -794,4 +794,26 @@ class TvAutomationEngineTest {
         ))
     }
 
+    @Test
+    fun cleanupApprovalPreferenceKeyIsStableAndDeviceScoped() {
+        val first = TvAutomationEngine.cleanupApprovalPreferenceKey(
+            "Google|Model-A|device-a|fingerprint-a"
+        )
+        assertEquals(first, TvAutomationEngine.cleanupApprovalPreferenceKey(
+            "Google|Model-A|device-a|fingerprint-a"
+        ))
+        assertFalse(first == TvAutomationEngine.cleanupApprovalPreferenceKey(
+            "Google|Model-B|device-b|fingerprint-b"
+        ))
+        assertTrue(first.startsWith("cleanup_approved_packages_v1_"))
+        assertFalse(first.contains("fingerprint-a"))
+    }
+
+    @Test
+    fun cleanupApprovalPreferenceKeyRejectsUnknownIdentity() {
+        assertTrue(runCatching {
+            TvAutomationEngine.cleanupApprovalPreferenceKey(" ")
+        }.isFailure)
+    }
+
 }
