@@ -196,6 +196,24 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         "_adb._tcp."
     )
 
+    /** Keeps usable IPv4 and IPv6 DNS-SD endpoints while excluding this phone and unusable addresses. */
+    internal fun usableDiscoveredAddressHost(
+        address: java.net.InetAddress,
+        ownAddresses: Set<String>
+    ): String? {
+        if (address.isLoopbackAddress || address.isAnyLocalAddress) return null
+        val host = address.hostAddress ?: return null
+        // Compare address bytes rather than textual forms: IPv6 has multiple equivalent
+        // spellings (compressed/expanded), and scoped link-local addresses include a zone.
+        val isOwnAddress = ownAddresses.any { own ->
+            runCatching {
+                java.net.InetAddress.getByName(own.substringBefore('%')).address
+                    .contentEquals(address.address)
+            }.getOrDefault(false)
+        }
+        return host.takeUnless { isOwnAddress }
+    }
+
     /** Auto-select only when LAN discovery found exactly one ADB device. */
     internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? {
         // NSD can report the same endpoint more than once (for example, repeated

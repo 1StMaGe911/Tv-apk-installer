@@ -806,6 +806,46 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun discoveredAddressValidationSupportsIpv4AndIpv6AndRejectsLocalAddresses() {
+        val ownAddresses = setOf("192.168.1.10", "2001:db8::10")
+
+        assertEquals(
+            "192.168.1.20",
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("192.168.1.20"), ownAddresses
+            )
+        )
+        assertEquals(
+            "2001:db8:0:0:0:0:0:20",
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("2001:db8::20"), ownAddresses
+            )
+        )
+        assertNull(
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("2001:db8::10"), ownAddresses
+            )
+        )
+        // Expanded and compressed IPv6 forms represent the same address.
+        assertNull(
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("2001:0db8:0000:0000:0000:0000:0000:0010"),
+                ownAddresses
+            )
+        )
+        assertNull(
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("127.0.0.1"), ownAddresses
+            )
+        )
+        assertNull(
+            TvAutomationEngine.usableDiscoveredAddressHost(
+                java.net.InetAddress.getByName("::"), ownAddresses
+            )
+        )
+    }
+
+    @Test
     fun automaticDeviceDiscoverySelectsOnlyOneUnambiguousTv() {
         val tv = TvDevice(name = "Living Room TV", ip = "192.168.1.20", port = 5555)
         assertNull(TvAutomationEngine.uniqueDiscoveredDevice(emptyList()))
