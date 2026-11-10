@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.115"
+private const val APP_VERSION = "0.9.116"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -7814,6 +7814,11 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 }
                                                 updateMaintenanceProgress("Создаём точку восстановления…")
                                                 val deviceIdentity = readTvIdentity(adb)
+                                                // A previous failed cleanup may still need rollback. Never overwrite
+                                                // its only durable recovery journal with a new operation.
+                                                require(loadCleanupJournal(context) == null) {
+                                                    "Предыдущая очистка ещё не завершена или ожидает отката. Сначала проверь журнал и заверши восстановление; новый запуск очистки заблокирован, чтобы не потерять возможность отката."
+                                                }
                                                 // Capture and persist a full restore point before the first package mutation.
                                                 val baselineDisabledSet = readDisabledPackages(adb)
                                                 val baselineDisabled = baselineDisabledSet.toList().sorted()
