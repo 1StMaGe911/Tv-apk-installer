@@ -190,6 +190,12 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
     private fun normalizedCategories(vararg categories: String?): List<String> =
         categories.mapNotNull { it?.trim()?.lowercase(java.util.Locale.ROOT) }
 
+    /** Modern wireless debugging plus legacy ADB-over-network DNS-SD advertisements. */
+    internal fun adbDiscoveryServiceTypes(): List<String> = listOf(
+        "_adb-tls-connect._tcp.",
+        "_adb._tcp."
+    )
+
     /** Auto-select only when LAN discovery found exactly one ADB device. */
     internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? {
         // NSD can report the same endpoint more than once (for example, repeated
