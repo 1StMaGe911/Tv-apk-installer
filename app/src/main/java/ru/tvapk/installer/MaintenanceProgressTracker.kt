@@ -12,7 +12,7 @@ internal enum class MaintenanceStage(val label: String) {
     APP_SCAN("Проверяем установленные приложения и профиль устройства…"),
     PLAN("Формируем безопасный план обслуживания…"),
     REPORT("Сохраняем отчёт и историю обслуживания…"),
-    COMPLETE("Проверка и подготовка плана завершены")
+    REVIEW_READY("План готов; ожидается подтверждение действий")
 }
 
 /** Rejects repeated, skipped, or out-of-order progress updates. */
