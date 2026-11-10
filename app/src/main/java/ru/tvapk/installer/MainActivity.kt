@@ -681,17 +681,21 @@ private fun loadCleanupHistory(context: Context): List<CleanupHistoryEntry> {
     } catch (_: Exception) { emptyList() }
 }
 
-private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outcome: String, changed: List<String>) {
+private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outcome: String, changed: List<String>): Boolean {
     val history = JSONArray()
-    val existing = loadCleanupHistory(context).take(29)
-    (existing + CleanupHistoryEntry(
+    val newEntry = CleanupHistoryEntry(
         createdAt = journal.createdAt,
         deviceIdentity = journal.deviceIdentity,
         plannedCount = journal.plannedPackages.size,
         changedPackages = changed.distinct(),
         baselineDisabledCount = journal.baselineDisabledPackages.size,
         outcome = outcome
-    )).forEach { entry ->
+    )
+    // A retry after a crash must replace the same operation's entry, not duplicate it.
+    val existing = loadCleanupHistory(context)
+        .filterNot { it.createdAt == journal.createdAt && it.deviceIdentity == journal.deviceIdentity }
+        .take(29)
+    (listOf(newEntry) + existing).forEach { entry ->
         history.put(JSONObject()
             .put("createdAt", entry.createdAt)
             .put("deviceIdentity", entry.deviceIdentity)
@@ -700,7 +704,7 @@ private fun appendCleanupHistory(context: Context, journal: CleanupJournal, outc
             .put("baselineDisabledCount", entry.baselineDisabledCount)
             .put("outcome", entry.outcome))
     }
-    prefs(context).edit().putString("cleanup_operation_history", history.toString()).commit()
+    return prefs(context).edit().putString("cleanup_operation_history", history.toString()).commit()
 }
 
 
@@ -7604,7 +7608,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                     .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages).apply()
                                                             }
                                                             if (remaining.isEmpty()) {
-                                                                appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + verifiedRestored).distinct())
+                                                                check(appendCleanupHistory(context, journal, "Восстановлено", (journal.restoredPackages + verifiedRestored).distinct())) {
+                                                                    "Не удалось сохранить историю восстановления. Журнал оставлен для безопасного повтора."
+                                                                }
                                                                 check(clearCleanupJournal(context)) {
                                                                     "Пакеты восстановлены, но не удалось удалить журнал. Он сохранён для повторной проверки."
                                                                 }
@@ -7953,7 +7959,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
                                                 }
                                                 if (failures.isEmpty()) {
-                                                    appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)
+                                                    check(appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)) {
+                                                        "Не удалось сохранить историю очистки. Журнал оставлен для безопасного повтора."
+                                                    }
                                                     check(clearCleanupJournal(context)) {
                                                         "Очистка завершена, но не удалось удалить журнал операции. Он сохранён для безопасной повторной проверки."
                                                     }
