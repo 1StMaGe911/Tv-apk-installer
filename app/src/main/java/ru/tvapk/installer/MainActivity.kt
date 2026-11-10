@@ -791,7 +791,9 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
 private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunHistoryEntry): Boolean = try {
     val existingRaw = prefs(context).getString("maintenance_run_history", null)
     val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
-    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) return false
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) {
+        false
+    } else {
     val array = JSONArray()
     (listOf(entry) + loadMaintenanceRunHistory(context).filterNot { it.createdAt == entry.createdAt }.take(19)).forEach { item ->
         array.put(JSONObject()
@@ -808,6 +810,7 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("changedPackages", JSONArray(item.changedPackages)))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+    }
 } catch (_: Exception) { false }
 
 
@@ -819,7 +822,9 @@ private fun updateLatestMaintenanceCleanupHistory(
 ): Boolean = try {
     val existingRaw = prefs(context).getString("maintenance_run_history", null)
     val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
-    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) return false
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) {
+        false
+    } else {
     val existing = loadMaintenanceRunHistory(context).toMutableList()
     val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
     if (index >= 0) {
@@ -860,6 +865,7 @@ private fun updateLatestMaintenanceCleanupHistory(
             .put("changedPackages", JSONArray(item.changedPackages)))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+    }
 } catch (_: Exception) { false }
 
 class MainActivity : ComponentActivity() {
