@@ -97,8 +97,9 @@ class TvAutomationEngineTest {
         assertEquals(19, result.memoryAvailablePercent)
         assertEquals(94, result.dataUsedPercent)
         assertEquals(30, result.uptimeDays)
-        assertEquals(1, result.warnings.size)
-        assertTrue(result.warnings.single().contains("94%"))
+        assertEquals(2, result.warnings.size)
+        assertTrue(result.warnings.any { it.contains("94%") })
+        assertTrue(result.warnings.any { it.contains("30 дней") })
     }
 
     @Test
@@ -119,6 +120,35 @@ class TvAutomationEngineTest {
         assertEquals(2, result.warnings.size)
         assertTrue(result.warnings.any { it.contains("оперативной памяти") })
         assertTrue(result.warnings.any { it.contains("почти заполнено") })
+    }
+
+
+    @Test
+    fun longUptimeSuggestsRebootWithoutTreatingItAsAnAutomaticAction() {
+        val diagnostics = """
+            ВРЕМЯ РАБОТЫ
+            2592000 секунд
+        """.trimIndent()
+
+        val result = TvAutomationEngine.assessHealth(diagnostics)
+
+        assertEquals(30, result.uptimeDays)
+        assertTrue(result.warnings.single().contains("обычную перезагрузку"))
+        assertTrue(result.summary.contains("требующие внимания"))
+    }
+
+    @Test
+    fun uptimeBelowThirtyDaysDoesNotProduceRebootWarning() {
+        val diagnostics = """
+            ВРЕМЯ РАБОТЫ
+            2505600 секунд
+        """.trimIndent()
+
+        val result = TvAutomationEngine.assessHealth(diagnostics)
+
+        assertEquals(29, result.uptimeDays)
+        assertTrue(result.warnings.isEmpty())
+        assertTrue(result.summary.contains("Недостаточно данных").not())
     }
 
     @Test
