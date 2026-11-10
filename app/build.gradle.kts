@@ -42,6 +42,14 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Bouncy Castle 1.86 modules carry the same MIT license text at this path.
+    // Keep one copy in the APK rather than failing on duplicate archive entries.
+    packaging {
+        resources {
+            pickFirsts += "META-INF/LICENSE.md"
+        }
+    }
 }
 
 kotlin {
@@ -54,7 +62,7 @@ dependencies {
     implementation("dev.mobile:dadb:2.0.0")
     // TLS pairing + TLS ADB transport for Android 11+ Wireless Debugging.
     implementation("com.flyfishxu:kadb:2.1.5")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     implementation("androidx.core:core:1.15.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
