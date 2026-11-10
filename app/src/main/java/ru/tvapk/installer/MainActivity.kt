@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -5934,7 +5935,11 @@ fun TvInstallerApp() {
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet(drawerContainerColor = Panel, drawerContentColor = TextMain) {
+                ModalDrawerSheet(
+                    modifier = Modifier.focusGroup(),
+                    drawerContainerColor = Panel,
+                    drawerContentColor = TextMain
+                ) {
                     Text("TV APK INSTALLER", modifier = Modifier.padding(20.dp), color = GoldLight, style = MaterialTheme.typography.titleLarge)
                     Text("ОСНОВНЫЕ РАЗДЕЛЫ", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = TextMuted, style = MaterialTheme.typography.labelSmall)
                     NavigationDrawerItem(label = { Text("Главная") }, selected = !showSettings && activeSection == null,
