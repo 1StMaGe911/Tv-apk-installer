@@ -2021,14 +2021,15 @@ private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
             while (entries.hasMoreElements()) {
                 val entry = entries.nextElement()
                 require(!entry.isDirectory && names.add(entry.name)) { "Автокопия содержит повторяющиеся или недопустимые записи." }
-                val limit = when {
-                    entry.name == "config.json" -> 1024L * 1024L
-                    entry.name == "wallpaper-state.txt" -> 16L
-                    entry.name == "wallpaper.jpg" -> 12L * 1024L * 1024L
-                    entry.name.matches(Regex("wallpapers/wallpaper-[0-9]{3}\\\\.(jpg|jpeg|png|webp)")) -> 10L * 1024L * 1024L
+                val bounds = when {
+                    entry.name == "config.json" -> 2L to (1024L * 1024L)
+                    entry.name == "wallpaper-state.txt" -> 3L to 16L
+                    entry.name == "wallpaper.jpg" -> 64L to (12L * 1024L * 1024L)
+                    entry.name.matches(Regex("wallpapers/wallpaper-[0-9]{3}\\\\.(jpg|jpeg|png|webp)")) -> 64L to (10L * 1024L * 1024L)
                     else -> throw IllegalStateException("Неизвестная запись в автокопии: ${entry.name}")
                 }
-                require(entry.size in 1..limit) { "Некорректный размер записи ${entry.name} в автокопии." }
+                val limit = bounds.second
+                require(entry.size in bounds.first..limit) { "Некорректный размер записи ${entry.name} в автокопии." }
                 var copied = 0L
                 val buffer = ByteArray(8192)
                 zip.getInputStream(entry).use { input ->
@@ -2047,7 +2048,7 @@ private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
             val configText = zip.getInputStream(zip.getEntry("config.json")).bufferedReader(Charsets.UTF_8).use { it.readText() }
             require(JSONObject(configText).length() > 0) { "Конфигурация в автокопии повреждена." }
             val state = zip.getInputStream(zip.getEntry("wallpaper-state.txt")).bufferedReader(Charsets.UTF_8).use { it.readText().trim() }
-            require(state in setOf("present", "absent", "unknown") && (state != "present" || hasWallpaper)) {
+            require(state in setOf("present", "absent", "unknown") && ((state == "present") == hasWallpaper)) {
                 "Состояние обоев в автокопии некорректно."
             }
         }
