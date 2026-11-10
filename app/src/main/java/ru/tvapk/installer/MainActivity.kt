@@ -2046,6 +2046,32 @@ private fun verifyLauncherBackupArchive(archive: File, hasWallpaper: Boolean, co
     }
 }
 
+private fun sha256BackupFile(file: File): ByteArray {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    file.inputStream().buffered().use { input ->
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest()
+}
+
+private fun sha256BackupStream(input: java.io.InputStream): ByteArray {
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    input.buffered().use { stream ->
+        val buffer = ByteArray(8192)
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest()
+}
+
 private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
     val (archive, hasWallpaper, collectionCount) = exportLauncherBackup(context, adb)
     try {
@@ -5180,9 +5206,16 @@ fun TvInstallerApp() {
         val file = pendingLauncherBackupFile
         if (destinationUri != null && file != null) {
             try {
+                val expectedLength = file.length()
+                val expectedDigest = sha256BackupFile(file)
                 val output = context.contentResolver.openOutputStream(destinationUri)
                     ?: throw Exception("Не удалось открыть ZIP-файл для записи")
                 file.inputStream().use { input -> output.use { input.copyTo(it) } }
+                val savedDigest = context.contentResolver.openInputStream(destinationUri)?.use { sha256BackupStream(it) }
+                    ?: throw Exception("Не удалось повторно открыть сохранённую ZIP-копию для проверки")
+                require(file.length() == expectedLength && savedDigest.contentEquals(expectedDigest)) {
+                    "Сохранённый ZIP-архив отличается от исходной резервной копии. Проверь место сохранения."
+                }
                 status = buildString {
                     append("Резервная копия сохранена: config.json")
                     if (pendingLauncherBackupHasWallpaper) append(", текущие обои")
