@@ -7725,7 +7725,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                         if (cleanupCandidates.isNotEmpty()) Text(if (packageDisableSupported) "Для пакетного отключения доступны только компоненты точного профиля модели с правилом ask=false. Остальные рекомендации справочные. Перед каждой операцией результат проверяется через Package Manager." else "Пакетная очистка заблокирована: устройство ещё не подтвердило поддержку команды отключения и чтения фактического состояния пакетов. Повтори определение устройства.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (pendingCleanupPackages.isNotEmpty() || pendingCombinedCacheTrim) {
                             AlertDialog(
-                                onDismissRequest = { pendingCleanupPackages = emptyList() },
+                                onDismissRequest = { pendingCleanupPackages = emptyList(); pendingCombinedCacheTrim = false },
                                 title = { Text(if (pendingCombinedCacheTrim) "Выполнить комплексную оптимизацию?" else "Отключить выбранные компоненты?") },
                                 text = {
                                     Text((if (pendingCombinedCacheTrim) "Дополнительно будет выполнена штатная очистка только кэша приложений (без удаления приложений и личных данных).\n\n" else "") + "Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?")
