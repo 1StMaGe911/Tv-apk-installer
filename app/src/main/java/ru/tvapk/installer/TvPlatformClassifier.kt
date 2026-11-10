@@ -62,4 +62,38 @@ internal object TvPlatformClassifier {
             TvPlatformKind.UNKNOWN
         }
     }
+    /**
+     * Builds the human-readable profile label from diagnostic text.
+     * Match OEM names as tokens so short names (especially "LG") cannot
+     * accidentally match unrelated model, build, or package strings.
+     */
+    fun profileLabel(details: String): String {
+        val value = details.lowercase(java.util.Locale.ROOT)
+        fun containsToken(token: String): Boolean =
+            Regex("""(?<![a-z0-9])${Regex.escape(token)}(?![a-z0-9])""")
+                .containsMatchIn(value)
+
+        val brand = when {
+            containsToken("tcl") -> "TCL"
+            containsToken("hisense") -> "Hisense"
+            containsToken("xiaomi") || containsToken("redmi") -> "Xiaomi"
+            containsToken("sony") -> "Sony"
+            containsToken("philips") -> "Philips"
+            containsToken("amazon") || containsToken("fire") -> "Amazon Fire TV"
+            containsToken("samsung") -> "Samsung"
+            containsToken("lg") || containsToken("lge") -> "LG"
+            else -> "Универсальный профиль"
+        }
+        val platform = when {
+            containsToken("fire") || containsToken("amazon") -> "Fire TV / Fire OS"
+            value.contains("com.google.android.apps.tv.launcherx") || containsToken("google tv") ->
+                "Google TV / Android TV"
+            containsToken("android") || value.contains("android.software.leanback") ->
+                "Android TV / Android"
+            containsToken("vidaa") -> "VIDAA (не Android)"
+            else -> "Android-совместимое устройство"
+        }
+        return "$brand • $platform"
+    }
+
 }
