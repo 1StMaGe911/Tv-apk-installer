@@ -92,6 +92,42 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupPlanEnforcesCoreProtectionEvenWhenCallerOmitsProtectedSnapshot() {
+        val protectedCore = setOf(
+            "com.google.android.gms.persistent",
+            "com.android.systemui.navigationbar",
+            "com.google.android.overlay.modules.permissioncontroller"
+        )
+        val plan = TvAutomationEngine.buildPlan(
+            installedPackages = protectedCore + "com.vendor.ads",
+            disabledPackages = emptySet(),
+            detectedCandidates = protectedCore + "com.vendor.ads",
+            profileApprovedPackages = protectedCore + "com.vendor.ads",
+            protectedPackages = emptySet(),
+            neverDisablePackages = emptySet()
+        )
+
+        assertEquals(setOf("com.vendor.ads"), plan.safeToDisable)
+        assertEquals(protectedCore.size, plan.blockedCount)
+    }
+
+    @Test
+    fun cleanupPlanCoreProtectionCannotBeOverriddenByGlobalApproval() {
+        val corePackage = "com.google.android.tvlauncher"
+        val plan = TvAutomationEngine.buildPlan(
+            installedPackages = setOf(corePackage),
+            disabledPackages = emptySet(),
+            detectedCandidates = setOf(corePackage),
+            profileApprovedPackages = setOf(corePackage),
+            protectedPackages = emptySet(),
+            neverDisablePackages = emptySet()
+        )
+
+        assertTrue(plan.safeToDisable.isEmpty())
+        assertEquals(1, plan.blockedCount)
+    }
+
+    @Test
     fun cleanupCandidateClassifierRecognizesReviewedCatalogCategoriesCaseInsensitively() {
         assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = "ads"))
         assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.component", factCategory = " TRACKING "))
