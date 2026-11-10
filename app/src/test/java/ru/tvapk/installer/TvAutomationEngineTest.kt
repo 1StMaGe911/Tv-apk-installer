@@ -776,6 +776,35 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun protectsCoreAndroidAndGoogleTvPackagesFromAutomaticCleanup() {
+        val protected = listOf(
+            "android",
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.providers.settings",
+            "com.google.android.gms",
+            "com.google.android.gms.persistent",
+            "com.google.android.gsf",
+            "com.google.android.tvlauncher",
+            "com.google.android.overlay.modules.permissioncontroller"
+        )
+        protected.forEach { assertTrue("Expected protected package: $it", TvAutomationEngine.isProtectedSystemPackage(it)) }
+    }
+
+    @Test
+    fun protectsFireTvHomeAndSystemProviderPackages() {
+        assertTrue(TvAutomationEngine.isProtectedSystemPackage("com.amazon.tv.launcher"))
+        assertTrue(TvAutomationEngine.isProtectedSystemPackage("com.amazon.firehomestarter"))
+        assertTrue(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.tv"))
+    }
+
+    @Test
+    fun doesNotOverprotectExplicitlyAllowedProvidersOrThirdPartyApps() {
+        assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.calendar"))
+        assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.contacts"))
+        assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.vendor.adservice"))
+    }
+    @Test
     fun combinedLauncherFlowContinuesOnlyAfterVerifiedCleanupSuccess() {
         assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
             "Отключено: 4 из 4. Ошибок: 0\\nИтоговая проверка на ТВ: 4 из 4"
