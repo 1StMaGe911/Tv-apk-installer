@@ -177,6 +177,21 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun recoveryFlagsPreviouslyRestoredPackageThatBecameDisabledAgain() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.restored"),
+            completedPackages = emptySet(),
+            installedPackages = setOf("com.example.restored"),
+            disabledPackages = setOf("com.example.restored"),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = setOf("com.example.restored")
+        )
+        assertTrue(result.confirmedCompletedPackages.isEmpty())
+        assertEquals(setOf("com.example.restored"), result.conflictPackages)
+        assertTrue(result.retryablePackages.isEmpty())
+    }
+
+    @Test
     fun recoveryReportsMissingPackageAsConflict() {
         val result = TvAutomationEngine.buildCleanupRecoveryPlan(
             plannedPackages = setOf("com.example.missing"),
