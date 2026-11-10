@@ -671,6 +671,47 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun readOnlyCommandDoesNotRetryPermanentFailures() {
+        var attempts = 0
+        val waits = mutableListOf<Long>()
+        val error = runCatching {
+            TvAutomationEngine.retryReadOnlyCommand(
+                maxAttempts = 3,
+                retryDelayMillis = 100L,
+                wait = { waits += it },
+                shouldRetry = { it is java.io.IOException }
+            ) {
+                attempts++
+                throw IllegalArgumentException("invalid command")
+            }
+        }.exceptionOrNull()
+
+        assertEquals("invalid command", error?.message)
+        assertEquals(1, attempts)
+        assertTrue(waits.isEmpty())
+    }
+
+    @Test
+    fun readOnlyCommandRetriesOnlyErrorsAcceptedByPredicate() {
+        var attempts = 0
+        val waits = mutableListOf<Long>()
+        val result = TvAutomationEngine.retryReadOnlyCommand(
+            maxAttempts = 3,
+            retryDelayMillis = 100L,
+            wait = { waits += it },
+            shouldRetry = { it is java.io.IOException }
+        ) {
+            attempts++
+            if (attempts == 1) throw java.io.IOException("temporary transport failure")
+            "ok"
+        }
+
+        assertEquals("ok", result)
+        assertEquals(2, attempts)
+        assertEquals(listOf(100L), waits)
+    }
+
+    @Test
     fun readOnlyCommandDoesNotWaitWhenFirstAttemptSucceeds() {
         var waits = 0
         val result = TvAutomationEngine.retryReadOnlyCommand(

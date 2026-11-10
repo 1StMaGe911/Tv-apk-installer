@@ -49,6 +49,7 @@ internal object TvAutomationEngine {
         maxAttempts: Int = 3,
         retryDelayMillis: Long = 350L,
         wait: (Long) -> Unit = { Thread.sleep(it) },
+        shouldRetry: (Exception) -> Boolean = { true },
         action: () -> T
     ): T {
         require(maxAttempts in 1..5) { "maxAttempts must be between 1 and 5" }
@@ -59,7 +60,8 @@ internal object TvAutomationEngine {
                 return action()
             } catch (error: Exception) {
                 lastError = error
-                if (attempt < maxAttempts && retryDelayMillis > 0L) wait(retryDelayMillis)
+                if (attempt == maxAttempts || !shouldRetry(error)) throw error
+                if (retryDelayMillis > 0L) wait(retryDelayMillis)
             }
         }
         throw lastError ?: IllegalStateException("Read-only command failed without an exception")
