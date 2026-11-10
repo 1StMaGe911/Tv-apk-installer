@@ -216,17 +216,18 @@ private fun hasCorruptCleanupJournal(context: Context): Boolean {
     return try {
         val json = JSONObject(raw)
         val planned = json.optJSONArray("planned") ?: return true
-        val identity = json.optString("deviceIdentity")
-        val createdAt = json.optLong("createdAt", 0L)
-        if (identity.isBlank() || createdAt <= 0L || planned.length() == 0) return true
-        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
-        val plannedNames = (0 until planned.length()).map { planned.optString(it) }
-        if (plannedNames.any { !packagePattern.matches(it) } || plannedNames.distinct().size != plannedNames.size) return true
         val completed = json.optJSONArray("completed") ?: return true
+        val plannedNames = (0 until planned.length()).map { planned.optString(it) }
         val completedNames = (0 until completed.length()).map { completed.optString(it) }
-        if (completedNames.any { it !in plannedNames }) return true
-        val schema = json.optInt("schemaVersion", 1)
-        schema !in 1..3
+        val inFlight = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" }
+        !CleanupJournalValidator.isValid(
+            deviceIdentity = json.optString("deviceIdentity"),
+            createdAt = json.optLong("createdAt", 0L),
+            schemaVersion = json.optInt("schemaVersion", 1),
+            plannedPackages = plannedNames,
+            completedPackages = completedNames,
+            inFlightPackage = inFlight
+        )
     } catch (_: Exception) {
         true
     }
