@@ -136,7 +136,9 @@ class TvAutomationEngineTest {
     fun recoveryReconcilesInFlightPackageAlreadyDisabledWithoutRepeatingIt() {
         val result = TvAutomationEngine.buildCleanupRecoveryPlan(
             plannedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
-            completedPackages = setOf("com.example.done"),
+            // The caller folds the journal's in-flight package into attempted packages
+            // after reconciling it with the live Package Manager snapshot.
+            completedPackages = setOf("com.example.done", "com.example.inFlight"),
             installedPackages = setOf("com.example.done", "com.example.inFlight", "com.example.pending"),
             disabledPackages = setOf("com.example.done", "com.example.inFlight"),
             baselineDisabledPackages = emptySet(),
