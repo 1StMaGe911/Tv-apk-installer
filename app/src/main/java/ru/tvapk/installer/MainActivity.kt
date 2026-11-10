@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.118"
+private const val APP_VERSION = "0.9.119"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -7497,6 +7497,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     Text("НЕЗАВЕРШЁННАЯ ОЧИСТКА", color = Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
                                     Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Успешно отключено: ${journal.completedPackages.size + if (journal.inFlightPackage != null) 1 else 0} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
                                     Text("Восстановление разрешено только на исходном телевизоре (проверяется производитель, модель, устройство и отпечаток прошивки).", color = TextMuted, fontSize = 11.sp)
+                                    when (journal.cacheTrimState) {
+                                        "running" -> Text("Кэш: операция прервалась или её результат не сохранён. Статус неизвестен; откат пакетов не возвращает кэш. Проверь хранилище ТВ перед повторной очисткой.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                                        "failed" -> Text("Кэш: очистка завершилась ошибкой. ${journal.cacheTrimOutcome}", color = Color(0xFFFF8A80), fontSize = 11.sp)
+                                        "completed" -> Text("Кэш: команда очистки завершилась. ${journal.cacheTrimOutcome}", color = TextMuted, fontSize = 11.sp)
+                                        else -> Unit
+                                    }
                                     OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = { pendingCleanupRollback = true }) {
                                         Text("Откатить незавершённую очистку")
                                     }
@@ -7865,7 +7871,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     completedPackages = emptyList(),
                                                     createdAt = System.currentTimeMillis(),
                                                     baselineDisabledPackages = baselineDisabled,
-                                                    schemaVersion = 2
+                                                    schemaVersion = 3
                                                 )
                                                 check(saveCleanupJournal(context, journal)) {
                                                     "Не удалось надёжно сохранить журнал очистки. Изменения на ТВ не выполнялись."
