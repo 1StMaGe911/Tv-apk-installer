@@ -162,6 +162,21 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun recoveryDoesNotClaimUnattemptedDisabledPackageAsCompleted() {
+        val result = TvAutomationEngine.buildCleanupRecoveryPlan(
+            plannedPackages = setOf("com.example.pending"),
+            completedPackages = emptySet(),
+            installedPackages = setOf("com.example.pending"),
+            disabledPackages = setOf("com.example.pending"),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+        assertTrue(result.confirmedCompletedPackages.isEmpty())
+        assertEquals(setOf("com.example.pending"), result.conflictPackages)
+        assertTrue(result.retryablePackages.isEmpty())
+    }
+
+    @Test
     fun recoveryReportsMissingPackageAsConflict() {
         val result = TvAutomationEngine.buildCleanupRecoveryPlan(
             plannedPackages = setOf("com.example.missing"),
