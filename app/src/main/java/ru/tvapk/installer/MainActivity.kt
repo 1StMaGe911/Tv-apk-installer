@@ -8025,7 +8025,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             if (entry.changedPackages.isNotEmpty()) Text("Изменено: ${entry.changedPackages.joinToString()}", color = TextMuted, fontSize = 10.sp)
 
                                             if (entry.warningsBefore.isNotEmpty()) Text("До обслуживания: ${entry.warningsBefore.joinToString(" · ")}", color = Color(0xFFFFD98A), fontSize = 10.sp)
-                                            if (entry.warnings.isNotEmpty()) Text("После обслуживания: ${entry.warnings.joinToString(" · "), color = Color(0xFFFFD98A), fontSize = 10.sp)}
+                                            if (entry.warnings.isNotEmpty()) Text("После обслуживания: ${entry.warnings.joinToString(" · ")}", color = Color(0xFFFFD98A), fontSize = 10.sp)
                                         }
                                     }
                                 }
