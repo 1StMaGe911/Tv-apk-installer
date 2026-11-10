@@ -1,0 +1,151 @@
+package ru.tvapk.installer
+
+import android.content.Context
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
+import java.net.NetworkInterface
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+internal data class AdbPairingEndpoint(
+    val name: String,
+    val host: String,
+    val port: Int
+)
+
+/**
+ * Discovers only Android Wireless Debugging pairing advertisements.
+ * This is intentionally separate from _adb-tls-connect._tcp and legacy _adb._tcp:
+ * the pairing and connection ports are different services.
+ */
+internal fun discoverAdbPairingEndpoints(
+    context: Context,
+    timeoutMs: Long = 6500L
+): List<AdbPairingEndpoint> {
+    require(timeoutMs in 500L..20_000L) { "Discovery timeout is outside the supported range" }
+    val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
+        ?: return emptyList()
+    val found = ConcurrentHashMap<String, AdbPairingEndpoint>()
+    val seen = ConcurrentHashMap.newKeySet<String>()
+    val queue = java.util.concurrent.ConcurrentLinkedQueue<NsdServiceInfo>()
+    val resolving = AtomicBoolean(false)
+    val accepting = AtomicBoolean(true)
+    val stopped = AtomicBoolean(false)
+    val finished = CountDownLatch(1)
+    val ownAddresses = runCatching {
+        NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .flatMap { it.inetAddresses.toList() }
+            .mapNotNull { it.hostAddress?.substringBefore('%')?.lowercase(java.util.Locale.ROOT) }
+            .toSet()
+    }.getOrDefault(emptySet())
+
+    fun resolveNext() {
+        if (stopped.get() || !resolving.compareAndSet(false, true)) return
+        val service = queue.poll()
+        if (service == null) {
+            resolving.set(false)
+            return
+        }
+        runCatching {
+            nsd.resolveService(service, object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                    resolving.set(false)
+                    resolveNext()
+                }
+
+                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                    val host = serviceInfo.host?.let {
+                        TvAutomationEngine.usableDiscoveredAddressHost(it, ownAddresses)
+                    }
+                    val port = serviceInfo.port
+                    if (!stopped.get() && host != null && port in 1..65535) {
+                        val endpoint = AdbPairingEndpoint(
+                            name = serviceInfo.serviceName.ifBlank { "Android TV" },
+                            host = host,
+                            port = port
+                        )
+                        found["$host:$port"] = endpoint
+                    }
+                    resolving.set(false)
+                    resolveNext()
+                }
+            })
+        }.onFailure {
+            resolving.set(false)
+            resolveNext()
+        }
+    }
+
+    val listener = object : NsdManager.DiscoveryListener {
+        override fun onDiscoveryStarted(serviceType: String) = Unit
+        override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+            val key = "${serviceInfo.serviceType}/${serviceInfo.serviceName}"
+            if (accepting.get() && seen.add(key)) {
+                queue.offer(serviceInfo)
+                resolveNext()
+            }
+        }
+        override fun onServiceLost(serviceInfo: NsdServiceInfo) = Unit
+        override fun onDiscoveryStopped(serviceType: String) = Unit
+        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+            finished.countDown()
+        }
+        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
+    }
+
+    var started = false
+    try {
+        nsd.discoverServices(
+            PAIRING_SERVICE_TYPE,
+            NsdManager.PROTOCOL_DNS_SD,
+            listener
+        )
+        started = true
+        finished.await(timeoutMs, TimeUnit.MILLISECONDS)
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+    } catch (_: Exception) {
+        // NSD can be unavailable on restricted Wi-Fi networks; return no endpoints.
+    } finally {
+        accepting.set(false)
+        if (started) runCatching { nsd.stopServiceDiscovery(listener) }
+        val drainDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (!Thread.currentThread().isInterrupted &&
+            System.nanoTime() < drainDeadline &&
+            (resolving.get() || queue.isNotEmpty())
+        ) {
+            try {
+                Thread.sleep(25)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
+        }
+        stopped.set(true)
+    }
+
+    return found.values.sortedWith(
+        compareBy<AdbPairingEndpoint> { it.name.lowercase() }
+            .thenBy { it.host }
+            .thenBy { it.port }
+    )
+}
+
+internal fun matchingAdbPairingEndpoints(
+    host: String,
+    endpoints: List<AdbPairingEndpoint>
+): List<AdbPairingEndpoint> {
+    val expected = canonicalAddress(host) ?: return emptyList()
+    return endpoints.filter { canonicalAddress(it.host) == expected }
+        .distinctBy { it.port }
+        .sortedBy { it.port }
+}
+
+private fun canonicalAddress(value: String): String? = runCatching {
+    java.net.InetAddress.getByName(value.substringBefore('%')).address
+        .joinToString("") { byte -> "%02x".format(byte) }
+}.getOrNull()
+
+private const val PAIRING_SERVICE_TYPE = "_adb-tls-pairing._tcp."
