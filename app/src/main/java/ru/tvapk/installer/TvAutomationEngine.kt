@@ -24,7 +24,10 @@ internal object CleanupJournalValidator {
         if (inFlightPackage != null && inFlightPackage !in plannedPackages) return false
         if (baselineDisabledPackages.any { !packageNamePattern.matches(it) } ||
             baselineDisabledPackages.distinct().size != baselineDisabledPackages.size) return false
+        // A package disabled before maintenance must never be treated as changed or restored by this operation.
+        if (baselineDisabledPackages.any { it in plannedPackages }) return false
         if (restoredPackages.any { it !in plannedPackages } || restoredPackages.distinct().size != restoredPackages.size) return false
+        if (restoredPackages.any { it in baselineDisabledPackages }) return false
         if (cacheTrimState !in setOf("not_requested", "running", "completed", "failed")) return false
         return true
     }
