@@ -45,6 +45,7 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" --channel=3
           # AGP 9.3.1 resolves API 37.0 through compileSdk.minorApiLevel.
           test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1"
 
       - name: Проверить логику автоматизации
         run: gradle :app:testDebugUnitTest --no-daemon
