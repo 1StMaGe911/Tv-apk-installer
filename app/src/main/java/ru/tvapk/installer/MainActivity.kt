@@ -1386,7 +1386,7 @@ private fun installApkAndVerify(context: Context, adb: Dadb, apkFile: File, tran
     val installedPackages = if (pathOutput.lineSequence().any { it.trim().startsWith("package:") }) {
         setOf(packageName)
     } else emptySet()
-    val details = shellText(adb, "dumpsys package $packageName")
+    val details = readOnlyShellText(adb, "dumpsys package $packageName")
     val installedVersionCode = Regex("versionCode=(\\d+)")
         .find(details)?.groupValues?.getOrNull(1)?.toLongOrNull()
     val verificationError = ApkInstallVerifier.verify(
@@ -5363,7 +5363,7 @@ fun TvInstallerApp() {
                 )
 
                 connectWithRetry(context, host, p) { adb ->
-                    val sdkText = shellText(adb, "getprop ro.build.version.sdk").trim()
+                    val sdkText = retryTvReadOnly { shellText(adb, "getprop ro.build.version.sdk").trim() }
                     val deviceSdk = sdkText.toIntOrNull()
                         ?: throw Exception("Не удалось определить версию Android TV (SDK: $sdkText)")
                     val incompatible = modules.filter { deviceSdk < it.minSdk }
@@ -5371,8 +5371,8 @@ fun TvInstallerApp() {
                         "Эта версия Android TV слишком старая для модулей: " +
                             incompatible.joinToString { "${it.packageName} требует Android SDK ${it.minSdk}, на ТВ SDK $deviceSdk" }
                     }
-                    val deviceAbiText = shellText(adb, "getprop ro.product.cpu.abilist").trim()
-                        .ifBlank { shellText(adb, "getprop ro.product.cpu.abi").trim() }
+                    val deviceAbiText = retryTvReadOnly { shellText(adb, "getprop ro.product.cpu.abilist").trim() }
+                        .ifBlank { retryTvReadOnly { shellText(adb, "getprop ro.product.cpu.abi").trim() } }
                     val deviceAbis = deviceAbiText.split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
                     val abiIncompatible = modules.filter { it.abis.isNotEmpty() && it.abis.none { abi -> abi in deviceAbis } }
                     require(abiIncompatible.isEmpty()) {
@@ -5396,7 +5396,7 @@ fun TvInstallerApp() {
                     var keepRollbackFiles = false
                     try {
                         val previousStates = modules.map { module ->
-                            val pathResult = shellText(adb, "pm path ${module.packageName}")
+                            val pathResult = readOnlyShellText(adb, "pm path ${module.packageName}")
                             val remotePaths = pathResult.lineSequence()
                                 .map { it.removePrefix("package:").trim() }
                                 .filter { it.startsWith("/") && !it.contains("..") }
@@ -5409,7 +5409,7 @@ fun TvInstallerApp() {
                                     "У ${module.packageName} найдено несколько APK/split-файлов. " +
                                         "Безопасное резервирование такого набора не поддерживается; установка отменена."
                                 }
-                                val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                val details = readOnlyShellText(adb, "dumpsys package ${module.packageName}")
                                 val currentCode = Regex("versionCode=(\\d+)").find(details)
                                     ?.groupValues?.get(1)?.toLongOrNull()
                                     ?: throw Exception("Не удалось безопасно определить установленную версию ${module.packageName}. Установка остановлена.")
@@ -5448,11 +5448,11 @@ fun TvInstallerApp() {
                             }
 
                             val verification = modules.map { module ->
-                                val pathResult = shellText(adb, "pm path ${module.packageName}")
+                                val pathResult = readOnlyShellText(adb, "pm path ${module.packageName}")
                                 require(pathResult.contains("package:")) {
                                     "После установки пакет ${module.packageName} не найден: $pathResult"
                                 }
-                                val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                val details = readOnlyShellText(adb, "dumpsys package ${module.packageName}")
                                 val installedCode = Regex("versionCode=(\\d+)").find(details)
                                     ?.groupValues?.get(1)?.toLongOrNull()
                                 require(installedCode == module.versionCode) {
@@ -5615,14 +5615,14 @@ fun TvInstallerApp() {
                 }
 
                 connectWithRetry(context, host, adbPort) { adb ->
-                    val sdkText = shellText(adb, "getprop ro.build.version.sdk").trim()
+                    val sdkText = retryTvReadOnly { shellText(adb, "getprop ro.build.version.sdk").trim() }
                     val deviceSdk = sdkText.toIntOrNull()
                         ?: throw Exception("Не удалось определить Android SDK телевизора")
                     require(deviceSdk >= version.minSdk && deviceSdk >= archiveMinSdk) {
                         "Модулю требуется Android SDK ${maxOf(version.minSdk, archiveMinSdk)}, на ТВ SDK $deviceSdk"
                     }
                     val deviceAbis = shellText(adb, "getprop ro.product.cpu.abilist").trim()
-                        .ifBlank { shellText(adb, "getprop ro.product.cpu.abi").trim() }
+                        .ifBlank { retryTvReadOnly { shellText(adb, "getprop ro.product.cpu.abi").trim() } }
                         .split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
                     require(version.abis.isEmpty() || version.abis.any { it in deviceAbis }) {
                         "Каталог не заявляет поддержку архитектур ТВ. APK: ${version.abis.joinToString()}; ТВ: ${deviceAbis.joinToString()}"
@@ -5632,7 +5632,7 @@ fun TvInstallerApp() {
                     }
                     val storageStatus = requireTvStorageForApk(adb, apk.length())
 
-                    val remote = shellText(adb, "pm path ${module.packageName}")
+                    val remote = readOnlyShellText(adb, "pm path ${module.packageName}")
                         .lineSequence().map { it.removePrefix("package:").trim() }
                         .filter { it.startsWith("/") && !it.contains("..") }.distinct().toList()
                     require(remote.size <= 1) {
@@ -5645,7 +5645,7 @@ fun TvInstallerApp() {
                     var keepBackup = false
                     try {
                         if (remote.isNotEmpty()) {
-                            val details = shellText(adb, "dumpsys package ${module.packageName}")
+                            val details = readOnlyShellText(adb, "dumpsys package ${module.packageName}")
                             previousCode = Regex("versionCode=(\\d+)").find(details)?.groupValues?.get(1)?.toLongOrNull()
                                 ?: throw Exception("Не удалось определить текущую версию установленного пакета")
                             require(previousCode!! <= version.versionCode) {
@@ -5692,9 +5692,9 @@ fun TvInstallerApp() {
                                 is InstallResult.Success -> Unit
                                 is InstallResult.Failure -> throw Exception(result.reason)
                             }
-                            val installedPath = shellText(adb, "pm path ${module.packageName}")
+                            val installedPath = readOnlyShellText(adb, "pm path ${module.packageName}")
                             require(installedPath.contains("package:")) { "После установки пакет не найден" }
-                            val installedDetails = shellText(adb, "dumpsys package ${module.packageName}")
+                            val installedDetails = readOnlyShellText(adb, "dumpsys package ${module.packageName}")
                             val installedCode = Regex("versionCode=(\\d+)").find(installedDetails)?.groupValues?.get(1)?.toLongOrNull()
                             require(installedCode == version.versionCode) {
                                 "После установки обнаружена неожиданная версия: $installedCode"
@@ -6473,9 +6473,9 @@ fun TvInstallerApp() {
                                             connectWithRetry(context, host, adbPort) { adb ->
                                                 val installed = linkedMapOf<String, Long>()
                                                 catalog.modules.forEach { module ->
-                                                    val pathOutput = shellText(adb, "pm path ${module.packageName}")
+                                                    val pathOutput = readOnlyShellText(adb, "pm path ${module.packageName}")
                                                     if (pathOutput.lineSequence().any { it.startsWith("package:") }) {
-                                                        val details = shellText(adb, "dumpsys package ${module.packageName}")
+                                                        val details = readOnlyShellText(adb, "dumpsys package ${module.packageName}")
                                                         val code = Regex("versionCode=(\\d+)").find(details)
                                                             ?.groupValues?.get(1)?.toLongOrNull()
                                                             ?: throw Exception("Не удалось прочитать versionCode: ${module.packageName}")
@@ -6633,9 +6633,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                 if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
                                 else runTask({ connectWithRetry(context, host, p) { adb ->
                                     fun moduleVersion(packageName: String): String {
-                                        val pathResult = shellText(adb, "pm path $packageName")
+                                        val pathResult = readOnlyShellText(adb, "pm path $packageName")
                                         if (!pathResult.contains("package:")) return "не установлен"
-                                        val details = shellText(adb, "dumpsys package $packageName")
+                                        val details = readOnlyShellText(adb, "dumpsys package $packageName")
                                         val versionName = Regex("versionName=([^\\s]+)").find(details)?.groupValues?.get(1) ?: "неизвестна"
                                         val versionCode = Regex("versionCode=(\\d+)").find(details)?.groupValues?.get(1)
                                         return if (versionCode != null) "$versionName (код $versionCode)" else versionName
