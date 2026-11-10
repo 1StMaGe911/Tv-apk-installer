@@ -3049,6 +3049,29 @@ private fun buildSupportReport(tvDetails: String, diagnostics: String): String {
     }.trim()
 }
 
+private fun readTvPlatformSignals(adb: Dadb): TvPlatformSignals {
+    fun prop(name: String): String = runCatching {
+        readOnlyShellText(adb, "getprop $name").trim()
+    }.getOrDefault("")
+    val packages = readAllPackages(adb).toSet()
+    val features = runCatching {
+        readOnlyShellText(adb, "pm list features").lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("feature:") }
+            .map { it.removePrefix("feature:").trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }.getOrDefault(emptySet())
+    return TvPlatformSignals(
+        manufacturer = prop("ro.product.manufacturer"),
+        brand = prop("ro.product.brand"),
+        model = prop("ro.product.model"),
+        buildCharacteristics = prop("ro.build.characteristics"),
+        installedPackages = packages,
+        systemFeatures = features
+    )
+}
+
 private fun readPackageDisableCapability(adb: Dadb): Boolean {
     val help = try { readOnlyShellText(adb, "pm help") } catch (_: Exception) { return false }
     val commandAdvertised = Regex("""(?m)^.*\bdisable-user\b.*$""").containsMatchIn(help)
@@ -3062,14 +3085,14 @@ private fun readPackageDisableCapability(adb: Dadb): Boolean {
 }
 
 private fun readTvCompatibilityReport(adb: Dadb): String {
-    fun prop(name: String): String = try { readOnlyShellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
-    val manufacturer = prop("ro.product.manufacturer")
-    val brand = prop("ro.product.brand")
-    val packages = try { readAllPackages(adb).toSet() } catch (_: Exception) { emptySet() }
-    val hasGoogleTvHome = "com.google.android.apps.tv.launcherx" in packages
+    val signals = readTvPlatformSignals(adb)
+    val platform = TvPlatformClassifier.classify(signals)
+    val manufacturer = signals.manufacturer
+    val brand = signals.brand
+    val hasGoogleTvHome = "com.google.android.apps.tv.launcherx" in signals.installedPackages
     val isTcl = brand.equals("tcl", true) || manufacturer.equals("tcl", true)
     val isTclChina = (isTcl || brand.equals("ffalcon", true) || manufacturer.equals("ffalcon", true)) &&
-        "com.google.android.gms" !in packages
+        "com.google.android.gms" !in signals.installedPackages
     fun probe(label: String, command: String, success: (String) -> Boolean): String {
         val output = try { readOnlyShellText(adb, command).trim() } catch (_: Exception) { "" }
         return "$label: " + if (output.isNotBlank() && success(output)) "доступно" else "не подтверждено"
@@ -3080,9 +3103,11 @@ private fun readTvCompatibilityReport(adb: Dadb): String {
         appendLine("ПРОВЕРКА СОВМЕСТИМОСТИ")
         appendLine("Версия Android SDK: ${sdk?.toString() ?: "не определена"}")
         appendLine("Платформа: " + when {
-            isFireOsDevice(adb) -> "Amazon Fire OS — автоматическая передача Home заблокирована"
             isTclChina -> "TCL/FFalcon China без Google Mobile Services — автоматическая передача Home заблокирована"
-            else -> "Android TV / Google TV"
+            platform == TvPlatformKind.FIRE_TV -> "Amazon Fire OS — вне целевой платформы Android TV / Google TV"
+            platform == TvPlatformKind.GOOGLE_TV -> "Google TV — распознана"
+            platform == TvPlatformKind.ANDROID_TV -> "Android TV — распознана"
+            else -> "Android TV / Google TV не подтверждена — автоматические действия заблокированы"
         })
         if (isTcl && hasGoogleTvHome) {
             appendLine("Пульт TCL Google TV: кнопки Settings, Netflix и YouTube могут быть привязаны к штатному Google TV Home. Проверь их работу перед переключением.")
@@ -3095,7 +3120,7 @@ private fun readTvCompatibilityReport(adb: Dadb): String {
         appendLine(probe("Системные настройки", "settings get secure android_id", { it.isNotBlank() }))
         appendLine(probe("Сведения о питании", "dumpsys power", { it.contains("power", true) }))
         appendLine()
-        append("Проверка команд — предварительная. Каждая операция дополнительно проверяется на телевизоре; неподтверждённое отключение не будет считаться успешным.")
+        append("Проверка платформы и команд предварительная. Каждая операция дополнительно проверяется на телевизоре; неподтверждённое отключение не будет считаться успешным.")
     }
 }
 
@@ -4889,6 +4914,13 @@ fun TvInstallerApp() {
             connectWithRetry(context, target.ip, target.port) { adb ->
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.IDENTIFYING))
                 val details = readTvDetails(adb)
+                val platform = TvPlatformClassifier.classify(readTvPlatformSignals(adb))
+                require(platform == TvPlatformKind.ANDROID_TV || platform == TvPlatformKind.GOOGLE_TV) {
+                    when (platform) {
+                        TvPlatformKind.FIRE_TV -> "Обслуживание остановлено: Fire OS не входит в целевую платформу Android TV / Google TV."
+                        else -> "Обслуживание остановлено: тип Android TV / Google TV не подтверждён. Никакие действия очистки не выполнялись."
+                    }
+                }
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.DIAGNOSTICS))
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
@@ -5507,6 +5539,10 @@ fun TvInstallerApp() {
                 )
 
                 connectWithRetry(context, host, p) { adb ->
+                    val platform = TvPlatformClassifier.classify(readTvPlatformSignals(adb))
+                    require(platform == TvPlatformKind.ANDROID_TV || platform == TvPlatformKind.GOOGLE_TV) {
+                        "Установка Clean Your TV Launcher разрешена только после подтверждения Android TV / Google TV. Определено: $platform."
+                    }
                     val sdkText = readOnlyShellText(adb, "getprop ro.build.version.sdk").trim()
                     val deviceSdk = sdkText.toIntOrNull()
                         ?: throw Exception("Не удалось определить версию Android TV (SDK: $sdkText)")
