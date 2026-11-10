@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.109"
+private const val APP_VERSION = "0.9.110"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -8040,7 +8040,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 color = TextMuted, fontSize = 10.sp)
                                             val freeBefore = entry.storageAvailableBytesBefore?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
                                             val freeAfter = entry.storageAvailableBytesAfter?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
-                                            Text("Свободно /data: $freeBefore → $freeAfter", color = TextMuted, fontSize = 10.sp)
+                                            Text("Свободно /data: $freeBefore → $freeAfter (${TvAutomationEngine.formatStorageDelta(entry.storageAvailableBytesBefore, entry.storageAvailableBytesAfter)})", color = TextMuted, fontSize = 10.sp)
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
