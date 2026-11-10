@@ -564,7 +564,7 @@ private fun readAutoStartComponentState(adb: Dadb, component: String): String {
     val packageName = component.substringBefore("/")
     val targetClassRaw = component.substringAfter("/")
     val targetClass = if (targetClassRaw.startsWith(".")) packageName + targetClassRaw else targetClassRaw
-    val dump = shellText(adb, "dumpsys package $packageName")
+    val dump = readOnlyShellText(adb, "dumpsys package $packageName")
     var section = ""
     var foundEnabled = false
     var foundDisabled = false
@@ -722,7 +722,7 @@ private fun recordTrackedSystemSettingChange(context: Context, id: String, key: 
 }
 private fun readTrackedSystemSetting(adb: Dadb, key: String): String? {
     require(key in trackedSystemSettingKeys)
-    return shellText(adb, "settings get secure $key").trim().takeUnless { it == "null" }
+    return readOnlyShellText(adb, "settings get secure $key").trim().takeUnless { it == "null" }
 }
 private fun writeTrackedSystemSetting(adb: Dadb, key: String, value: String?) {
     require(key in trackedSystemSettingKeys)
@@ -3381,14 +3381,14 @@ private fun resolveHomeComponent(adb: Dadb, packageFilter: String? = null): Stri
 }
 
 private fun isFireOsDevice(adb: Dadb): Boolean {
-    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    fun prop(name: String): String = try { readOnlyShellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
     val manufacturer = prop("ro.product.manufacturer")
     val brand = prop("ro.product.brand")
     val model = prop("ro.product.model")
     if (manufacturer.equals("Amazon", true) || brand.equals("Amazon", true) ||
         model.startsWith("AFT", true)) return true
     return try {
-        val packages = shellText(adb, "pm list packages")
+        val packages = readOnlyShellText(adb, "pm list packages")
         packages.lineSequence().any {
             it.trim() == "package:com.amazon.tv.launcher" ||
                 it.trim() == "package:com.amazon.firehomestarter"
@@ -3400,7 +3400,7 @@ private fun isFireOsDevice(adb: Dadb): Boolean {
 }
 
 private fun isTclChinaDevice(adb: Dadb): Boolean {
-    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    fun prop(name: String): String = try { readOnlyShellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
     val brand = prop("ro.product.brand")
     val manufacturer = prop("ro.product.manufacturer")
     val tclFamily = setOf("tcl", "ffalcon").any {
@@ -3410,7 +3410,7 @@ private fun isTclChinaDevice(adb: Dadb): Boolean {
     // Upstream distinguishes TCL_CN firmware by the absence of Google Mobile Services.
     // If Package Manager cannot be queried, do not guess that this is a China firmware.
     return try {
-        shellText(adb, "pm list packages").lineSequence()
+        readOnlyShellText(adb, "pm list packages").lineSequence()
             .none { it.trim() == "package:com.google.android.gms" }
     } catch (_: Exception) { false }
 }
