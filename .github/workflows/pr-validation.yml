@@ -26,6 +26,6 @@ jobs:
       - name: Установить Android SDK Platform 37
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" --channel=3
       - name: Выполнить модульные тесты и компиляцию приложения
         run: gradle :app:testDebugUnitTest --no-daemon
