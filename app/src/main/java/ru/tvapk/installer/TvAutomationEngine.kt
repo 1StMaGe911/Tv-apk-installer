@@ -57,6 +57,24 @@ internal object TvAutomationEngine {
         )
     }
 
+    internal data class CleanupVerification(
+        val confirmedDisabledPackages: Set<String>,
+        val notConfirmedPackages: Set<String>
+    )
+
+    /** Only packages present in the final installed-and-disabled snapshot count as changed. */
+    internal fun verifyCleanupState(
+        plannedPackages: Set<String>,
+        installedPackages: Set<String>,
+        disabledPackages: Set<String>
+    ): CleanupVerification {
+        val confirmed = plannedPackages intersect installedPackages intersect disabledPackages
+        return CleanupVerification(
+            confirmedDisabledPackages = confirmed,
+            notConfirmedPackages = plannedPackages - confirmed
+        )
+    }
+
     internal fun shouldAutomaticallyTrimCache(enabled: Boolean, dataUsedPercent: Int?): Boolean =
         enabled && dataUsedPercent != null && dataUsedPercent in 90..100
 

@@ -7915,7 +7915,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     activity.runOnUiThread { cleanupJournal = journal }
                                                     outcome
                                                 } else ""
-                                                val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
                                                 safeSelected.forEachIndexed { index, pkg ->
                                                     updateMaintenanceProgress("Отключаем и проверяем пакет ${index + 1} из ${safeSelected.size}: $pkg")
@@ -7926,27 +7925,35 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     try {
                                                         changePackageStateVerified(adb, pkg, false)
                                                     } catch (_: Exception) {
-                                                        // The actual Package Manager state is checked immediately below.
+                                                        // The final Package Manager snapshot is authoritative.
                                                     }
                                                     val isDisabledAfterAttempt = pkg in readDisabledPackages(adb)
-                                                    if (isDisabledAfterAttempt) disabledNow.add(pkg) else failures.add(pkg)
-                                                    journal = journal.copy(completedPackages = disabledNow.toList(), inFlightPackage = null)
+                                                    if (!isDisabledAfterAttempt) failures.add(pkg)
+                                                    journal = journal.copy(
+                                                        completedPackages = (journal.completedPackages + listOfNotNull(pkg.takeIf { isDisabledAfterAttempt })).distinct(),
+                                                        inFlightPackage = null
+                                                    )
                                                     check(saveCleanupJournal(context, journal)) {
                                                         "Не удалось надёжно сохранить результат для $pkg. Операция остановлена; журнал оставлен для восстановления."
                                                     }
                                                 }
                                                 updateMaintenanceProgress("Проверяем итоговое состояние пакетов и системы…")
+                                                val finalInstalledState = readAllPackages(adb).toSet()
                                                 val finalDisabledState = readDisabledPackages(adb)
-                                                val noLongerDisabled = disabledNow.filter { it !in finalDisabledState }
-                                                if (noLongerDisabled.isNotEmpty()) {
-                                                    failures.addAll(noLongerDisabled.map { "$it (состояние изменилось после отключения)" })
-                                                }
-                                                journal = journal.copy(completedPackages = disabledNow.filter { it in finalDisabledState }, inFlightPackage = null)
+                                                val cleanupVerification = TvAutomationEngine.verifyCleanupState(
+                                                    plannedPackages = safeSelected.toSet(),
+                                                    installedPackages = finalInstalledState,
+                                                    disabledPackages = finalDisabledState
+                                                )
+                                                val confirmedDisabled = cleanupVerification.confirmedDisabledPackages.toList().sorted()
+                                                failures.clear()
+                                                failures.addAll(cleanupVerification.notConfirmedPackages.sorted().map { "$it (не подтверждено итоговым состоянием)" })
+                                                journal = journal.copy(completedPackages = confirmedDisabled, inFlightPackage = null)
                                                 check(saveCleanupJournal(context, journal)) {
                                                     "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
                                                 }
                                                 if (failures.isEmpty()) {
-                                                    appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
+                                                    appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)
                                                     check(clearCleanupJournal(context)) {
                                                         "Очистка завершена, но не удалось удалить журнал операции. Он сохранён для безопасной повторной проверки."
                                                     }
@@ -7961,40 +7968,36 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val postCleanupHealth = postCleanupDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
                                                 val cleanupOutcome = when {
                                                     failures.isEmpty() -> "Очистка завершена"
-                                                    disabledNow.isNotEmpty() -> "Очистка частично выполнена"
+                                                    confirmedDisabled.isNotEmpty() -> "Очистка частично выполнена"
                                                     else -> "Очистка не выполнена"
                                                 }
                                                 val historyUpdated = updateLatestMaintenanceCleanupHistory(
-                                                    context, deviceIdentity, cleanupOutcome, disabledNow
+                                                    context, deviceIdentity, cleanupOutcome, confirmedDisabled
                                                 )
                                                 activity.runOnUiThread {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                                                    if (disabledNow.isNotEmpty()) {
-                                                        val userDisabledNow = disabledNow.filter { it in userPackages }.toSet()
-                                                        val systemDisabledNow = disabledNow.filter { it !in userPackages }.toSet()
+                                                    if (confirmedDisabled.isNotEmpty()) {
+                                                        val userDisabledNow = confirmedDisabled.filter { it in userPackages }.toSet()
+                                                        val systemDisabledNow = confirmedDisabled.filter { it !in userPackages }.toSet()
                                                         disabledPackages = disabledPackages + userDisabledNow
                                                         managedSystemDisabledPackages = managedSystemDisabledPackages + systemDisabledNow
-                                                        selectedCleanupPackages = selectedCleanupPackages - disabledNow.toSet()
+                                                        selectedCleanupPackages = selectedCleanupPackages - confirmedDisabled.toSet()
                                                         settings.edit()
                                                             .putStringSet("disabled_packages", disabledPackages)
                                                             .putStringSet("managed_system_disabled_packages", managedSystemDisabledPackages)
                                                             .apply()
                                                     }
-                                                    if (finalDisabledState != null) disabledOnDevice = finalDisabledState
+                                                    disabledOnDevice = finalDisabledState
                                                     if (postCleanupDiagnostics != null) diagnostics = postCleanupDiagnostics
                                                 }
                                                 if (!historyUpdated) failures.add("не удалось сохранить результат пакетной операции в истории обслуживания")
-                                                val verificationSummary = if (finalDisabledState != null) {
-                                                    "\nПовторная проверка на ТВ: ${safeSelected.count { it in finalDisabledState }} из ${safeSelected.size} пакетов действительно отключено."
-                                                } else {
-                                                    "\nПовторная проверка общего состояния недоступна; результаты каждой операции проверялись отдельно."
-                                                }
+                                                val verificationSummary = "\nИтоговая проверка на ТВ: ${confirmedDisabled.size} из ${safeSelected.size} пакетов действительно установлено и отключено."
                                                 val healthSummary = postCleanupHealth?.let { health ->
                                                     "\nСостояние после оптимизации: ${health.summary}" +
                                                         if (health.warnings.isEmpty()) "" else "\n" + health.warnings.joinToString("\n")
                                                 }.orEmpty()
                                                 (if (combinedCacheResult.isBlank()) "" else combinedCacheResult + "\n") +
-                                                    "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
+                                                    "Отключено: ${confirmedDisabled.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
                                                     verificationSummary + healthSummary
                                             }
