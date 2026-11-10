@@ -63,6 +63,42 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupFinalSnapshotCountsOnlyPackagesStillInstalledAndDisabled() {
+        val result = TvAutomationEngine.verifyCleanupState(
+            plannedPackages = setOf("confirmed", "enabled-again", "missing"),
+            installedPackages = setOf("confirmed", "enabled-again"),
+            disabledPackages = setOf("confirmed")
+        )
+
+        assertEquals(setOf("confirmed"), result.confirmedDisabledPackages)
+        assertEquals(setOf("enabled-again", "missing"), result.notConfirmedPackages)
+    }
+
+    @Test
+    fun cleanupFinalSnapshotCanConfirmPackageAfterAnUncertainCommandResult() {
+        val result = TvAutomationEngine.verifyCleanupState(
+            plannedPackages = setOf("actually-disabled"),
+            installedPackages = setOf("actually-disabled"),
+            disabledPackages = setOf("actually-disabled")
+        )
+
+        assertEquals(setOf("actually-disabled"), result.confirmedDisabledPackages)
+        assertTrue(result.notConfirmedPackages.isEmpty())
+    }
+
+    @Test
+    fun cleanupFinalSnapshotRejectsDisabledStateForUninstalledPackage() {
+        val result = TvAutomationEngine.verifyCleanupState(
+            plannedPackages = setOf("removed"),
+            installedPackages = emptySet(),
+            disabledPackages = setOf("removed")
+        )
+
+        assertTrue(result.confirmedDisabledPackages.isEmpty())
+        assertEquals(setOf("removed"), result.notConfirmedPackages)
+    }
+
+    @Test
     fun automaticCacheTrimRequiresOptInAndAtLeastNinetyPercentUsage() {
         assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(false, 95))
         assertFalse(TvAutomationEngine.shouldAutomaticallyTrimCache(true, null))
