@@ -28,6 +28,15 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun profileBrandNormalizationPreservesLocalizedLettersAndSeparators() {
+        assertEquals("сбертв", TvAutomationEngine.normalizeProfileBrandIdentifier("Сбер ТВ"))
+        assertEquals("sonycorporation", TvAutomationEngine.normalizeProfileBrandIdentifier("Sony Corporation"))
+        assertTrue(TvAutomationEngine.matchesReportedProfileBrand("Сбер ТВ", listOf("ООО СберТВ")))
+        assertTrue(TvAutomationEngine.matchesReportedProfileBrand("Sony", listOf("SONY-Corporation")))
+        assertFalse(TvAutomationEngine.matchesReportedProfileBrand("Sony", listOf("TCL Electronics")))
+    }
+
+    @Test
     fun exactModelProfileRejectsKnownAndroidSdkOutsideSupportedRange() {
         assertTrue(TvAutomationEngine.isProfileSdkCompatible(34, 33, 35))
         assertFalse(TvAutomationEngine.isProfileSdkCompatible(32, 33, 35))
