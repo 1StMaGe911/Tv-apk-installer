@@ -22,16 +22,13 @@ jobs:
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: '9.3.1'
           cache-disabled: false
       - name: Установить Android SDK Platform 37
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" --channel=3
-          # sdkmanager names the preview directory android-37.0; AGP compileSdk=37 resolves android-37.
-          if [ -d "$ANDROID_HOME/platforms/android-37.0" ] && [ ! -e "$ANDROID_HOME/platforms/android-37" ]; then
-            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
-          fi
-          test -f "$ANDROID_HOME/platforms/android-37/android.jar"
+          # AGP 9.1.1 resolves API 37.0 through compileSdk.minorApiLevel.
+          test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
       - name: Выполнить модульные тесты и компиляцию приложения
         run: gradle :app:testDebugUnitTest --no-daemon
