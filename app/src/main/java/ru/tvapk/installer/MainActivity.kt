@@ -5934,7 +5934,8 @@ fun TvInstallerApp() {
         val device = TvDevice(
             tvName.ifBlank { host },
             host,
-            p
+            p,
+            isTlsConnect = settings.getInt("adb_tls_connect_port", 0) == p
         )
 
         devices.removeAll {
