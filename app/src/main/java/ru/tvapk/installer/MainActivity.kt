@@ -4462,7 +4462,6 @@ fun TvInstallerApp() {
                 releaseUrl = result.releaseUrl
                 updateApkUrl = result.apkUrl
                 updateApkSha256 = result.expectedSha256
-                                        updateApkSize = result.apkSize
                 updateApkSize = result.apkSize
             }
         }.start()
