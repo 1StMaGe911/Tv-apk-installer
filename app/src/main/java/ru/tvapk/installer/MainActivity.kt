@@ -7594,10 +7594,41 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("НЕЗАВЕРШЁННАЯ ОЧИСТКА", color = Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
-                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Подтверждённо отключено: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
+                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Отмечено завершёнными: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
                                     journal.inFlightPackage?.let { pkg ->
-                                        Text("Требует проверки: $pkg. Команда могла прерваться; фактическое состояние будет проверено перед восстановлением.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                                        Text("Операция прервалась на пакете: $pkg. Его фактическое состояние неизвестно до повторной проверки.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                                     }
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                        val host = journal.host
+                                        val p = journal.port
+                                        if (host.isBlank() || p !in 1..65535) {
+                                            status = "В журнале нет корректного адреса исходного телевизора"
+                                        } else runTask({
+                                            connectWithRetry(context, host, p) { adb ->
+                                                require(readTvIdentity(adb) == journal.deviceIdentity) {
+                                                    "Подключён другой телевизор. Проверка восстановления отменена."
+                                                }
+                                                val installed = readAllPackages(adb).toSet()
+                                                val disabledNow = readDisabledPackages(adb)
+                                                val plan = TvAutomationEngine.buildCleanupRecoveryPlan(
+                                                    plannedPackages = journal.plannedPackages.toSet(),
+                                                    completedPackages = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet(),
+                                                    installedPackages = installed,
+                                                    disabledPackages = disabledNow,
+                                                    baselineDisabledPackages = journal.baselineDisabledPackages.toSet(),
+                                                    restoredPackages = journal.restoredPackages.toSet()
+                                                )
+                                                buildString {
+                                                    append("Проверка завершена без изменений на ТВ. ")
+                                                    append("Подтверждено отключённых: ${plan.confirmedCompletedPackages.size}; ")
+                                                    append("можно безопасно повторить: ${plan.retryablePackages.size}; ")
+                                                    append("конфликтов: ${plan.conflictPackages.size}.")
+                                                    if (plan.retryablePackages.isNotEmpty()) append("\nКандидаты для продолжения: ${plan.retryablePackages.sorted().joinToString()}")
+                                                    if (plan.conflictPackages.isNotEmpty()) append("\nНужна ручная проверка: ${plan.conflictPackages.sorted().joinToString()}")
+                                                }
+                                            }
+                                        })
+                                    }) { Text("Проверить состояние телевизора") }
                                     Text("Восстановление разрешено только на исходном телевизоре (проверяется производитель, модель, устройство и отпечаток прошивки).", color = TextMuted, fontSize = 11.sp)
                                     when (journal.cacheTrimState) {
                                         "running" -> Text("Кэш: операция прервалась или её результат не сохранён. Статус неизвестен; откат пакетов не возвращает кэш. Проверь хранилище ТВ перед повторной очисткой.", color = Color(0xFFFFD98A), fontSize = 11.sp)
@@ -7612,7 +7643,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         AlertDialog(
                                             onDismissRequest = { pendingCleanupRollback = false },
                                             title = { Text("Восстановить отключённые пакеты?") },
-                                            text = { Text("Будут включены только пакеты, которые эта операция успела отключить: ${journal.completedPackages.joinToString()}. Сначала будет проверено, что подключён именно исходный телевизор. Продолжить?") },
+                                            text = { Text("Будут включены только пакеты, которые эта операция успела отключить: ${(journal.completedPackages + listOfNotNull(journal.inFlightPackage)).distinct().joinToString()}. Сначала будет проверено, что подключён именно исходный телевизор и сверено фактическое состояние пакетов. Продолжить?") },
                                             confirmButton = {
                                                 TextButton(enabled = !busy, onClick = {
                                                     pendingCleanupRollback = false
