@@ -1097,22 +1097,6 @@ private fun saveHistory(context: Context, history: List<String>) {
         .apply()
 }
 
-private fun compareVersions(first: String, second: String): Int {
-    val a = first.removePrefix("v").split(".").map {
-        it.toIntOrNull() ?: 0
-    }
-    val b = second.removePrefix("v").split(".").map {
-        it.toIntOrNull() ?: 0
-    }
-
-    for (i in 0 until maxOf(a.size, b.size)) {
-        val x = a.getOrElse(i) { 0 }
-        val y = b.getOrElse(i) { 0 }
-        if (x != y) return x.compareTo(y)
-    }
-    return 0
-}
-
 private data class UpdateInfo(
     val status: String,
     val releaseUrl: String?,
@@ -1135,11 +1119,12 @@ private fun checkLatestVersion(): UpdateInfo {
         }
 
         val json = JSONObject(readBoundedUtf8(connection.inputStream, 1024 * 1024))
-        val tag = json.optString("tag_name")
+        val rawTag = json.optString("tag_name")
         val releaseUrl = json.optString("html_url").takeIf { it.isNotBlank() }
-        if (tag.isBlank()) return UpdateInfo("Версия релиза не найдена", releaseUrl, null, 0L)
+        val tag = UpdateCheckReleasePolicy.normalizeTag(rawTag)
+            ?: return UpdateInfo("Версия релиза некорректна", releaseUrl, null, 0L)
 
-        if (compareVersions(tag, APP_VERSION) <= 0) {
+        if (AppVersionComparator.compare(tag, APP_VERSION) <= 0) {
             return UpdateInfo("Установлена актуальная версия $APP_VERSION", releaseUrl, null, 0L)
         }
 
