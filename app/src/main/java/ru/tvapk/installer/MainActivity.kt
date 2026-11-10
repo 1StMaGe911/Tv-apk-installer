@@ -8780,6 +8780,29 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         require(currentFingerprint == savedFingerprint) {
                                             "Точка создана для другого телевизора или другой сборки прошивки. Восстановление остановлено; создай новую точку на этом устройстве."
                                         }
+                                        // Do not start a second state-changing operation while an earlier
+                                        // manual recovery is pending on this same TV. Strict journal loaders
+                                        // also fail closed and preserve malformed source data.
+                                        val pendingPackageRecovery = loadTrackedPackageChanges(context)
+                                            .count { it.deviceIdentity == currentFingerprint }
+                                        val pendingAutoStartRecovery = loadTrackedAutoStartChanges(context)
+                                            .count { it.deviceIdentity == currentFingerprint }
+                                        val pendingSystemSettingRecovery = loadTrackedSystemSettingChanges(context)
+                                            .count { it.deviceIdentity == currentFingerprint }
+                                        val pendingHomeRecovery =
+                                            settings.getString("launcher_handover_device_identity", null) == currentFingerprint &&
+                                                settings.getString("launcher_handover_stock_package", null) != null
+                                        require(
+                                            pendingPackageRecovery == 0 &&
+                                                pendingAutoStartRecovery == 0 &&
+                                                pendingSystemSettingRecovery == 0 &&
+                                                !pendingHomeRecovery
+                                        ) {
+                                            "Сначала заверши или откати ожидающие ручные изменения для этого телевизора " +
+                                                "(пакеты: $pendingPackageRecovery, автозапуск: $pendingAutoStartRecovery, " +
+                                                "настройки: $pendingSystemSettingRecovery, главный экран: ${if (pendingHomeRecovery) "ожидает" else "нет"}). " +
+                                                "Точка восстановления не применена."
+                                        }
                                         val currentUserDisabled = readDisabledUserPackages(adb)
                                         val currentDisabledAll = readDisabledPackages(adb)
                                         val installed = readAllPackages(adb).toSet()
