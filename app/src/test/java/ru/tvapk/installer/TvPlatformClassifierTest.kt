@@ -81,7 +81,7 @@ class TvPlatformClassifierTest {
 
     @Test
     fun profileLabelMatchesOemNamesAsWholeTokens() {
-        assertEquals("LG • Android TV / Android", TvPlatformClassifier.profileLabel("manufacturer=LG; model=OLED"))
+        assertEquals("LG • Android-совместимое устройство", TvPlatformClassifier.profileLabel("manufacturer=LG; model=OLED"))
         assertEquals("Универсальный профиль • Google TV / Android TV", TvPlatformClassifier.profileLabel(
             "model=Google TV; package=com.google.android.apps.tv.launcherx"
         ))
