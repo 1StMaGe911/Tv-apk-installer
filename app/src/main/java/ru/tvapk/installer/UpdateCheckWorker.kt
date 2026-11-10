@@ -59,10 +59,16 @@ class UpdateCheckWorker(
                 connection.readTimeout = 15000
                 connection.setRequestProperty("User-Agent", "TV-APK-Installer")
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
-                if (connection.responseCode != 200) return Result.retry()
+                val responseCode = connection.responseCode
+                if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) return Result.success()
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    return if (responseCode == 403 || responseCode == 408 || responseCode == 429 ||
+                        responseCode >= 500
+                    ) Result.retry() else Result.failure()
+                }
                 val declaredLength = connection.contentLengthLong
                 if (declaredLength > MAX_RELEASE_METADATA_BYTES) {
-                    throw IOException("GitHub release metadata is unexpectedly large")
+                    throw IllegalStateException("GitHub release metadata is unexpectedly large")
                 }
                 val body = connection.inputStream.use { input ->
                     val output = ByteArrayOutputStream()
@@ -73,7 +79,7 @@ class UpdateCheckWorker(
                         if (count < 0) break
                         total += count
                         if (total > MAX_RELEASE_METADATA_BYTES) {
-                            throw IOException("GitHub release metadata exceeds size limit")
+                            throw IllegalStateException("GitHub release metadata exceeds size limit")
                         }
                         output.write(buffer, 0, count)
                     }
@@ -86,7 +92,7 @@ class UpdateCheckWorker(
 
             val rawTag = json.optString("tag_name")
             if (!rawTag.matches(Regex("^v?\\d+(?:\\.\\d+){1,3}$"))) {
-                throw IOException("GitHub returned an invalid release version")
+                throw IllegalStateException("GitHub returned an invalid release version")
             }
             val latestTag = rawTag.removePrefix("v")
             val installedVersion = appVersionName()
@@ -99,8 +105,10 @@ class UpdateCheckWorker(
                 }
             }
             Result.success()
-        } catch (_: Exception) {
+        } catch (_: IOException) {
             Result.retry()
+        } catch (_: Exception) {
+            Result.failure()
         }
     }
 
