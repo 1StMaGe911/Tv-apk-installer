@@ -91,7 +91,7 @@ class UpdateCheckWorker(
             val latestTag = rawTag.removePrefix("v")
             val installedVersion = appVersionName()
 
-            if (compareVersions(latestTag, installedVersion) > 0) {
+            if (AppVersionComparator.compare(latestTag, installedVersion) > 0) {
                 val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
                 val alreadyNotified = preferences.getString("last_notified_update_version", null)
                 if (alreadyNotified != latestTag) {
@@ -108,17 +108,6 @@ class UpdateCheckWorker(
     private fun appVersionName(): String =
         applicationContext.packageManager
             .getPackageInfo(applicationContext.packageName, 0).versionName ?: "0.0.0"
-
-    private fun compareVersions(first: String, second: String): Int {
-        val a = first.split(".").map { it.toIntOrNull() ?: 0 }
-        val b = second.removePrefix("v").split(".").map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x.compareTo(y)
-        }
-        return 0
-    }
 
     private fun showUpdateNotification(version: String) {
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
