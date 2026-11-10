@@ -2460,7 +2460,22 @@ private fun applyWallpaperRotationSettings(adb: Dadb, minutes: Int, order: Strin
 
 private fun readTvDiagnostics(adb: Dadb): String {
     fun safe(command: String): String = try {
-        shellText(adb, command).ifBlank { "Недоступно" }
+        TvAutomationEngine.retryReadOnlyCommand(
+            maxAttempts = 2,
+            retryDelayMillis = 350L,
+            wait = { delay ->
+                try {
+                    Thread.sleep(delay)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw interrupted
+                }
+            }
+        ) {
+            shellText(adb, command).also { output ->
+                require(output.isNotBlank()) { "Пустой ответ диагностической команды" }
+            }
+        }
     } catch (_: Exception) { "Недоступно" }
 
     val memory = safe("cat /proc/meminfo | head -n 3")
