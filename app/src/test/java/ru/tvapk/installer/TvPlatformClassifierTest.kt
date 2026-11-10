@@ -86,7 +86,7 @@ class TvPlatformClassifierTest {
             "model=Google TV; package=com.google.android.apps.tv.launcherx"
         ))
         assertEquals("TCL • Android TV / Android", TvPlatformClassifier.profileLabel("brand=TCL; build=tv"))
-        assertEquals("Xiaomi • Android TV / Android", TvPlatformClassifier.profileLabel("manufacturer=Redmi"))
+        assertEquals("Xiaomi • Android-совместимое устройство", TvPlatformClassifier.profileLabel("manufacturer=Redmi"))
     }
 
     @Test
