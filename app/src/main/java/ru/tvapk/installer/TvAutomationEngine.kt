@@ -128,9 +128,10 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         val expected = profileBrand.lowercase(java.util.Locale.ROOT)
             .replace(Regex("[^a-z0-9]"), "")
         if (expected.isBlank()) return true
+        val unknownValues = setOf("", "unknown", "unknown0", "неизвестно", "na", "null", "none")
         val reported = reportedBrands.map {
-            it.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
-        }.filter { it.length >= 3 }
+            it.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9а-яё]"), "")
+        }.filter { it.length >= 3 && it !in unknownValues }
         if (reported.isEmpty()) return true
         return expected.length >= 3 && reported.any {
             it.contains(expected) || expected.contains(it)
