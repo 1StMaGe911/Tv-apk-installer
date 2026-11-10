@@ -1755,11 +1755,18 @@ private fun writeLauncherConfig(adb: Dadb, config: JSONObject): String {
             "Launcher не подтвердил запись конфигурации. Существующий файл не удалялся; проверь состояние телевизора."
         }
         shellText(adb, "am force-stop --user 0 $packageName")
-        return try {
+        val restart = try {
             shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
         } catch (_: Exception) {
             shellText(adb, "monkey -p $packageName -c android.intent.category.LAUNCHER 1")
         }
+        // Confirm that Launcher still exposes the requested config after its restart.
+        // The follow-up is read-only; the write and launch commands are never retried here.
+        val afterRestart = readCurrentLauncherConfig(adb)
+        require(afterRestart.toString() == config.toString()) {
+            "После перезапуска Launcher не подтвердил сохранение конфигурации. Проверь состояние телевизора."
+        }
+        return "$restart Конфигурация повторно проверена после перезапуска Launcher."
     } finally {
         safeFile.delete()
     }
