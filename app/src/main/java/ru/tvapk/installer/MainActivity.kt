@@ -2025,7 +2025,7 @@ private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
                     entry.name == "config.json" -> 2L to (1024L * 1024L)
                     entry.name == "wallpaper-state.txt" -> 3L to 16L
                     entry.name == "wallpaper.jpg" -> 64L to (12L * 1024L * 1024L)
-                    entry.name.matches(Regex("wallpapers/wallpaper-[0-9]{3}\\\\.(jpg|jpeg|png|webp)")) -> 64L to (10L * 1024L * 1024L)
+                    entry.name.matches(Regex("wallpapers/wallpaper-[0-9]{3}\\.(jpg|jpeg|png|webp)")) -> 64L to (10L * 1024L * 1024L)
                     else -> throw IllegalStateException("Неизвестная запись в автокопии: ${entry.name}")
                 }
                 val limit = bounds.second
