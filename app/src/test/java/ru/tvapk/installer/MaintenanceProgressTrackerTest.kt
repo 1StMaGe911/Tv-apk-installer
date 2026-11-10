@@ -47,7 +47,7 @@ class MaintenanceProgressTrackerTest {
         val tracker = MaintenanceProgressTracker()
         MaintenanceStage.values().dropLast(1).forEach(tracker::advance)
         assertFalse(tracker.isComplete())
-        tracker.advance(MaintenanceStage.COMPLETE)
+        tracker.advance(MaintenanceStage.REVIEW_READY)
         assertTrue(tracker.isComplete())
     }
 }
