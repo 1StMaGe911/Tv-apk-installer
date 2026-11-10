@@ -4966,10 +4966,12 @@ fun TvInstallerApp() {
                     .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
                     .map { it.packageName }
                     .toSet()
-                val rememberedDeviceApprovals = settings.getStringSet(
-                    TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentityForHistory),
-                    emptySet()
-                )?.toSet().orEmpty()
+                val rememberedDeviceApprovals = runCatching {
+                    settings.getStringSet(
+                        TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentityForHistory),
+                        emptySet()
+                    )?.toSet().orEmpty()
+                }.getOrDefault(emptySet())
                 val approved = TvAutomationEngine.automaticallyApprovedPackages(
                     packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
                     trustedProfile = profile?.automaticDisableTrusted == true,
@@ -8946,6 +8948,17 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
                                                 }
                                                 if (failures.isEmpty()) {
+                                                    // Remember only packages that were selected by the user and
+                                                    // actually confirmed disabled on this exact TV.
+                                                    if (confirmedDisabled.isNotEmpty()) {
+                                                        val approvalKey = TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentity)
+                                                        val previousApprovals = settings.getStringSet(approvalKey, emptySet())
+                                                            ?.toMutableSet() ?: mutableSetOf()
+                                                        previousApprovals.addAll(confirmedDisabled)
+                                                        if (!settings.edit().putStringSet(approvalKey, previousApprovals).commit()) {
+                                                            failures.add("не удалось сохранить разрешения для повторных запусков")
+                                                        }
+                                                    }
                                                     check(appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)) {
                                                         "Не удалось сохранить историю очистки. Журнал оставлен для безопасного повтора."
                                                     }
@@ -9002,17 +9015,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         }, onFinished = { result ->
                                             val cleanupVerified =
                                                 TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
-                                            if (cleanupVerified && selected.isNotEmpty()) {
-                                                val identity = maintenanceDeviceIdentity
-                                                if (identity != null) {
-                                                    val key = TvAutomationEngine.cleanupApprovalPreferenceKey(identity)
-                                                    val previous = settings.getStringSet(key, emptySet())?.toMutableSet() ?: mutableSetOf()
-                                                    previous.addAll(selected)
-                                                    check(settings.edit().putStringSet(key, previous).commit()) {
-                                                        "Не удалось сохранить разрешённые пакеты для этого телевизора."
-                                                    }
-                                                }
-                                            }
                                             if (installLauncherAfterMaintenance) {
                                                 if (cleanupVerified) {
                                                     maintenanceReadyToInstallLauncher = true
