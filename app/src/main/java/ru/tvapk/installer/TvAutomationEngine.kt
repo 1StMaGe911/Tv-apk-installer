@@ -127,6 +127,17 @@ internal object TvAutomationEngine {
         return profileApproved + knownGlobalPackages
     }
 
+    /** Stable, device-scoped preference key; raw hardware/build identity is never used as a key. */
+    internal fun cleanupApprovalPreferenceKey(deviceIdentity: String): String {
+        require(deviceIdentity.isNotBlank() && deviceIdentity.length <= 2048) {
+            "Некорректный идентификатор телевизора"
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(deviceIdentity.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        return "cleanup_approved_packages_v1_$digest"
+    }
+
     /** Only a verified successful cleanup result may advance the combined Launcher flow. */
     internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean =
         (result.contains("Отключено:") && Regex("Ошибок:\\s*0").containsMatchIn(result)) ||
