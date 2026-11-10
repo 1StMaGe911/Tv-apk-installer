@@ -143,9 +143,38 @@ internal fun matchingAdbPairingEndpoints(
         .sortedBy { it.port }
 }
 
-private fun canonicalAddress(value: String): String? = runCatching {
-    java.net.InetAddress.getByName(value.substringBefore('%')).address
-        .joinToString("") { byte -> "%02x".format(byte) }
-}.getOrNull()
+/**
+ * Canonicalize numeric IP literals only. InetAddress.getByName also accepts hostnames
+ * and may perform DNS lookups; pairing endpoint matching must stay local and deterministic.
+ */
+private fun canonicalAddress(value: String): String? {
+    val literal = value.trim()
+    if (literal.isEmpty()) return null
+
+    val hasZone = '%' in literal
+    val address = literal.substringBefore('%')
+    if (hasZone) {
+        val zone = literal.substringAfter('%')
+        if (!address.contains(':') || !zone.matches(Regex("[A-Za-z0-9_.-]+"))) return null
+    }
+
+    val bytes = if (address.contains(':')) {
+        if (!address.matches(Regex("[0-9A-Fa-f:.]+"))) return null
+        runCatching { java.net.InetAddress.getByName(address).address }
+            .getOrNull()
+            ?.takeIf { it.size == 16 }
+            ?: return null
+    } else {
+        val parts = address.split('.')
+        if (parts.size != 4) return null
+        val octets = parts.map { part ->
+            if (!part.matches(Regex("[0-9]{1,3}"))) return null
+            part.toIntOrNull()?.takeIf { it in 0..255 } ?: return null
+        }
+        ByteArray(4) { index -> octets[index].toByte() }
+    }
+
+    return bytes.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
 
 private const val PAIRING_SERVICE_TYPE = "_adb-tls-pairing._tcp."
