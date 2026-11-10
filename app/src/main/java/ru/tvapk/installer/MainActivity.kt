@@ -2458,7 +2458,7 @@ private fun applyWallpaperRotationSettings(adb: Dadb, minutes: Int, order: Strin
     return "Ротация обоев: ${if (minutes <= 0) "выключена" else "каждые $minutes мин."}. $restart"
 }
 
-private fun readOnlyShellText(adb: Dadb, command: String): String =
+private fun <T> retryTvReadOnly(action: () -> T): T =
     TvAutomationEngine.retryReadOnlyCommand(
         maxAttempts = 2,
         retryDelayMillis = 350L,
@@ -2469,8 +2469,12 @@ private fun readOnlyShellText(adb: Dadb, command: String): String =
                 Thread.currentThread().interrupt()
                 throw interrupted
             }
-        }
-    ) {
+        },
+        action = action
+    )
+
+private fun readOnlyShellText(adb: Dadb, command: String): String =
+    retryTvReadOnly {
         shellText(adb, command).also { output ->
             require(output.isNotBlank()) { "Пустой ответ команды чтения: $command" }
         }
@@ -2507,18 +2511,7 @@ private fun readTvDiagnostics(adb: Dadb): String {
 
 
 private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSnapshot =
-    TvAutomationEngine.retryReadOnlyCommand(
-        maxAttempts = 2,
-        retryDelayMillis = 350L,
-        wait = { delay ->
-            try {
-                Thread.sleep(delay)
-            } catch (interrupted: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw interrupted
-            }
-        }
-    ) {
+    retryTvReadOnly {
         val output = shellText(adb, "df -k /data")
         TvAutomationEngine.parseDataStorageSnapshot(output)
             ?: throw Exception("Не удалось надёжно прочитать размер и свободное место раздела /data")
