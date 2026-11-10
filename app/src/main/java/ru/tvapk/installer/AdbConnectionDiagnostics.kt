@@ -42,4 +42,27 @@ internal object AdbConnectionDiagnostics {
         val diagnosis = classify(host, port, errorText)
         return "Причина: ${diagnosis.kind}. ${diagnosis.guidance} Исходная ошибка: $errorText"
     }
+    /** Retries only connection establishment; callers must execute device actions afterwards. */
+    internal fun <T : Any> retryConnection(
+        maxAttempts: Int = 3,
+        retryDelayMillis: Long = 1500L,
+        connect: () -> T,
+        isRetryable: (Exception) -> Boolean,
+        pause: (Long) -> Unit = { Thread.sleep(it) }
+    ): T {
+        require(maxAttempts > 0) { "maxAttempts must be positive" }
+        require(retryDelayMillis >= 0L) { "retryDelayMillis must not be negative" }
+        var lastError: Exception? = null
+        repeat(maxAttempts) { attempt ->
+            try {
+                return connect()
+            } catch (error: Exception) {
+                lastError = error
+                if (attempt == maxAttempts - 1 || !isRetryable(error)) throw error
+                pause(retryDelayMillis)
+            }
+        }
+        throw lastError ?: IllegalStateException("Connection failed without an error")
+    }
+
 }
