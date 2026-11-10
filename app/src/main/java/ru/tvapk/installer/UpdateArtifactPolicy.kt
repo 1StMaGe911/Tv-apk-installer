@@ -13,4 +13,17 @@ internal object UpdateArtifactPolicy {
         expectedSha256.matches(Regex("[0-9a-fA-F]{64}")) &&
             actualSha256.matches(Regex("[0-9a-fA-F]{64}")) &&
             actualSha256.equals(expectedSha256, ignoreCase = true)
+
+    fun isTrustedUpdate(
+        packageName: String,
+        installedPackageName: String,
+        archiveSignerSha256: String,
+        installedSignerSha256: String,
+        archiveVersionCode: Long,
+        installedVersionCode: Long
+    ): Boolean =
+        packageName.isNotBlank() &&
+            packageName == installedPackageName &&
+            matchesSha256(archiveSignerSha256, installedSignerSha256) &&
+            archiveVersionCode > installedVersionCode
 }
