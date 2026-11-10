@@ -1957,6 +1957,28 @@ private fun launcherWallpaperExists(adb: Dadb): Boolean? {
     } catch (_: Exception) { null }
 }
 
+private fun removeLauncherWallpaper(adb: Dadb): String {
+    val packageName = "com.gathin.tvhome"
+    val path = "/sdcard/Android/data/$packageName/files/wallpaper.jpg"
+
+    // Try the Launcher provider first, then use the legacy file only when a
+    // read-only probe shows that the wallpaper is still present or unknown.
+    try {
+        shellText(adb, "content delete --uri content://$packageName.theme/wallpaper.jpg")
+    } catch (_: Exception) {
+        // The provider may be unavailable on older Launcher versions.
+    }
+
+    if (launcherWallpaperExists(adb) != false) {
+        shellText(adb, "rm -f $path")
+    }
+
+    require(launcherWallpaperExists(adb) == false) {
+        "Launcher не подтвердил удаление прежних обоев. Конфигурация резервной копии не записана."
+    }
+    return "Отсутствие файла обоев проверено."
+}
+
 private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
     fun decode(encoded: String): ByteArray? {
         if (encoded.isBlank()) return null
@@ -2162,14 +2184,9 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
     }
 
     val baseRestore = if (wallpaper == null) {
-        if (wallpaperState == "absent") {
-            try {
-                shellText(adb, "content delete --uri content://com.gathin.tvhome.theme/wallpaper.jpg")
-            } catch (_: Exception) {
-                shellText(adb, "rm -f /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg")
-            }
-        }
-        writeLauncherConfig(adb, config)
+        val wallpaperNote = if (wallpaperState == "absent") removeLauncherWallpaper(adb) else ""
+        val configNote = writeLauncherConfig(adb, config)
+        listOf(wallpaperNote, configNote).filter { it.isNotBlank() }.joinToString(" ")
     } else {
         val configFile = File.createTempFile("cleanyourtv-restore-", ".json", context.cacheDir)
         val wallpaperFile = File.createTempFile("cleanyourtv-restore-", ".jpg", context.cacheDir)
