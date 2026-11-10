@@ -4514,6 +4514,23 @@ fun TvInstallerApp() {
     }
 
     fun runAutomaticTvMaintenance() {
+        // Re-check the recovery gate at the action boundary; the disabled dashboard
+        // button is only a UI affordance and must not be the sole safety check.
+        if (!MaintenanceDashboardPolicy.canStartMaintenance(
+                busy = busy,
+                cleanupJournalCorrupt = hasCorruptCleanupJournal(context),
+                hasPendingCleanupJournal = loadCleanupJournal(context) != null
+            )
+        ) {
+            cleanupJournalCorrupt = hasCorruptCleanupJournal(context)
+            cleanupJournal = loadCleanupJournal(context)
+            status = if (cleanupJournalCorrupt) {
+                "Обслуживание заблокировано: сначала проверь повреждённый журнал восстановления."
+            } else {
+                "Обслуживание заблокировано: сначала заверши проверку или восстановление предыдущей операции."
+            }
+            return
+        }
         val host = ip.trim()
         val adbPort = port.toIntOrNull()
         if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
