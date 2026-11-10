@@ -7604,7 +7604,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                 Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("АВТОМАТИЧЕСКОЕ ОБСЛУЖИВАНИЕ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
-                        Text("Одна кнопка проверит Android TV, оценит память и хранилище и автоматически отключит только точные пакеты рекламы и отслеживания из проверенного плана. Новые и неоднозначные компоненты останутся без изменений и потребуют отдельного подтверждения.", color = TextMuted, fontSize = 12.sp)
+                        Text("Одна кнопка проверит Android TV, оценит память и хранилище и автоматически отключит только заранее разрешённые компоненты рекламы, телеметрии, демо и предустановленных приложений. Новые и неоднозначные компоненты останутся без изменений.", color = TextMuted, fontSize = 12.sp)
                         val canStartMaintenance = MaintenanceDashboardPolicy.canStartMaintenance(
                             busy = busy,
                             cleanupJournalCorrupt = cleanupJournalCorrupt,
