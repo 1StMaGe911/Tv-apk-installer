@@ -87,7 +87,8 @@ internal object TvPlatformClassifier {
             containsToken("fire") || containsToken("amazon") -> "Fire TV / Fire OS"
             value.contains("com.google.android.apps.tv.launcherx") || containsToken("google tv") ->
                 "Google TV / Android TV"
-            containsToken("android") || value.contains("android.software.leanback") ->
+            containsToken("android") || containsToken("tv") ||
+                value.contains("android.software.leanback") ->
                 "Android TV / Android"
             containsToken("vidaa") -> "VIDAA (не Android)"
             else -> "Android-совместимое устройство"
