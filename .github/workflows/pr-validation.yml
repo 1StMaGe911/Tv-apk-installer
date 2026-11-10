@@ -2,7 +2,7 @@ name: Проверка Pull Request
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main", "automation/kadb-wireless-pairing-foundation"]
 
 permissions:
   contents: read
