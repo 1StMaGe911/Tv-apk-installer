@@ -17,6 +17,17 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun shortOemBrandMatchesWholeTokenWithoutSubstringFalsePositive() {
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("LG Electronics")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("LG")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("bulge")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("TCL Electronics")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("HP")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("unknown", "неизвестно")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("N/A")))
+    }
+
+    @Test
     fun exactModelProfileRejectsKnownAndroidSdkOutsideSupportedRange() {
         assertTrue(TvAutomationEngine.isProfileSdkCompatible(34, 33, 35))
         assertFalse(TvAutomationEngine.isProfileSdkCompatible(32, 33, 35))
