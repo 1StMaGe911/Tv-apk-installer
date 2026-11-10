@@ -36,6 +36,9 @@ internal object CleanupJournalValidator {
 }
 
 internal object TvAutomationEngine {
+    /** Auto-select only when LAN discovery found exactly one ADB device. */
+    internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? = devices.singleOrNull()
+
     /** Explicit interactive gate shared by exported restore scripts. */
     internal fun portableRestoreConfirmationGuard(shell: String): List<String> = when (shell) {
         "bash" -> listOf(
