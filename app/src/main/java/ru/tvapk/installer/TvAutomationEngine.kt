@@ -62,6 +62,17 @@ internal object TvAutomationEngine {
         return DataStorageSnapshot(totalKb * 1024L, usedKb * 1024L, availableKb * 1024L, usedPercent)
     }
 
+    /** Reports the measured change in free /data space; positive means more free space. */
+    internal fun formatStorageDelta(beforeBytes: Long?, afterBytes: Long?): String {
+        if (beforeBytes == null || afterBytes == null || beforeBytes < 0L || afterBytes < 0L) return "н/д"
+        val deltaMb = (afterBytes.toDouble() - beforeBytes.toDouble()) / 1048576.0
+        return when {
+            deltaMb > 0.0 -> String.format(java.util.Locale.ROOT, "+%.1f МБ", deltaMb)
+            deltaMb < 0.0 -> String.format(java.util.Locale.ROOT, "−%.1f МБ", -deltaMb)
+            else -> "0 МБ"
+        }
+    }
+
     internal data class HealthAssessment(
         val memoryAvailablePercent: Int?,
         val dataUsedPercent: Int?,
