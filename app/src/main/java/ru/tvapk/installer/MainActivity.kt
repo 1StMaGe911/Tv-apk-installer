@@ -215,36 +215,62 @@ private fun hasCorruptCleanupJournal(context: Context): Boolean {
     val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return false
     return try {
         val json = JSONObject(raw)
-        val planned = json.optJSONArray("planned") ?: return true
-        val completed = json.optJSONArray("completed") ?: return true
-        if (json.has("baselineDisabled") && json.optJSONArray("baselineDisabled") == null) return true
-        if (json.has("restored") && json.optJSONArray("restored") == null) return true
-        val plannedNames = (0 until planned.length()).map { planned.optString(it) }
-        val completedNames = (0 until completed.length()).map { completed.optString(it) }
-        val baselineDisabled = json.optJSONArray("baselineDisabled")?.let { values ->
-            (0 until values.length()).map { values.optString(it) }
-        } ?: emptyList()
-        val restored = json.optJSONArray("restored")?.let { values ->
-            (0 until values.length()).map { values.optString(it) }
-        } ?: emptyList()
-        val inFlight = json.optString("inFlightPackage").takeIf { it.isNotBlank() && it != "null" }
+        fun stringArray(name: String, required: Boolean = false): List<String>? {
+            if (!json.has(name)) return if (required) null else emptyList()
+            val values = json.opt(name) as? JSONArray ?: return null
+            if (values.length() > 500) return null
+            val items = (0 until values.length()).map { values.opt(it) }
+            if (!CleanupJournalValidator.areStringValues(items)) return null
+            return items.map { it as String }
+        }
+
+        val identity = json.opt("deviceIdentity") as? String ?: return true
+        val createdAtValue = json.opt("createdAt") as? Number ?: return true
+        val createdAt = createdAtValue.toLong()
+        if (createdAtValue.toDouble() != createdAt.toDouble()) return true
+        val schemaVersion = if (json.has("schemaVersion")) {
+            val value = json.opt("schemaVersion") as? Number ?: return true
+            val intValue = value.toInt()
+            if (value.toDouble() != intValue.toDouble()) return true
+            intValue
+        } else 1
+        val planned = stringArray("planned", required = true) ?: return true
+        val completed = stringArray("completed", required = true) ?: return true
+        val baselineDisabled = stringArray("baselineDisabled") ?: return true
+        val restored = stringArray("restored") ?: return true
+        val inFlight = when (val value = json.opt("inFlightPackage")) {
+            null, JSONObject.NULL -> null
+            is String -> value.takeIf { it.isNotBlank() }
+            else -> return true
+        }
+        val cacheTrimState = if (json.has("cacheTrimState")) {
+            json.opt("cacheTrimState") as? String ?: return true
+        } else "not_requested"
+        if (json.has("cacheTrimOutcome") && json.opt("cacheTrimOutcome") !is String) return true
+        if (json.has("host") && json.opt("host") !is String) return true
+        if (json.has("port")) {
+            val value = json.opt("port") as? Number ?: return true
+            val port = value.toInt()
+            if (value.toDouble() != port.toDouble() || port !in 1..65535) return true
+        }
+
         !CleanupJournalValidator.isValid(
-            deviceIdentity = json.optString("deviceIdentity"),
-            createdAt = json.optLong("createdAt", 0L),
-            schemaVersion = json.optInt("schemaVersion", 1),
-            plannedPackages = plannedNames,
-            completedPackages = completedNames,
+            deviceIdentity = identity,
+            createdAt = createdAt,
+            schemaVersion = schemaVersion,
+            plannedPackages = planned,
+            completedPackages = completed,
             inFlightPackage = inFlight,
             baselineDisabledPackages = baselineDisabled,
             restoredPackages = restored,
-            cacheTrimState = json.optString("cacheTrimState", "not_requested")
+            cacheTrimState = cacheTrimState
         )
     } catch (_: Exception) {
         true
     }
 }
-
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
+    if (hasCorruptCleanupJournal(context)) return null
     return try {
         val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return null
         val json = JSONObject(raw)
