@@ -8,6 +8,16 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun uniqueBestCandidateSelectionRejectsTiesAndEmptyInput() {
+        assertNull(TvAutomationEngine.uniqueBestCandidateIndex(emptyList()))
+        assertEquals(0, TvAutomationEngine.uniqueBestCandidateIndex(listOf(7)))
+        assertEquals(1, TvAutomationEngine.uniqueBestCandidateIndex(listOf(3, 9, 4)))
+        assertEquals(0, TvAutomationEngine.uniqueBestCandidateIndex(listOf(9, 2, 5, 1)))
+        assertNull(TvAutomationEngine.uniqueBestCandidateIndex(listOf(9, 9, 2)))
+        assertNull(TvAutomationEngine.uniqueBestCandidateIndex(listOf(1, 8, 8, 8)))
+    }
+
+    @Test
     fun remoteOrUntrustedProfilesNeverAuthorizeAutomaticDisabling() {
         val packageFlags = mapOf("com.example.ads" to false, "com.example.tracking" to true)
         assertTrue(TvAutomationEngine.automaticallyApprovedPackages(packageFlags, trustedProfile = false).isEmpty())

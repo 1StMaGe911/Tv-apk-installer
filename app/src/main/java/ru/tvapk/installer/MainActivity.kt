@@ -4032,7 +4032,7 @@ private fun matchTvModelProfile(
         return target.length >= 3 && reportedBrands.any { it.contains(target) || target.contains(it) }
     }
 
-    val exact = profiles.mapNotNull { profile ->
+    val exactCandidates = profiles.mapNotNull { profile ->
         val modelHit = profile.models.any { it.equals(model, ignoreCase = true) }
         val deviceHit = profile.devices.any { it.equals(device, ignoreCase = true) }
         val fingerprintHit = profile.fingerprintPrefix?.let { fingerprint.startsWith(it, ignoreCase = true) } == true
@@ -4050,8 +4050,15 @@ private fun matchTvModelProfile(
             else -> "совпадение кода устройства"
         }
         Triple(score, profile, label)
-    }.maxByOrNull { it.first }?.let { TvProfileMatch(it.second, it.third) }
-    if (exact != null) return exact
+    }
+    val bestExactIndex = TvAutomationEngine.uniqueBestCandidateIndex(exactCandidates.map { it.first })
+    if (bestExactIndex != null) {
+        val best = exactCandidates[bestExactIndex]
+        return TvProfileMatch(best.second, best.third)
+    }
+    // An exact identity match with tied scores is ambiguous. Do not fall through
+    // to a broader brand profile, because that could authorize unsafe automation.
+    if (exactCandidates.isNotEmpty()) return null
 
     // Use reviewed profile brands instead of a fixed brand list. This enables the
     // upstream careful-set path for manufacturers represented by only 1–2 profiles.
