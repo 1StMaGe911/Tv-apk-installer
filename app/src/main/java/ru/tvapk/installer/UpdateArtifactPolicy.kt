@@ -1,5 +1,8 @@
 package ru.tvapk.installer
 
+import java.net.URI
+import java.util.Locale
+
 internal object UpdateArtifactPolicy {
     const val MIN_APK_BYTES = 1024L
     const val MAX_APK_BYTES = 200L * 1024L * 1024L
