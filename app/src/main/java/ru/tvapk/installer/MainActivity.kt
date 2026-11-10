@@ -2882,8 +2882,8 @@ private fun buildPortableRestoreScript(
 }
 
 private fun readTvDetails(adb: Dadb): String {
-    fun prop(name: String) = try { shellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
-    fun safe(command: String) = try { shellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
+    fun prop(name: String) = try { readOnlyShellText(adb, "getprop $name").ifBlank { "неизвестно" } } catch (_: Exception) { "неизвестно" }
+    fun safe(command: String) = try { readOnlyShellText(adb, command).ifBlank { "неизвестно" } } catch (_: Exception) { "недоступно" }
     return buildString {
         appendLine("Производитель: ${prop("ro.product.manufacturer")}")
         appendLine("Бренд: ${prop("ro.product.brand")}")
@@ -2920,7 +2920,7 @@ private fun buildSupportReport(tvDetails: String, diagnostics: String): String {
 }
 
 private fun readPackageDisableCapability(adb: Dadb): Boolean {
-    val help = try { shellText(adb, "pm help") } catch (_: Exception) { return false }
+    val help = try { readOnlyShellText(adb, "pm help") } catch (_: Exception) { return false }
     val commandAdvertised = Regex("""(?m)^.*\bdisable-user\b.*$""").containsMatchIn(help)
     if (!commandAdvertised) return false
     return try {
@@ -2932,7 +2932,7 @@ private fun readPackageDisableCapability(adb: Dadb): Boolean {
 }
 
 private fun readTvCompatibilityReport(adb: Dadb): String {
-    fun prop(name: String): String = try { shellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
+    fun prop(name: String): String = try { readOnlyShellText(adb, "getprop $name").trim() } catch (_: Exception) { "" }
     val manufacturer = prop("ro.product.manufacturer")
     val brand = prop("ro.product.brand")
     val packages = try { readAllPackages(adb).toSet() } catch (_: Exception) { emptySet() }
@@ -2941,10 +2941,10 @@ private fun readTvCompatibilityReport(adb: Dadb): String {
     val isTclChina = (isTcl || brand.equals("ffalcon", true) || manufacturer.equals("ffalcon", true)) &&
         "com.google.android.gms" !in packages
     fun probe(label: String, command: String, success: (String) -> Boolean): String {
-        val output = try { shellText(adb, command).trim() } catch (_: Exception) { "" }
+        val output = try { readOnlyShellText(adb, command).trim() } catch (_: Exception) { "" }
         return "$label: " + if (output.isNotBlank() && success(output)) "доступно" else "не подтверждено"
     }
-    val sdk = try { shellText(adb, "getprop ro.build.version.sdk").trim().toIntOrNull() } catch (_: Exception) { null }
+    val sdk = try { readOnlyShellText(adb, "getprop ro.build.version.sdk").trim().toIntOrNull() } catch (_: Exception) { null }
     val packageDisable = readPackageDisableCapability(adb)
     return buildString {
         appendLine("ПРОВЕРКА СОВМЕСТИМОСТИ")
