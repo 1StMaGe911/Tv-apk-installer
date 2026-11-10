@@ -95,7 +95,8 @@ internal object TvAutomationEngine {
             if (packageName in baselineDisabledPackages || packageName in restoredPackages) return@forEach
             when {
                 packageName !in installedPackages -> conflicts += packageName
-                packageName in disabledPackages -> confirmed += packageName
+                packageName in disabledPackages && packageName in completedPackages -> confirmed += packageName
+                packageName in disabledPackages -> conflicts += packageName
                 packageName in completedPackages -> conflicts += packageName
                 else -> retryable += packageName
             }
