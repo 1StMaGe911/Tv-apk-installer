@@ -191,6 +191,22 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupCandidateClassifierDoesNotMatchUnrelatedSubstringsInsidePackageComponents() {
+        assertFalse(TvAutomationEngine.isCleanupCandidate("com.vendor.downloads"))
+        assertFalse(TvAutomationEngine.isCleanupCandidate("com.vendor.downloadservice"))
+        assertFalse(TvAutomationEngine.isCleanupCandidate("com.vendor.adidas"))
+        assertFalse(TvAutomationEngine.isCleanupCandidate("com.vendor.loadsdk"))
+    }
+
+    @Test
+    fun cleanupCandidateClassifierRecognizesMarkersAtComponentBoundaries() {
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.AdServices"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.adid"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.vendor.partner_ads_service"))
+        assertTrue(TvAutomationEngine.isCleanupCandidate("com.ads.provider"))
+    }
+
+    @Test
     fun cleanupCandidateClassifierExcludesProtectedAndNeverDisablePackages() {
         assertFalse(TvAutomationEngine.isCleanupCandidate(
             packageName = "com.google.android.tvlauncher",
