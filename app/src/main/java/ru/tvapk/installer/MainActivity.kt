@@ -4812,8 +4812,19 @@ fun TvInstallerApp() {
                     appendLine()
                     if (autoCacheTrimMessage.isNotBlank()) appendLine(autoCacheTrimMessage)
                     appendLine("ОЦЕНКА РЕСУРСОВ: ${healthAssessment.summary}")
-                    healthAssessment.memoryAvailablePercent?.let { appendLine("Доступно RAM: $it%") }
-                    healthAssessment.dataUsedPercent?.let { appendLine("Занято /data: $it%") }
+                    appendLine("Очистка кэша: $cacheTrimOutcome")
+                    healthAssessment.memoryAvailablePercent?.let {
+                        appendLine("Доступно RAM: ${healthBeforeMaintenance.memoryAvailablePercent?.let { before -> "$before% → $it% (${formatPercentDelta(before, it)})" } ?: "$it%"}")
+                    }
+                    healthAssessment.dataUsedPercent?.let {
+                        appendLine("Занято /data: ${healthBeforeMaintenance.dataUsedPercent?.let { before -> "$before% → $it% (${formatPercentDelta(before, it)})" } ?: "$it%"}")
+                    }
+                    appendLine(
+                        "Свободное место /data: " +
+                            "${storageSnapshotBefore?.availableBytes?.let { String.format(java.util.Locale.getDefault(), "%.1f МБ", it / 1048576.0) } ?: "н/д"} → " +
+                            "${storageSnapshotAfter?.availableBytes?.let { String.format(java.util.Locale.getDefault(), "%.1f МБ", it / 1048576.0) } ?: "н/д"} " +
+                            "(${TvAutomationEngine.formatStorageDelta(storageSnapshotBefore?.availableBytes, storageSnapshotAfter?.availableBytes)})"
+                    )
                     healthAssessment.uptimeDays?.let { appendLine("Время без перезагрузки: $it дн.") }
                     healthAssessment.warnings.forEach { appendLine("⚠ $it") }
                     appendLine("Уже отключено: ${disabled.size}")
