@@ -37,7 +37,12 @@ internal object CleanupJournalValidator {
 
 internal object TvAutomationEngine {
     /** Auto-select only when LAN discovery found exactly one ADB device. */
-    internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? = devices.singleOrNull()
+    internal fun uniqueDiscoveredDevice(devices: List<TvDevice>): TvDevice? {
+        // NSD can report the same endpoint more than once (for example, repeated
+        // service announcements). Count unique ADB endpoints, not announcements.
+        val uniqueEndpoints = devices.distinctBy { it.ip.trim() to it.port }
+        return uniqueEndpoints.singleOrNull()
+    }
 
     /** Explicit interactive gate shared by exported restore scripts. */
     internal fun portableRestoreConfirmationGuard(shell: String): List<String> = when (shell) {
