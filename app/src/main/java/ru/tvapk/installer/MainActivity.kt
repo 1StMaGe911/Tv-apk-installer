@@ -8679,7 +8679,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     }) { Text(if (pendingCleanupPackages.isEmpty()) "Очистить кэш" else "Отключить выбранные") }
                                 },
                                 dismissButton = {
-                                    TextButton(onClick = { pendingCleanupPackages = emptyList() }) { Text("Отмена") }
+                                    TextButton(onClick = { pendingCleanupPackages = emptyList(); pendingCombinedCacheTrim = false }) { Text("Отмена") }
                                 }
                             )
                         }
