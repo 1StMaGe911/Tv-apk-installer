@@ -8,6 +8,46 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun cleanupJournalValidatorAcceptsValidJournal() {
+        assertTrue(CleanupJournalValidator.isValid(
+            deviceIdentity = "Hisense/TV/build",
+            createdAt = 1_700_000_000_000L,
+            schemaVersion = 3,
+            plannedPackages = listOf("com.example.safe", "org.example.tv"),
+            completedPackages = listOf("com.example.safe"),
+            inFlightPackage = "org.example.tv"
+        ))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsMissingIdentityOrTimestamp() {
+        assertFalse(CleanupJournalValidator.isValid("", 1L, 3, listOf("com.example.app"), emptyList()))
+        assertFalse(CleanupJournalValidator.isValid("tv", 0L, 3, listOf("com.example.app"), emptyList()))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsUnknownSchemaAndEmptyPlan() {
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 4, listOf("com.example.app"), emptyList()))
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, emptyList(), emptyList()))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsInvalidOrDuplicatePackageNames() {
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("not a package"), emptyList()))
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("com.example.app", "com.example.app"), emptyList()))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsCompletedOrInFlightPackagesOutsidePlan() {
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("com.example.app"), listOf("org.example.other")))
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("com.example.app"), emptyList(), "org.example.other"))
+    }
+
+    @Test
+    fun cleanupJournalValidatorRejectsDuplicateCompletedPackages() {
+        assertFalse(CleanupJournalValidator.isValid("tv", 1L, 3, listOf("com.example.app"), listOf("com.example.app", "com.example.app")))
+    }
+    @Test
     fun planOnlyIncludesInstalledApprovedAndUnprotectedPackages() {
         val plan = TvAutomationEngine.buildPlan(
             installedPackages = setOf("safe", "review", "blocked", "never", "disabled"),
