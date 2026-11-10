@@ -8045,7 +8045,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             enabled = !busy,
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { runAutomaticTvMaintenance() }
-                        ) { Text("⚡ Автоматически проверить и подготовить план") }
+                        ) { Text("⚡ ОПТИМИЗИРОВАТЬ ТВ") }
+                        Text(
+                            "Одна кнопка запускает диагностику, проверку совместимости и безопасный план. Очистка кэша выполняется автоматически только при включённой настройке; отключение приложений — после отдельного подтверждения.",
+                            color = TextMuted,
+                            fontSize = 10.sp
+                        )
                         if (busy && maintenanceProgress.isNotBlank()) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             Text(maintenanceProgress, color = GoldLight, fontSize = 11.sp)
