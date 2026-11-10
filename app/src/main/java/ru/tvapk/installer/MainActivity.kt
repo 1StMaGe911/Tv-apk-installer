@@ -5363,7 +5363,7 @@ fun TvInstallerApp() {
                 )
 
                 connectWithRetry(context, host, p) { adb ->
-                    val sdkText = retryTvReadOnly { shellText(adb, "getprop ro.build.version.sdk").trim() }
+                    val sdkText = readOnlyShellText(adb, "getprop ro.build.version.sdk").trim()
                     val deviceSdk = sdkText.toIntOrNull()
                         ?: throw Exception("Не удалось определить версию Android TV (SDK: $sdkText)")
                     val incompatible = modules.filter { deviceSdk < it.minSdk }
@@ -5615,7 +5615,7 @@ fun TvInstallerApp() {
                 }
 
                 connectWithRetry(context, host, adbPort) { adb ->
-                    val sdkText = retryTvReadOnly { shellText(adb, "getprop ro.build.version.sdk").trim() }
+                    val sdkText = readOnlyShellText(adb, "getprop ro.build.version.sdk").trim()
                     val deviceSdk = sdkText.toIntOrNull()
                         ?: throw Exception("Не удалось определить Android SDK телевизора")
                     require(deviceSdk >= version.minSdk && deviceSdk >= archiveMinSdk) {
