@@ -3930,7 +3930,8 @@ private data class TvModelProfile(
     val packages: Map<String, TvProfilePackage>,
     val testedBy: String,
     val testedFirmware: String,
-    val rebootTested: Boolean
+    val rebootTested: Boolean,
+    val automaticDisableTrusted: Boolean
 )
 
 private data class TvProfileMatch(
@@ -3998,7 +3999,8 @@ private fun loadTvModelProfiles(context: Context): List<TvModelProfile> {
                 packages = packageMap,
                 testedBy = tested.optString("by", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указано",
                 testedFirmware = tested.optString("firmware", "").takeIf { it.isNotBlank() && it != "null" } ?: "не указана",
-                rebootTested = tested.optBoolean("rebootTested", false)
+                rebootTested = tested.optBoolean("rebootTested", false),
+                automaticDisableTrusted = !usingUntrustedRemoteCatalog
             )
         }
         result
@@ -4179,7 +4181,8 @@ private fun matchTvModelProfile(
             else "Общие правила ${brandProfiles.size} проверенных профилей бренда",
         testedFirmware = if (brandProfiles.size < 3) "Только шесть заранее проверенных пакетов; точная модель не найдена"
             else "Пересечение рекомендаций; точная модель не найдена",
-        rebootTested = false
+        rebootTested = false,
+        automaticDisableTrusted = brandProfiles.all { it.automaticDisableTrusted }
     )
     return TvProfileMatch(
         conservativeProfile,
@@ -4685,11 +4688,10 @@ fun TvInstallerApp() {
                 val profileMatch = matchTvModelProfile(details, tvModelProfiles, packageFacts)
                 val profile = profileMatch?.profile
                 val candidates = findCleanupCandidates(installed, packageFacts, profile).toSet()
-                val approved = profile?.packages
-                    ?.filterValues { rule -> !rule.ask }
-                    ?.keys
-                    ?.toSet()
-                    ?: emptySet()
+                val approved = TvAutomationEngine.automaticallyApprovedPackages(
+                    packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
+                    trustedProfile = profile?.automaticDisableTrusted == true
+                )
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.PLAN))
                 val plan = TvAutomationEngine.buildPlan(
@@ -7834,7 +7836,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val details = readTvDetails(adb)
                                                 val profile = matchTvModelProfile(details, tvModelProfiles, packageFacts)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, profile).toSet()
-                                                val approved = profile?.packages?.filterValues { !it.ask }?.keys?.toSet().orEmpty() intersect freshCandidates
+                                                val approved = TvAutomationEngine.automaticallyApprovedPackages(
+                                                    packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
+                                                    trustedProfile = profile?.automaticDisableTrusted == true
+                                                ) intersect freshCandidates
                                                 val attempted = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet()
                                                 val recovery = TvAutomationEngine.buildCleanupRecoveryPlan(
                                                     plannedPackages = journal.plannedPackages.toSet(),
@@ -7892,7 +7897,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             val details = readTvDetails(adb)
                                                             val profile = matchTvModelProfile(details, tvModelProfiles, packageFacts)?.profile
                                                             val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, profile).toSet()
-                                                            val approved = profile?.packages?.filterValues { !it.ask }?.keys?.toSet().orEmpty() intersect freshCandidates
+                                                            val approved = TvAutomationEngine.automaticallyApprovedPackages(
+                                                                packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
+                                                                trustedProfile = profile?.automaticDisableTrusted == true
+                                                            ) intersect freshCandidates
                                                             val attempted = (journal.completedPackages + listOfNotNull(journal.inFlightPackage)).toSet()
                                                             val recovery = TvAutomationEngine.buildCleanupRecoveryPlan(
                                                                 plannedPackages = journal.plannedPackages.toSet(),
@@ -8353,7 +8361,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
                                                     pkg in installed && pkg !in alreadyDisabled && pkg in freshCandidates &&
-                                                        freshProfile?.packages?.get(pkg)?.ask == false &&
+                                                        freshProfile?.automaticDisableTrusted == true &&
+                                                        freshProfile.packages[pkg]?.ask == false &&
                                                         !isProtectedSystemPackage(pkg) && pkg !in (freshProfile?.neverDisable ?: emptySet())
                                                 }
                                                 require(safeSelected.size == selected.size) {

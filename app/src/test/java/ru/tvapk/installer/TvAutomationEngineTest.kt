@@ -8,6 +8,21 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun remoteOrUntrustedProfilesNeverAuthorizeAutomaticDisabling() {
+        val packageFlags = mapOf("com.example.ads" to false, "com.example.tracking" to true)
+        assertTrue(TvAutomationEngine.automaticallyApprovedPackages(packageFlags, trustedProfile = false).isEmpty())
+    }
+
+    @Test
+    fun trustedProfilesApproveOnlyPackagesNotMarkedForReview() {
+        val packageFlags = mapOf("com.example.ads" to false, "com.example.tracking" to true)
+        assertEquals(
+            setOf("com.example.ads"),
+            TvAutomationEngine.automaticallyApprovedPackages(packageFlags, trustedProfile = true)
+        )
+    }
+
+    @Test
     fun cleanupJournalRejectsNonStringArrayValuesBeforeCoercion() {
         assertTrue(CleanupJournalValidator.areStringValues(listOf("com.example.app", "org.example.tv")))
         assertFalse(CleanupJournalValidator.areStringValues(listOf("com.example.app", 42)))
