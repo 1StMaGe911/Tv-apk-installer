@@ -2046,11 +2046,13 @@ private fun verifyLauncherBackupArchive(archive: File, hasWallpaper: Boolean, co
     }
 }
 
-private fun cleanupStaleLauncherBackupExports(context: Context) {
+private fun cleanupStaleLauncherTemporaryFiles(context: Context) {
     val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
     context.cacheDir.listFiles()?.forEach { file ->
-        if (file.isFile && file.name.startsWith("cleanyourtv-backup-") &&
-            file.name.endsWith(".zip") && file.lastModified() < cutoff) {
+        val staleBackup = file.name.startsWith("cleanyourtv-backup-") && file.name.endsWith(".zip")
+        val staleRestore = file.name.startsWith("cleanyourtv-restore-") &&
+            (file.name.endsWith(".json") || file.name.endsWith(".jpg"))
+        if (file.isFile && (staleBackup || staleRestore) && file.lastModified() < cutoff) {
             runCatching { file.delete() }
         }
     }
@@ -4650,7 +4652,7 @@ fun TvInstallerApp() {
 
     LaunchedEffect(Unit) {
         Thread {
-            runCatching { cleanupStaleLauncherBackupExports(context) }
+            runCatching { cleanupStaleLauncherTemporaryFiles(context) }
             val result = try {
                 checkLatestVersion()
             } catch (e: Exception) {
