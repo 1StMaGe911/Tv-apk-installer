@@ -42,6 +42,17 @@ internal object AdbConnectionDiagnostics {
         val diagnosis = classify(host, port, errorText)
         return "Причина: ${diagnosis.kind}. ${diagnosis.guidance} Исходная ошибка: $errorText"
     }
+    /** Exponential delay for retry number 1..N, capped to avoid long connection stalls. */
+    internal fun retryDelayForAttempt(baseDelayMillis: Long, retryNumber: Int): Long {
+        require(baseDelayMillis >= 0L) { "retry delay must not be negative" }
+        require(retryNumber >= 1) { "retry number must be positive" }
+        var delay = baseDelayMillis.coerceAtMost(10_000L)
+        repeat(retryNumber - 1) {
+            delay = if (delay > 5_000L) 10_000L else delay * 2L
+        }
+        return delay.coerceAtMost(10_000L)
+    }
+
     /** Retries only connection establishment; callers must execute device actions afterwards. */
     internal fun <T : Any> retryConnection(
         maxAttempts: Int = 3,
@@ -50,7 +61,7 @@ internal object AdbConnectionDiagnostics {
         isRetryable: (Exception) -> Boolean,
         pause: (Long) -> Unit = { Thread.sleep(it) }
     ): T {
-        require(maxAttempts > 0) { "maxAttempts must be positive" }
+        require(maxAttempts in 1..5) { "maxAttempts must be between 1 and 5" }
         require(retryDelayMillis >= 0L) { "retryDelayMillis must not be negative" }
         var lastError: Exception? = null
         repeat(maxAttempts) { attempt ->
@@ -59,7 +70,7 @@ internal object AdbConnectionDiagnostics {
             } catch (error: Exception) {
                 lastError = error
                 if (attempt == maxAttempts - 1 || !isRetryable(error)) throw error
-                pause(retryDelayMillis)
+                pause(retryDelayForAttempt(retryDelayMillis, attempt + 1))
             }
         }
         throw lastError ?: IllegalStateException("Connection failed without an error")
