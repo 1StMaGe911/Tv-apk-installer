@@ -4252,6 +4252,9 @@ fun TvInstallerApp() {
     var cleanupJournalCorrupt by remember { mutableStateOf(hasCorruptCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var maintenanceRunHistory by remember { mutableStateOf(loadMaintenanceRunHistory(context)) }
+    var maintenanceHistoryCorrupt by remember {
+        mutableStateOf(MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null)))
+    }
     var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
     var trackedAutoStartChanges by remember { mutableStateOf(runCatching { loadTrackedAutoStartChanges(context) }.getOrDefault(emptyList())) }
     var trackedSystemSettingChanges by remember { mutableStateOf(runCatching { loadTrackedSystemSettingChanges(context) }.getOrDefault(emptyList())) }
@@ -4480,6 +4483,23 @@ fun TvInstallerApp() {
         }
     }
 
+    val corruptMaintenanceHistoryExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                val rawHistory = prefs(context).getString("maintenance_run_history", null)
+                    ?: throw Exception("Исходная история больше не найдена")
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(rawHistory)
+                } ?: throw Exception("Не удалось создать файл")
+                status = "Исходная повреждённая история экспортирована без изменений"
+            } catch (e: Exception) {
+                status = "Ошибка экспорта исходной истории: ${errorText(e)}"
+            }
+        }
+    }
+
     val settingsBackupImporter = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { sourceUri ->
@@ -4669,6 +4689,7 @@ fun TvInstallerApp() {
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                     pendingCombinedCacheTrim = !cacheTrimWasAttempted && disableSupported && plan.safeToDisable.isNotEmpty() && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
                 }
@@ -7894,12 +7915,14 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                         cleanupJournal = null
                                                                         cleanupHistory = loadCleanupHistory(context)
                                                                         maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                     }
                                                                     "Продолжение очистки завершено. Проверено пакетов: ${confirmed.size}."
                                                                 } else {
                                                                     activity.runOnUiThread {
                                                                         cleanupJournal = currentJournal
                                                                         maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                     }
                                                                     "Очистка продолжена частично. Не подтверждены: ${verification.notConfirmedPackages.sorted().joinToString()}"
                                                                 }
@@ -8012,6 +8035,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             }
                                                             activity.runOnUiThread {
                                                                 maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                                 cleanupJournal = if (remaining.isEmpty()) null else durableVerifiedJournal
                                                                 disabledOnDevice = actualDisabledAfterRestore
                                                                 disabledPackages = disabledPackages - verifiedRestored.toSet()
@@ -8403,6 +8427,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 )
                                                 activity.runOnUiThread {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                     if (confirmedDisabled.isNotEmpty()) {
                                                         val userDisabledNow = confirmedDisabled.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = confirmedDisabled.filter { it !in userPackages }.toSet()
@@ -8554,6 +8579,23 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     if (selectedCleanupPackages.isNotEmpty()) {
                                         Text("Подготовлено безопасных кандидатов: ${selectedCleanupPackages.size}. Ни один пакет не отключён автоматически.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                                     }
+                                }
+                            }
+                        }
+
+                        if (maintenanceHistoryCorrupt) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("ИСТОРИЯ ОБСЛУЖИВАНИЯ ПОВРЕЖДЕНА", color = Color(0xFFFFB4AB), style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        "Приложение обнаружило некорректный JSON. Исходные данные сохранены без перезаписи. Экспортируйте их для ручного восстановления. Новые записи истории временно не сохраняются.",
+                                        color = TextMuted, fontSize = 11.sp
+                                    )
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        onClick = { corruptMaintenanceHistoryExporter.launch("tv-apk-maintenance-history-corrupt.json") }
+                                    ) { Text("Экспортировать исходные данные") }
                                 }
                             }
                         }
