@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.111"
+private const val APP_VERSION = "0.9.113"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -7791,8 +7791,11 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         val p = port.toIntOrNull()
                                         if (host.isBlank() || p == null || p !in 1..65535) {
                                             status = "Сначала укажи IP и порт ADB"
-                                        } else runTask({
+                                        } else {
+                                            maintenanceProgress = "Подготавливаем подтверждённую очистку…"
+                                            runTask({
                                             connectWithRetry(context, host, p) { adb ->
+                                                updateMaintenanceProgress("Повторно проверяем совместимость и список пакетов…")
                                                 require(readPackageDisableCapability(adb)) {
                                                     "Прошивка не подтвердила поддержку отключения пакетов и чтения их состояния. Очистка отменена без изменений."
                                                 }
@@ -7809,6 +7812,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 require(safeSelected.size == selected.size) {
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
+                                                updateMaintenanceProgress("Создаём точку восстановления…")
                                                 val deviceIdentity = readTvIdentity(adb)
                                                 // Capture and persist a full restore point before the first package mutation.
                                                 val baselineDisabledSet = readDisabledPackages(adb)
@@ -7838,6 +7842,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     restorePointSchemaVersion = 2
                                                     restorePointExists = true
                                                 }
+                                                updateMaintenanceProgress("Сохраняем журнал до любых изменений…")
                                                 var journal = CleanupJournal(
                                                     deviceIdentity = deviceIdentity,
                                                     host = host,
@@ -7853,12 +7858,14 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 }
                                                 activity.runOnUiThread { cleanupJournal = journal }
                                                 val combinedCacheResult = if (includeCacheTrim) {
+                                                    updateMaintenanceProgress("Очищаем только кэш приложений…")
                                                     runCatching { trimTvApplicationCaches(adb) }
                                                         .fold({ "Очистка кэша: $it" }, { "Очистка кэша не выполнена: ${errorText(it)}" })
                                                 } else ""
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
-                                                safeSelected.forEach { pkg ->
+                                                safeSelected.forEachIndexed { index, pkg ->
+                                                    updateMaintenanceProgress("Отключаем и проверяем пакет ${index + 1} из ${safeSelected.size}: $pkg")
                                                     journal = journal.copy(inFlightPackage = pkg)
                                                     check(saveCleanupJournal(context, journal)) {
                                                         "Не удалось сохранить этап операции для $pkg. Отключение отменено."
@@ -7875,6 +7882,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                         "Не удалось надёжно сохранить результат для $pkg. Операция остановлена; журнал оставлен для восстановления."
                                                     }
                                                 }
+                                                updateMaintenanceProgress("Проверяем итоговое состояние пакетов и системы…")
                                                 if (failures.isEmpty()) {
                                                     appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
                                                     check(clearCleanupJournal(context)) {
@@ -7930,6 +7938,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     verificationSummary + healthSummary
                                             }
                                         })
+                                        }
                                     }) { Text("Отключить выбранные") }
                                 },
                                 dismissButton = {
