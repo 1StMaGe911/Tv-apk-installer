@@ -1271,7 +1271,7 @@ private fun installApkAndVerify(context: Context, adb: Dadb, apkFile: File, tran
         setOf(packageName)
     } else emptySet()
     val details = shellText(adb, "dumpsys package $packageName")
-    val installedVersionCode = Regex("versionCode=(\\\\d+)")
+    val installedVersionCode = Regex("versionCode=(\\d+)")
         .find(details)?.groupValues?.getOrNull(1)?.toLongOrNull()
     val verificationError = ApkInstallVerifier.verify(
         packageName, expectedVersionCode, installedPackages, installedVersionCode
