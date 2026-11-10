@@ -8991,8 +8991,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             }
                                         }, onFinished = { result ->
                                             val cleanupVerified =
-                                                (result.contains("Отключено:") && result.contains("Ошибок: 0")) ||
-                                                    result.startsWith("Очистка кэша выполнена:")
+                                                TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
                                             if (installLauncherAfterMaintenance) {
                                                 if (cleanupVerified) {
                                                     maintenanceReadyToInstallLauncher = true
