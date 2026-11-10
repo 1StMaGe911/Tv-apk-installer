@@ -165,6 +165,45 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun cleanupCandidateClassifierRecognizesKnownOemCategoryAliases() {
+        listOf("ad", "advertising", "advertisement", "advertisements").forEach { category ->
+            assertTrue("Expected ad alias: $category", TvAutomationEngine.isCleanupCandidate(
+                "com.vendor.component",
+                factCategory = category
+            ))
+        }
+        listOf("telemetry", "analytics", "usage_reporting").forEach { category ->
+            assertTrue("Expected tracking alias: $category", TvAutomationEngine.isCleanupCandidate(
+                "com.vendor.component",
+                profileCategory = category
+            ))
+        }
+        listOf("demos", "retail_demo").forEach { category ->
+            assertTrue("Expected demo alias: $category", TvAutomationEngine.isCleanupCandidate(
+                "com.vendor.component",
+                factCategory = category
+            ))
+        }
+        listOf("preload", "preloaded", "preinstalled_junk").forEach { category ->
+            assertTrue("Expected preload alias: $category", TvAutomationEngine.isCleanupCandidate(
+                "com.vendor.component",
+                profileCategory = category
+            ))
+        }
+    }
+
+    @Test
+    fun cleanupCandidateClassifierKeepsUnknownCategoriesOutOfAutomaticCleanup() {
+        listOf("streaming", "brand", "system", "updates", "screensaver", "voice", "unknown").forEach { category ->
+            assertFalse("Unexpected automatic candidate for: $category", TvAutomationEngine.isCleanupCandidate(
+                "com.vendor.component",
+                factCategory = category,
+                profileCategory = category
+            ))
+        }
+    }
+
+    @Test
     fun cleanupCandidateClassifierUsesModelProfileCategoryWhenFactsAreMissing() {
         assertTrue(TvAutomationEngine.isCleanupCandidate(
             packageName = "com.vendor.component",
