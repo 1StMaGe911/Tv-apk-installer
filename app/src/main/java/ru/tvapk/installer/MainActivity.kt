@@ -1701,7 +1701,7 @@ private fun parseLauncherPackageList(raw: String): List<String> {
 }
 
 private fun readLauncherApps(adb: Dadb): List<String> {
-    val output = shellText(adb, "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER")
+    val output = readOnlyShellText(adb, "cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER")
     val packages = output.lineSequence()
         .map { it.trim().substringBefore("/") }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
@@ -1714,13 +1714,13 @@ private fun readLauncherApps(adb: Dadb): List<String> {
 
 private fun readCurrentLauncherConfig(adb: Dadb): JSONObject {
     val provider = try {
-        shellText(adb, "content read --uri content://com.gathin.tvhome.theme/config.json")
+        readOnlyShellText(adb, "content read --uri content://com.gathin.tvhome.theme/config.json")
     } catch (_: Exception) { "" }
     if (provider.trim().startsWith("{")) {
         try { return JSONObject(provider.trim()) } catch (_: Exception) { }
     }
     val legacy = try {
-        shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/config.json")
+        readOnlyShellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/config.json")
     } catch (_: Exception) { "" }
     if (legacy.trim().startsWith("{")) {
         try { return JSONObject(legacy.trim()) } catch (_: Exception) { }
