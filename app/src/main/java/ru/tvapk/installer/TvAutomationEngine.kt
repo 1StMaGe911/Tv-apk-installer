@@ -108,6 +108,46 @@ internal object TvAutomationEngine {
         return CleanupRecoveryPlan(confirmed, retryable, conflicts)
     }
 
+    internal data class CleanupResumePlan(
+        val safeToRetryPackages: Set<String>,
+        val rejectedPackages: Set<String>
+    )
+
+    /**
+     * Selects only interrupted packages that remain installed, enabled, explicitly
+     * approved by the exact local device profile, and outside all protected sets.
+     * Remote profile data must never be passed as approved packages.
+     */
+    internal fun buildCleanupResumePlan(
+        retryablePackages: Set<String>,
+        installedPackages: Set<String>,
+        disabledPackages: Set<String>,
+        profileApprovedPackages: Set<String>,
+        protectedPackages: Set<String>,
+        neverDisablePackages: Set<String>,
+        baselineDisabledPackages: Set<String>,
+        restoredPackages: Set<String>
+    ): CleanupResumePlan {
+        val safe = sortedSetOf<String>()
+        val rejected = sortedSetOf<String>()
+        retryablePackages.forEach { packageName ->
+            if (
+                packageName in installedPackages &&
+                packageName !in disabledPackages &&
+                packageName in profileApprovedPackages &&
+                packageName !in protectedPackages &&
+                packageName !in neverDisablePackages &&
+                packageName !in baselineDisabledPackages &&
+                packageName !in restoredPackages
+            ) {
+                safe += packageName
+            } else {
+                rejected += packageName
+            }
+        }
+        return CleanupResumePlan(safe, rejected)
+    }
+
     internal data class RollbackVerification(
         val restoredPackages: Set<String>,
         val remainingPackages: Set<String>

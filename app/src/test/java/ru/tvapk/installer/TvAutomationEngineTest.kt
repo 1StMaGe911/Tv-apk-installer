@@ -223,6 +223,61 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun resumePlannerAllowsOnlyExactProfileApprovedInstalledEnabledPackages() {
+        val result = TvAutomationEngine.buildCleanupResumePlan(
+            retryablePackages = setOf("com.example.safe", "com.example.review", "com.example.missing"),
+            installedPackages = setOf("com.example.safe", "com.example.review"),
+            disabledPackages = emptySet(),
+            profileApprovedPackages = setOf("com.example.safe"),
+            protectedPackages = emptySet(),
+            neverDisablePackages = emptySet(),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+
+        assertEquals(setOf("com.example.safe"), result.safeToRetryPackages)
+        assertEquals(setOf("com.example.review", "com.example.missing"), result.rejectedPackages)
+    }
+
+    @Test
+    fun resumePlannerRejectsDisabledProtectedNeverDisableBaselineAndRestoredPackages() {
+        val candidates = setOf(
+            "com.example.disabled", "com.example.protected", "com.example.never",
+            "com.example.baseline", "com.example.restored"
+        )
+        val result = TvAutomationEngine.buildCleanupResumePlan(
+            retryablePackages = candidates,
+            installedPackages = candidates,
+            disabledPackages = setOf("com.example.disabled"),
+            profileApprovedPackages = candidates,
+            protectedPackages = setOf("com.example.protected"),
+            neverDisablePackages = setOf("com.example.never"),
+            baselineDisabledPackages = setOf("com.example.baseline"),
+            restoredPackages = setOf("com.example.restored")
+        )
+
+        assertTrue(result.safeToRetryPackages.isEmpty())
+        assertEquals(candidates, result.rejectedPackages)
+    }
+
+    @Test
+    fun resumePlannerDoesNotTreatProfileApprovalAsPermissionForMissingPackage() {
+        val result = TvAutomationEngine.buildCleanupResumePlan(
+            retryablePackages = setOf("com.example.missing"),
+            installedPackages = emptySet(),
+            disabledPackages = emptySet(),
+            profileApprovedPackages = setOf("com.example.missing"),
+            protectedPackages = emptySet(),
+            neverDisablePackages = emptySet(),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+
+        assertTrue(result.safeToRetryPackages.isEmpty())
+        assertEquals(setOf("com.example.missing"), result.rejectedPackages)
+    }
+
+    @Test
     fun rollbackFinalSnapshotConfirmsOnlyInstalledAndEnabledPackages() {
         val result = TvAutomationEngine.verifyRollbackState(
             rollbackPackages = setOf("restored", "still-disabled", "missing"),
