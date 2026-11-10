@@ -1408,20 +1408,14 @@ private fun shellText(adb: Dadb, command: String): String {
  * and require room for roughly two copies of the incoming APK(s).
  */
 private fun requireTvStorageForApk(adb: Dadb, apkBytes: Long): String {
-    require(apkBytes > 0L) { "Размер APK для проверки памяти некорректен" }
-    val output = shellText(adb, "df -k /data")
-    val dataLine = output.lineSequence().lastOrNull { it.trim().endsWith("/data") }
-        ?: throw Exception("Телевизор не сообщил свободное место раздела /data: $output")
-    val fields = dataLine.trim().split(Regex("\\s+"))
-    require(fields.size >= 5) { "Не удалось разобрать свободное место /data: $dataLine" }
-    val availableKb = fields[3].toLongOrNull()
-        ?: throw Exception("Телевизор сообщил некорректный объём свободной памяти: $dataLine")
-    val requiredKb = maxOf(200L * 1024L, (apkBytes * 2L + 1023L) / 1024L)
-    require(availableKb >= requiredKb) {
-        "Недостаточно свободного места на телевизоре: ${availableKb / 1024} МБ доступно, " +
-            "нужно не менее ${requiredKb / 1024} МБ. Освободи память на ТВ и повтори установку."
+    val requiredBytes = TvAutomationEngine.requiredStorageBytesForApk(apkBytes)
+        ?: throw Exception("Размер APK для проверки памяти некорректен или слишком велик")
+    val snapshot = readDataStorageSnapshot(adb)
+    require(snapshot.availableBytes >= requiredBytes) {
+        "Недостаточно свободного места на телевизоре: ${snapshot.availableBytes / (1024L * 1024L)} МБ доступно, " +
+            "нужно не менее ${requiredBytes / (1024L * 1024L)} МБ. Освободи память на ТВ и повтори установку."
     }
-    return "Свободно ${availableKb / 1024} МБ на /data"
+    return "Свободно ${snapshot.availableBytes / (1024L * 1024L)} МБ на /data"
 }
 
 /** Ensures the package is visible to the Android TV primary user (user 0). */
