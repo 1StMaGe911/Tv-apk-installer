@@ -943,4 +943,29 @@ class TvAutomationEngineTest {
         }.isFailure)
     }
 
+
+    @Test
+    fun resumePlannerEnforcesCoreProtectionEvenWhenCallerOmitsProtectedSnapshot() {
+        val corePackages = setOf(
+            "com.google.android.gms.persistent",
+            "com.android.systemui.navigationbar",
+            "com.google.android.overlay.modules.permissioncontroller",
+            "com.google.android.tvlauncher"
+        )
+        val candidates = corePackages + "com.vendor.ads"
+        val result = TvAutomationEngine.buildCleanupResumePlan(
+            retryablePackages = candidates,
+            installedPackages = candidates,
+            disabledPackages = emptySet(),
+            profileApprovedPackages = candidates,
+            protectedPackages = emptySet(),
+            neverDisablePackages = emptySet(),
+            baselineDisabledPackages = emptySet(),
+            restoredPackages = emptySet()
+        )
+
+        assertEquals(setOf("com.vendor.ads"), result.safeToRetryPackages)
+        assertEquals(corePackages, result.rejectedPackages)
+    }
+
 }
