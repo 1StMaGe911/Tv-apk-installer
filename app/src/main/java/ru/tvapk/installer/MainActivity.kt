@@ -1673,23 +1673,39 @@ private fun pushLauncherTheme(
             is dadb.SyncResult.Failure -> throw Exception("Не удалось передать файл на телевизор: $result")
         }
     }
-    pushFile(configToInstall, remoteConfig)
-    pushFile(wallpaperFile, remoteWallpaper)
+    try {
+        val expectedConfig = JSONObject(configToInstall.readText(Charsets.UTF_8))
+        val expectedWallpaper = wallpaperFile.readBytes()
+        pushFile(configToInstall, remoteConfig)
+        pushFile(wallpaperFile, remoteWallpaper)
 
-    val directory = "/sdcard/Android/data/$packageName/files"
-    fun writeFile(fileName: String, remotePath: String) {
-        val command =
-            "rm -f $directory/$fileName 2>/dev/null; " +
-            "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remotePath $directory/$fileName); " +
-            "r=\$?; rm -f $remotePath; exit \$r"
-        shellText(adb, command)
+        val directory = "/sdcard/Android/data/$packageName/files"
+        fun writeFile(fileName: String, remotePath: String) {
+            val command =
+                "rm -f $directory/$fileName 2>/dev/null; " +
+                "o=\$(content write --uri content://$packageName.theme/$fileName < $remotePath 2>&1) && [ -z \"\$o\" ] || (mkdir -p $directory 2>/dev/null && cp $remotePath $directory/$fileName); " +
+                "r=\$?; rm -f $remotePath; exit \$r"
+            shellText(adb, command)
+        }
+        writeFile("wallpaper.jpg", remoteWallpaper)
+        writeFile("config.json", remoteConfig)
+        shellText(adb, "am force-stop --user 0 $packageName")
+        val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
+
+        // Verify the persisted values after Launcher has restarted. These
+        // checks are read-only; file writes and app launches are never retried.
+        val actualConfig = readCurrentLauncherConfig(adb)
+        require(actualConfig.toString() == expectedConfig.toString()) {
+            "После перезапуска Launcher не подтвердил сохранение конфигурации темы."
+        }
+        val actualWallpaper = readLauncherWallpaper(adb)
+        require(actualWallpaper != null && actualWallpaper.contentEquals(expectedWallpaper)) {
+            "После перезапуска Launcher не подтвердил сохранение файла обоев темы."
+        }
+        return "Тема «$themeName» передана на телевизор. Конфигурация и файл обоев повторно проверены после перезапуска Launcher. $restart"
+    } finally {
+        if (configToInstall !== configFile) configToInstall.delete()
     }
-    writeFile("wallpaper.jpg", remoteWallpaper)
-    writeFile("config.json", remoteConfig)
-    shellText(adb, "am force-stop --user 0 $packageName")
-    val restart = shellText(adb, "am start --user 0 -n $packageName/.MainActivity")
-    if (configToInstall !== configFile) configToInstall.delete()
-    return "Тема «$themeName» передана на телевизор. Визуальное оформление обновлено, персональные настройки сохранены, Launcher перезапущен. $restart"
 }
 
 private fun parseLauncherPackageList(raw: String): List<String> {
@@ -1942,19 +1958,30 @@ private fun launcherWallpaperExists(adb: Dadb): Boolean? {
 }
 
 private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
-    val provider = try { readOnlyShellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64") } catch (_: Exception) { "" }
-    val encoded = if (provider.isNotBlank()) provider else try {
+    fun decode(encoded: String): ByteArray? {
+        if (encoded.isBlank()) return null
+        val compact = encoded.filterNot { it.isWhitespace() }
+        if (compact.length > 16 * 1024 * 1024) throw Exception("Файл обоев слишком большой для резервной копии")
+        val bytes = try { Base64.decode(compact, Base64.DEFAULT) } catch (_: Exception) { return null }
+        if (bytes.size !in 64..(12 * 1024 * 1024)) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 12000 || bounds.outHeight > 12000) return null
+        return bytes
+    }
+
+    // Some Launcher versions expose the provider command but return an
+    // unsupported/error payload. Accept it only when it decodes to an image,
+    // then fall back to the legacy file path.
+    val provider = try {
+        readOnlyShellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64")
+    } catch (_: Exception) { "" }
+    decode(provider)?.let { return it }
+
+    val legacy = try {
         readOnlyShellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64")
     } catch (_: Exception) { "" }
-    if (encoded.isBlank()) return null
-    val compact = encoded.filterNot { it.isWhitespace() }
-    if (compact.length > 16 * 1024 * 1024) throw Exception("Файл обоев слишком большой для резервной копии")
-    val bytes = try { Base64.decode(compact, Base64.DEFAULT) } catch (_: Exception) { return null }
-    if (bytes.size !in 64..(12 * 1024 * 1024)) return null
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 || bounds.outWidth > 12000 || bounds.outHeight > 12000) return null
-    return bytes
+    return decode(legacy)
 }
 
 private fun saveLauncherThemeRollback(context: Context, adb: Dadb): String {
