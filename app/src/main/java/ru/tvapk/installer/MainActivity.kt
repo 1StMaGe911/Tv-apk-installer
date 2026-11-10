@@ -1935,9 +1935,9 @@ private fun launcherWallpaperExists(adb: Dadb): Boolean? {
 }
 
 private fun readLauncherWallpaper(adb: Dadb): ByteArray? {
-    val provider = try { shellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64") } catch (_: Exception) { "" }
+    val provider = try { readOnlyShellText(adb, "content read --uri content://com.gathin.tvhome.theme/wallpaper.jpg | base64") } catch (_: Exception) { "" }
     val encoded = if (provider.isNotBlank()) provider else try {
-        shellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64")
+        readOnlyShellText(adb, "cat /sdcard/Android/data/com.gathin.tvhome/files/wallpaper.jpg | base64")
     } catch (_: Exception) { "" }
     if (encoded.isBlank()) return null
     val compact = encoded.filterNot { it.isWhitespace() }
