@@ -795,6 +795,36 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun rememberedCleanupRunsAutomaticallyOnlyWhenEveryPackageWasPreviouslyApproved() {
+        val remembered = setOf("com.vendor.ads", "com.vendor.tracking")
+        assertTrue(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+            safePackages = remembered,
+            rememberedApprovals = remembered,
+            cacheTrimPending = false
+        ))
+        assertTrue(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+            safePackages = setOf("com.vendor.ads"),
+            rememberedApprovals = remembered,
+            cacheTrimPending = false
+        ))
+        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+            safePackages = emptySet(),
+            rememberedApprovals = remembered,
+            cacheTrimPending = false
+        ))
+        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+            safePackages = setOf("com.vendor.ads", "com.unknown.new"),
+            rememberedApprovals = remembered,
+            cacheTrimPending = false
+        ))
+        assertFalse(TvAutomationEngine.shouldAutoExecuteRememberedCleanup(
+            safePackages = remembered,
+            rememberedApprovals = remembered,
+            cacheTrimPending = true
+        ))
+    }
+
+    @Test
     fun cleanupApprovalPreferenceKeyIsStableAndDeviceScoped() {
         val first = TvAutomationEngine.cleanupApprovalPreferenceKey(
             "Google|Model-A|device-a|fingerprint-a"
