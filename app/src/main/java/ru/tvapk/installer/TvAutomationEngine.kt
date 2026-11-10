@@ -347,6 +347,7 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
                 packageName !in disabledPackages &&
                 packageName in profileApprovedPackages &&
                 packageName !in protectedPackages &&
+                !isProtectedSystemPackage(packageName) &&
                 packageName !in neverDisablePackages &&
                 packageName !in baselineDisabledPackages &&
                 packageName !in restoredPackages
