@@ -51,6 +51,7 @@ internal object TvAutomationEngine {
         isDisabled: Boolean
     ): ManualPackageRollbackDecision = when {
         !installed -> ManualPackageRollbackDecision.MISSING
+        wasDisabled == isDisabled -> ManualPackageRollbackDecision.CONFLICT
         currentDisabled == wasDisabled -> ManualPackageRollbackDecision.ALREADY_ORIGINAL
         currentDisabled == isDisabled -> ManualPackageRollbackDecision.RESTORE
         else -> ManualPackageRollbackDecision.CONFLICT
