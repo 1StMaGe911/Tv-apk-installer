@@ -7684,7 +7684,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 disabledPackages = actualDisabledAfterRestore
                                                             )
                                                             val verifiedRestored = rollbackVerification.restoredPackages.toList().sorted()
-                                                            val remaining = rollbackVerification.remainingPackages.toList().sorted()
+                                                            // Keep journal conflicts unresolved; never clear the recovery record
+                                                            // merely because the packages eligible for rollback were restored.
+                                                            val remaining = (rollbackVerification.remainingPackages + recoveryConflicts).toList().distinct().sorted()
                                                             val rollbackOutcome = if (remaining.isEmpty()) "Откат завершён" else "Откат частичный"
                                                             val historyUpdated = updateLatestMaintenanceCleanupHistory(
                                                                 context, journal.deviceIdentity, rollbackOutcome, verifiedRestored
