@@ -4348,6 +4348,23 @@ fun TvInstallerApp() {
         }
     }
 
+    val corruptJournalExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { destinationUri ->
+        if (destinationUri != null) {
+            try {
+                val rawJournal = prefs(context).getString("cleanup_operation_journal", null)
+                    ?: throw Exception("Исходный журнал отсутствует")
+                context.contentResolver.openOutputStream(destinationUri)?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.write(rawJournal)
+                } ?: throw Exception("Не удалось создать файл")
+                status = "Исходный журнал сохранён без изменений"
+            } catch (e: Exception) {
+                status = "Ошибка экспорта журнала: ${errorText(e)}"
+            }
+        }
+    }
+
     val cleanupHistoryExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { destinationUri ->
@@ -7527,6 +7544,11 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         cleanupJournalCorrupt = hasCorruptCleanupJournal(context)
                                         cleanupJournal = loadCleanupJournal(context)
                                     }) { Text("Повторно проверить журнал") }
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        onClick = { corruptJournalExporter.launch("tv-apk-corrupt-cleanup-journal.json") }
+                                    ) { Text("Экспортировать исходный журнал (JSON)") }
                                 }
                             }
                         }
