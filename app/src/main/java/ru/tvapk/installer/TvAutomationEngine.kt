@@ -39,7 +39,7 @@ internal object TvAutomationEngine {
     /** Explicit interactive gate shared by exported restore scripts. */
     internal fun portableRestoreConfirmationGuard(shell: String): List<String> = when (shell) {
         "bash" -> listOf(
-            "printf '%s' 'Восстановление изменит состояние пакетов и автозапуска. Введи RESTORE для продолжения: ',
+            "printf '%s' 'Восстановление изменит состояние пакетов и автозапуска. Введи RESTORE для продолжения: '",
             "read -r confirmation",
             "[[ \\$confirmation == 'RESTORE' ]] || { echo 'Отменено: подтверждение не получено. Изменений нет.' >&2; exit 4; }"
         )
