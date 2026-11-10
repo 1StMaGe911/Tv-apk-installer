@@ -610,6 +610,10 @@ class TvAutomationEngineTest {
             tv,
             TvDevice(name = "Bedroom TV", ip = "192.168.1.21", port = 5555)
         )))
+        assertNull(TvAutomationEngine.uniqueDiscoveredDevice(listOf(
+            tv,
+            TvDevice(name = "Same host, different ADB port", ip = tv.ip, port = 5556)
+        )))
     }
 
 }
