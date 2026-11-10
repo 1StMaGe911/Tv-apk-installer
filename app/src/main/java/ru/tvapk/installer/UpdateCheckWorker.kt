@@ -94,8 +94,7 @@ class UpdateCheckWorker(
             if (AppVersionComparator.compare(latestTag, installedVersion) > 0) {
                 val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
                 val alreadyNotified = preferences.getString("last_notified_update_version", null)
-                if (alreadyNotified != latestTag) {
-                    showUpdateNotification(latestTag)
+                if (alreadyNotified != latestTag && showUpdateNotification(latestTag)) {
                     preferences.edit().putString("last_notified_update_version", latestTag).apply()
                 }
             }
@@ -109,7 +108,13 @@ class UpdateCheckWorker(
         applicationContext.packageManager
             .getPackageInfo(applicationContext.packageName, 0).versionName ?: "0.0.0"
 
-    private fun showUpdateNotification(version: String) {
+    private fun showUpdateNotification(version: String): Boolean {
+        if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return false
+        if (Build.VERSION.SDK_INT >= 33 &&
+            applicationContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return false
+
         val manager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
@@ -146,11 +151,7 @@ class UpdateCheckWorker(
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
 
-        if (Build.VERSION.SDK_INT < 33 ||
-            applicationContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            NotificationManagerCompat.from(applicationContext).notify(1001, notification)
-        }
+        NotificationManagerCompat.from(applicationContext).notify(1001, notification)
+        return true
     }
 }
