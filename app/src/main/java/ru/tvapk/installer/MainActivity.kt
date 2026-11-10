@@ -4184,8 +4184,8 @@ private fun matchTvModelProfile(
     }
 
     val exactCandidates = profiles.mapNotNull { profile ->
-        val modelHit = profile.models.any { it.equals(model, ignoreCase = true) }
-        val deviceHit = profile.devices.any { it.equals(device, ignoreCase = true) }
+        val modelHit = profile.models.any { TvAutomationEngine.isSameHardwareIdentifier(it, model) }
+        val deviceHit = profile.devices.any { TvAutomationEngine.isSameHardwareIdentifier(it, device) }
         val fingerprintHit = profile.fingerprintPrefix?.let { fingerprint.startsWith(it, ignoreCase = true) } == true
         val hasIdentityRule = profile.models.isNotEmpty() || profile.devices.isNotEmpty() || profile.fingerprintPrefix != null
         if (!hasIdentityRule || !(modelHit || deviceHit || fingerprintHit)) return@mapNotNull null
