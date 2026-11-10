@@ -663,7 +663,7 @@ private fun loadTrackedSystemSettingChanges(context: Context): List<TrackedSyste
         }
         TrackedSystemSettingChange(id, ns, key, before, after, item.optLong("changedAt"))
     }
-    ManualChangeJournalPolicy.validateEntries(
+    return ManualChangeJournalPolicy.validateEntries(
         entries = parsed,
         key = { it.deviceIdentity + "|" + it.namespace + "|" + it.key },
         isValid = { it.deviceIdentity.isNotBlank() && it.namespace == "secure" &&
