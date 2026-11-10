@@ -4210,8 +4210,10 @@ private fun matchTvModelProfile(
         val fingerprintHit = profile.fingerprintPrefix?.let { fingerprint.startsWith(it, ignoreCase = true) } == true
         val hasIdentityRule = profile.models.isNotEmpty() || profile.devices.isNotEmpty() || profile.fingerprintPrefix != null
         if (!hasIdentityRule || !(modelHit || deviceHit || fingerprintHit)) return@mapNotNull null
-        if (sdk != null && profile.sdkMin != null && sdk < profile.sdkMin) return@mapNotNull null
-        if (sdk != null && profile.sdkMax != null && sdk > profile.sdkMax) return@mapNotNull null
+        if (!TvAutomationEngine.isProfileSdkCompatible(sdk, profile.sdkMin, profile.sdkMax)) return@mapNotNull null
+        if (!TvAutomationEngine.isProfileBrandCompatible(profile.brand, listOf(manufacturer, productBrand))) {
+            return@mapNotNull null
+        }
 
         val brandHit = matchesReportedBrand(profile.brand)
         val score = (if (modelHit) 100 else 0) + (if (fingerprintHit) 80 else 0) +
