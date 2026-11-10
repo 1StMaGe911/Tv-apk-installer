@@ -2046,6 +2046,16 @@ private fun verifyLauncherBackupArchive(archive: File, hasWallpaper: Boolean, co
     }
 }
 
+private fun cleanupStaleLauncherBackupExports(context: Context) {
+    val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+    context.cacheDir.listFiles()?.forEach { file ->
+        if (file.isFile && file.name.startsWith("cleanyourtv-backup-") &&
+            file.name.endsWith(".zip") && file.lastModified() < cutoff) {
+            runCatching { file.delete() }
+        }
+    }
+}
+
 private fun sha256BackupFile(file: File): ByteArray {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
     file.inputStream().buffered().use { input ->
@@ -4640,6 +4650,7 @@ fun TvInstallerApp() {
 
     LaunchedEffect(Unit) {
         Thread {
+            runCatching { cleanupStaleLauncherBackupExports(context) }
             val result = try {
                 checkLatestVersion()
             } catch (e: Exception) {
