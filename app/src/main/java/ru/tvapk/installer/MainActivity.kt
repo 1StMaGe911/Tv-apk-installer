@@ -692,6 +692,7 @@ private data class MaintenanceRunHistoryEntry(
     val createdAt: Long, val deviceIdentity: String,
     val memoryBefore: Int?, val memoryAfter: Int?,
     val storageBefore: Int?, val storageAfter: Int?,
+    val storageAvailableBytesBefore: Long? = null, val storageAvailableBytesAfter: Long? = null,
     val cacheTrimAttempted: Boolean, val cacheTrimOutcome: String,
     val detectedCandidates: Int, val approvedCandidates: Int,
     val reviewCandidates: Int, val blockedCandidates: Int,
@@ -713,6 +714,8 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
             memoryAfter = if (item.isNull("memoryAfter")) null else item.optInt("memoryAfter"),
             storageBefore = if (item.isNull("storageBefore")) null else item.optInt("storageBefore"),
             storageAfter = if (item.isNull("storageAfter")) null else item.optInt("storageAfter"),
+            storageAvailableBytesBefore = if (item.isNull("storageAvailableBytesBefore")) null else item.optLong("storageAvailableBytesBefore"),
+            storageAvailableBytesAfter = if (item.isNull("storageAvailableBytesAfter")) null else item.optLong("storageAvailableBytesAfter"),
             cacheTrimAttempted = item.optBoolean("cacheTrimAttempted"), cacheTrimOutcome = item.optString("cacheTrimOutcome"),
             detectedCandidates = item.optInt("detectedCandidates"), approvedCandidates = item.optInt("approvedCandidates"),
             reviewCandidates = item.optInt("reviewCandidates"), blockedCandidates = item.optInt("blockedCandidates"),
@@ -731,6 +734,7 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
             .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
             .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+            .put("storageAvailableBytesBefore", item.storageAvailableBytesBefore).put("storageAvailableBytesAfter", item.storageAvailableBytesAfter)
             .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
             .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
             .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
@@ -4334,6 +4338,7 @@ fun TvInstallerApp() {
                         put(JSONObject().put("createdAt", entry.createdAt).put("deviceIdentity", entry.deviceIdentity)
                             .put("memoryBefore", entry.memoryBefore).put("memoryAfter", entry.memoryAfter)
                             .put("storageBefore", entry.storageBefore).put("storageAfter", entry.storageAfter)
+                            .put("storageAvailableBytesBefore", entry.storageAvailableBytesBefore).put("storageAvailableBytesAfter", entry.storageAvailableBytesAfter)
                             .put("cacheTrimAttempted", entry.cacheTrimAttempted).put("cacheTrimOutcome", entry.cacheTrimOutcome)
                             .put("detectedCandidates", entry.detectedCandidates).put("approvedCandidates", entry.approvedCandidates)
                             .put("reviewCandidates", entry.reviewCandidates).put("blockedCandidates", entry.blockedCandidates)
@@ -4406,6 +4411,7 @@ fun TvInstallerApp() {
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
                 val healthBeforeMaintenance = healthAssessment
+                val storageSnapshotBefore = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
                 val deviceIdentityForHistory = runCatching { readTvIdentity(adb) }.getOrDefault("неизвестно")
                 var cacheTrimWasAttempted = false
                 val autoCacheTrimEnabledNow = settings.getBoolean("auto_cache_trim", false)
@@ -4453,6 +4459,7 @@ fun TvInstallerApp() {
                     neverDisablePackages = profile?.neverDisable ?: emptySet()
                 )
 
+                val storageSnapshotAfter = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
                 val cacheTrimOutcome = when {
                     !cacheTrimWasAttempted -> if (autoCacheTrimEnabledNow) "Пропущено: порог или достоверные данные не достигнуты" else "Выключено пользователем"
                     autoCacheTrimMessage.contains("не выполнена", ignoreCase = true) -> autoCacheTrimMessage
@@ -4464,6 +4471,8 @@ fun TvInstallerApp() {
                     memoryAfter = healthAssessment.memoryAvailablePercent,
                     storageBefore = healthBeforeMaintenance.dataUsedPercent,
                     storageAfter = healthAssessment.dataUsedPercent,
+                    storageAvailableBytesBefore = storageSnapshotBefore?.availableBytes,
+                    storageAvailableBytesAfter = storageSnapshotAfter?.availableBytes,
                     cacheTrimAttempted = cacheTrimWasAttempted, cacheTrimOutcome = cacheTrimOutcome,
                     detectedCandidates = plan.detectedCount, approvedCandidates = plan.approvedCount,
                     reviewCandidates = plan.reviewCount, blockedCandidates = plan.blockedCount,
@@ -8019,6 +8028,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 color = TextMain, fontSize = 11.sp)
                                             Text("RAM: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"}; /data: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"}",
                                                 color = TextMuted, fontSize = 10.sp)
+                                            val freeBefore = entry.storageAvailableBytesBefore?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
+                                            val freeAfter = entry.storageAvailableBytesAfter?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
+                                            Text("Свободно /data: $freeBefore → $freeAfter", color = TextMuted, fontSize = 10.sp)
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
