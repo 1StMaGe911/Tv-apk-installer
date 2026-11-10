@@ -4177,12 +4177,11 @@ private fun matchTvModelProfile(
     val sdk = Regex("SDK\\s+(\\d+)", RegexOption.IGNORE_CASE)
         .find(field("Android"))?.groupValues?.getOrNull(1)?.toIntOrNull()
     val fingerprint = field("Отпечаток")
-    fun normalized(value: String) = value.lowercase().replace(Regex("[^a-z0-9]"), "")
-    val reportedBrands = listOf(manufacturer, productBrand).map(::normalized).filter { it.length >= 3 }
-    fun matchesReportedBrand(candidate: String): Boolean {
-        val target = normalized(candidate)
-        return target.length >= 3 && reportedBrands.any { it.contains(target) || target.contains(it) }
-    }
+    val reportedBrands = listOf(manufacturer, productBrand)
+        .map(TvAutomationEngine::normalizeProfileBrandIdentifier)
+        .filter { it.length >= 3 }
+    fun matchesReportedBrand(candidate: String): Boolean =
+        TvAutomationEngine.matchesReportedProfileBrand(candidate, reportedBrands)
 
     val exactCandidates = profiles.mapNotNull { profile ->
         val modelHit = profile.models.any { TvAutomationEngine.isSameHardwareIdentifier(it, model) }
@@ -4240,7 +4239,7 @@ private fun matchTvModelProfile(
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase() }
         .mapNotNull { candidate ->
-            val normalized = normalized(candidate)
+            val normalized = TvAutomationEngine.normalizeProfileBrandIdentifier(candidate)
             if (normalized.length < 3 || !matchesReportedBrand(candidate)) null
             else candidate to normalized.length
         }

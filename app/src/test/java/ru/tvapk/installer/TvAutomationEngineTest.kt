@@ -25,6 +25,17 @@ class TvAutomationEngineTest {
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("HP")))
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("unknown", "неизвестно")))
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("LG", listOf("N/A")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("Сбер ТВ", listOf("ООО СберТВ")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("Сбер ТВ", listOf("TCL Electronics")))
+    }
+
+    @Test
+    fun profileBrandNormalizationPreservesLocalizedLettersAndSeparators() {
+        assertEquals("сбертв", TvAutomationEngine.normalizeProfileBrandIdentifier("Сбер ТВ"))
+        assertEquals("sonycorporation", TvAutomationEngine.normalizeProfileBrandIdentifier("Sony Corporation"))
+        assertTrue(TvAutomationEngine.matchesReportedProfileBrand("Сбер ТВ", listOf("ООО СберТВ")))
+        assertTrue(TvAutomationEngine.matchesReportedProfileBrand("Sony", listOf("SONY-Corporation")))
+        assertFalse(TvAutomationEngine.matchesReportedProfileBrand("Sony", listOf("TCL Electronics")))
     }
 
     @Test
