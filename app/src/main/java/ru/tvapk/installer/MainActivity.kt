@@ -7143,6 +7143,45 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                     }
                 }
 
+                if (cleanupJournalCorrupt || cleanupJournal != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Panel),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                if (cleanupJournalCorrupt) "ТРЕБУЕТСЯ ПРОВЕРКА ЖУРНАЛА ВОССТАНОВЛЕНИЯ"
+                                else "ЕСТЬ НЕЗАВЕРШЁННАЯ ОПЕРАЦИЯ",
+                                color = Color(0xFFFFD98A),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                if (cleanupJournalCorrupt) {
+                                    "Журнал восстановления повреждён или не читается. Новая очистка заблокирована; исходные данные сохранены."
+                                } else {
+                                    val journal = cleanupJournal!!
+                                    "Операция от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}: подтверждено ${journal.completedPackages.size} из ${journal.plannedPackages.size}. Перед продолжением требуется сверка состояния телевизора."
+                                },
+                                color = TextMain,
+                                fontSize = 11.sp
+                            )
+                            OutlinedButton(
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    showSettings = false
+                                    activeSection = "clean"
+                                }
+                            ) {
+                                Text(if (cleanupJournalCorrupt) "Проверить журнал восстановления" else "Продолжить проверку или восстановление")
+                            }
+                        }
+                    }
+                }
+
                 if (pendingCacheTrim) {
                     AlertDialog(
                         onDismissRequest = { pendingCacheTrim = false },
