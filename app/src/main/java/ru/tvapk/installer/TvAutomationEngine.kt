@@ -143,6 +143,20 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             .any { it.contains(target) || target.contains(it) }
     }
 
+    /** Normalizes OEM labels without dropping letters from localized manufacturer names. */
+    internal fun normalizeProfileBrandIdentifier(value: String): String =
+        value.lowercase(java.util.Locale.ROOT).filter { it.isLetterOrDigit() }
+
+    /** Matches a reviewed profile brand against reported manufacturer/product-brand fields. */
+    internal fun matchesReportedProfileBrand(profileBrand: String, reportedBrands: List<String>): Boolean {
+        val target = normalizeProfileBrandIdentifier(profileBrand)
+        if (target.length < 3) return false
+        return reportedBrands.asSequence()
+            .map(::normalizeProfileBrandIdentifier)
+            .filter { it.length >= 3 }
+            .any { it.contains(target) || target.contains(it) }
+    }
+
     /** Rejects an exact model/device profile when known OEM or Android version conflicts. */
     internal fun isProfileBrandCompatible(profileBrand: String, reportedBrands: List<String>): Boolean {
         val expected = profileBrand.lowercase(java.util.Locale.ROOT)
