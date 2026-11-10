@@ -4965,10 +4965,16 @@ fun TvInstallerApp() {
                     .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
                     .map { it.packageName }
                     .toSet()
+                val rememberedDeviceApprovals = runCatching {
+                    settings.getStringSet(
+                        TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentityForHistory),
+                        emptySet()
+                    )?.toSet().orEmpty()
+                }.getOrDefault(emptySet())
                 val approved = TvAutomationEngine.automaticallyApprovedPackages(
                     packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
                     trustedProfile = profile?.automaticDisableTrusted == true,
-                    knownGlobalPackages = bundledAdAndTrackingPackages
+                    knownGlobalPackages = bundledAdAndTrackingPackages + rememberedDeviceApprovals
                 )
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.PLAN))
@@ -8802,13 +8808,18 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Прошивка не подтвердила поддержку отключения пакетов и чтения их состояния. Очистка отменена без изменений."
                                                 }
                                                 val installed = readAllPackages(adb).toSet()
+                                                val deviceIdentity = readTvIdentity(adb)
+                                                val rememberedDeviceApprovals = settings.getStringSet(
+                                                    TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentity),
+                                                    emptySet()
+                                                )?.toSet().orEmpty()
                                                 val freshDetails = readTvDetails(adb)
                                                 val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles, packageFacts)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
                                                 val freshGlobalApprovals = packageFacts.values.asSequence()
                                                     .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
                                                     .map { it.packageName }
-                                                    .toSet()
+                                                    .toSet() + rememberedDeviceApprovals
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
                                                     val trustedModelApproval = freshProfile?.automaticDisableTrusted == true &&
@@ -8821,7 +8832,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
                                                 updateMaintenanceProgress("Создаём точку восстановления…")
-                                                val deviceIdentity = readTvIdentity(adb)
                                                 // A previous failed cleanup may still need rollback. Never overwrite
                                                 // its only durable recovery journal with a new operation.
                                                 require(!hasCorruptCleanupJournal(context)) {
@@ -8935,7 +8945,19 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 check(saveCleanupJournal(context, journal)) {
                                                     "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
                                                 }
+                                                var approvalPersistenceWarning = false
                                                 if (failures.isEmpty()) {
+                                                    // Remember only packages that were selected by the user and
+                                                    // actually confirmed disabled on this exact TV.
+                                                    if (confirmedDisabled.isNotEmpty()) {
+                                                        val approvalKey = TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentity)
+                                                        val previousApprovals = settings.getStringSet(approvalKey, emptySet())
+                                                            ?.toMutableSet() ?: mutableSetOf()
+                                                        previousApprovals.addAll(confirmedDisabled)
+                                                        if (!settings.edit().putStringSet(approvalKey, previousApprovals).commit()) {
+                                                            approvalPersistenceWarning = true
+                                                        }
+                                                    }
                                                     check(appendCleanupHistory(context, journal, "Очистка завершена", confirmedDisabled)) {
                                                         "Не удалось сохранить историю очистки. Журнал оставлен для безопасного повтора."
                                                     }
@@ -8987,7 +9009,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 (if (combinedCacheResult.isBlank()) "" else combinedCacheResult + "\n") +
                                                     "Отключено: ${confirmedDisabled.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
-                                                    verificationSummary + healthSummary
+                                                    verificationSummary + healthSummary +
+                                                    (if (approvalPersistenceWarning) "\n⚠ Очистка выполнена, но разрешения для следующих запусков не сохранены." else "")
                                             }
                                         }, onFinished = { result ->
                                             val cleanupVerified =
