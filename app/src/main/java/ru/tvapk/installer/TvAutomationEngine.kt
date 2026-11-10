@@ -109,7 +109,7 @@ internal object TvAutomationEngine {
             }
         }
 
-        val measured = memoryPercent != null || dataUsedPercent != null || uptimeDays != null
+        val measured = memoryPercent != null || dataUsedPercent != null
         val summary = when {
             warnings.isNotEmpty() -> "Обнаружены показатели, требующие внимания"
             measured -> "По доступным показателям критических предупреждений нет"
