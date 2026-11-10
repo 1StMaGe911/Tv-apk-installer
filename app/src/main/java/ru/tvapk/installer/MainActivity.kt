@@ -3288,13 +3288,13 @@ private fun uninstallUserApp(adb: Dadb, packageName: String, context: Context): 
 }
 
 private fun readAllPackages(adb: Dadb): List<String> =
-    shellText(adb, "pm list packages").lineSequence()
+    readOnlyShellText(adb, "pm list packages").lineSequence()
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .distinct().sorted().toList()
 
 private fun readUserPackages(adb: Dadb): List<String> =
-    shellText(adb, "pm list packages -3").lineSequence()
+    readOnlyShellText(adb, "pm list packages -3").lineSequence()
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .distinct().sorted().toList()
@@ -3595,13 +3595,13 @@ private fun setAutoStartReceiverEnabled(adb: Dadb, component: String, enabled: B
 }
 
 private fun readDisabledUserPackages(adb: Dadb): Set<String> =
-    shellText(adb, "pm list packages -3 -d").lineSequence()
+    readOnlyShellText(adb, "pm list packages -3 -d").lineSequence()
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
 
 private fun readDisabledPackages(adb: Dadb): Set<String> =
-    shellText(adb, "pm list packages -d").lineSequence()
+    readOnlyShellText(adb, "pm list packages -d").lineSequence()
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .toSet()
