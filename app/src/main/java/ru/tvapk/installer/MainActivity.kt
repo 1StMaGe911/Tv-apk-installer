@@ -8898,7 +8898,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))}", color = TextMain, fontSize = 11.sp)
                                             Text("Устройство: ${entry.deviceIdentity.ifBlank { "Не определено" }}", color = TextMuted, fontSize = 10.sp)
                                             Text("Кэш: ${entry.cacheTrimOutcome}", color = TextMuted, fontSize = 10.sp)
-                                                color = TextMain, fontSize = 11.sp)
                                             Text("RAM доступно: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.memoryBefore, entry.memoryAfter)}); /data занято: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.storageBefore, entry.storageAfter)})",
                                                 color = TextMuted, fontSize = 10.sp)
                                             val freeBefore = entry.storageAvailableBytesBefore?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
