@@ -2232,8 +2232,12 @@ private fun restoreLauncherBackupFromStream(context: Context, input: java.io.Inp
             config.optInt("wallpaper_rotation_minutes", 0),
             config.optString("wallpaper_order", "shuffle").takeIf { it in setOf("sequential", "shuffle") } ?: "shuffle"
         )
-        if (previousMoved) previous.deleteRecursively()
-        return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation"
+        val cleanupNote = if (previousMoved) {
+            val removed = runCatching { previous.deleteRecursively() && !previous.exists() }.getOrDefault(false)
+            if (removed || !previous.exists()) "" else
+                " Прежняя коллекция сохранена в ${previous.absolutePath}; удали её вручную после проверки новой коллекции."
+        } else ""
+        return "Резервная копия восстановлена: конфигурация, ${if (wallpaper != null) "текущие обои и " else ""}${collectionBytes.size} изображений коллекции. $baseRestore $rotation$cleanupNote"
     } catch (e: Exception) {
         // Restore the old local collection if staging or TV upload failed.
         if (destination.exists()) destination.deleteRecursively()
