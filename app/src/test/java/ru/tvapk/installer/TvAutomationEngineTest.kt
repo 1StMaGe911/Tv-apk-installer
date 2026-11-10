@@ -8,6 +8,24 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun exactModelProfileIsRejectedWhenKnownManufacturerConflicts() {
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("Sony Corporation", "BRAVIA")))
+        assertFalse(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("TCL", "FFALCON")))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", emptyList()))
+        assertTrue(TvAutomationEngine.isProfileBrandCompatible("", listOf("TCL")))
+    }
+
+    @Test
+    fun exactModelProfileRejectsKnownAndroidSdkOutsideSupportedRange() {
+        assertTrue(TvAutomationEngine.isProfileSdkCompatible(34, 33, 35))
+        assertFalse(TvAutomationEngine.isProfileSdkCompatible(32, 33, 35))
+        assertFalse(TvAutomationEngine.isProfileSdkCompatible(36, 33, 35))
+        assertTrue(TvAutomationEngine.isProfileSdkCompatible(null, 33, 35))
+        assertTrue(TvAutomationEngine.isProfileSdkCompatible(34, null, null))
+    }
+
+
+    @Test
     fun portableRestoreScriptsRequireExactInteractiveConfirmation() {
         assertEquals(3, TvAutomationEngine.portableRestoreConfirmationGuard("bash").size)
         assertTrue(TvAutomationEngine.portableRestoreConfirmationGuard("bash").last().contains("RESTORE"))
