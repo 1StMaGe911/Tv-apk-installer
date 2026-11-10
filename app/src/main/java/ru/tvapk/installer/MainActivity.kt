@@ -1291,9 +1291,6 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
             else PackageManager.GET_SIGNATURES
         val archiveInfo = context.packageManager.getPackageArchiveInfo(stagingFile.absolutePath, archiveFlags)
             ?: throw Exception("Загруженный файл не является корректным APK")
-        require(archiveInfo.packageName == context.packageName) {
-            "APK обновления предназначен для другого приложения. Установка отменена."
-        }
         @Suppress("DEPRECATION")
         val archiveSignatures = if (Build.VERSION.SDK_INT >= 28) {
             archiveInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
@@ -1307,9 +1304,6 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
             .digest(archiveSignatures.single().toByteArray())
             .joinToString("") { "%02x".format(it) }
         val installedSigner = installedSignerSha256(context, context.packageName)
-        require(archiveSigner.equals(installedSigner, true)) {
-            "Сертификат APK обновления не совпадает с установленным приложением. Установка заблокирована."
-        }
         @Suppress("DEPRECATION")
         val archiveVersionCode = if (Build.VERSION.SDK_INT >= 28) archiveInfo.longVersionCode
             else archiveInfo.versionCode.toLong()
@@ -1318,8 +1312,17 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
         @Suppress("DEPRECATION")
         val installedVersionCode = if (Build.VERSION.SDK_INT >= 28) installedInfo.longVersionCode
             else installedInfo.versionCode.toLong()
-        require(archiveVersionCode > installedVersionCode) {
-            "APK обновления не новее установленной версии (код $archiveVersionCode ≤ $installedVersionCode)"
+        require(
+            UpdateArtifactPolicy.isTrustedUpdate(
+                archiveInfo.packageName,
+                context.packageName,
+                archiveSigner,
+                installedSigner,
+                archiveVersionCode,
+                installedVersionCode
+            )
+        ) {
+            "APK обновления не прошёл проверку пакета, сертификата подписи или версии. Установка заблокирована."
         }
 
         backupFile.delete()
