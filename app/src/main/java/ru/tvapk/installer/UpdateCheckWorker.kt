@@ -90,11 +90,8 @@ class UpdateCheckWorker(
                 connection.disconnect()
             }
 
-            val rawTag = json.optString("tag_name")
-            if (!rawTag.matches(Regex("^v?\\d+(?:\\.\\d+){1,3}$"))) {
-                throw IllegalStateException("GitHub returned an invalid release version")
-            }
-            val latestTag = rawTag.removePrefix("v")
+            val latestTag = UpdateCheckReleasePolicy.normalizeTag(json.optString("tag_name"))
+                ?: throw IllegalStateException("GitHub returned an invalid release version")
             val installedVersion = appVersionName()
 
             if (AppVersionComparator.compare(latestTag, installedVersion) > 0) {
