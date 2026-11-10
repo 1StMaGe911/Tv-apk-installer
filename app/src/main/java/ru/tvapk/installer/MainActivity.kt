@@ -7996,7 +7996,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                         if (health.warnings.isEmpty()) "" else "\n" + health.warnings.joinToString("\n")
                                                 }.orEmpty()
                                                 (if (combinedCacheResult.isBlank()) "" else combinedCacheResult + "\n") +
-                                                    "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
+                                                    "Отключено: ${confirmedDisabled.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
                                                     verificationSummary + healthSummary
                                             }
