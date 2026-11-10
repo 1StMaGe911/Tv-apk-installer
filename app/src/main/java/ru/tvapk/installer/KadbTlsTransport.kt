@@ -4,6 +4,7 @@ import android.content.Context
 import com.flyfishxu.kadb.Kadb
 import com.flyfishxu.kadb.cert.KadbCert
 import dadb.Dadb
+import java.io.IOException
 
 /**
  * Owns Kadb's process-wide certificate identity configuration and exposes its
@@ -69,7 +70,9 @@ internal object KadbTlsTransport {
     ): Dadb {
         validateEndpoint(host, connectPort)
         configureIdentity(context)
-        return KadbDadbAdapter(Kadb.create(host.trim(), connectPort))
+        val connected = Kadb.tryConnection(host.trim(), connectPort)
+            ?: throw IOException("TLS ADB handshake failed for $host:$connectPort")
+        return KadbDadbAdapter(connected)
     }
 
     private fun validateEndpoint(host: String, port: Int) {
