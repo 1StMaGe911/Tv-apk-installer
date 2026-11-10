@@ -7938,10 +7938,11 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     }
                                                 }
                                                 updateMaintenanceProgress("Проверяем итоговое состояние пакетов и системы…")
+                                                val finalInstalledState = readAllPackages(adb).toSet()
                                                 val finalDisabledState = readDisabledPackages(adb)
                                                 val cleanupVerification = TvAutomationEngine.verifyCleanupState(
                                                     plannedPackages = safeSelected.toSet(),
-                                                    installedPackages = installed,
+                                                    installedPackages = finalInstalledState,
                                                     disabledPackages = finalDisabledState
                                                 )
                                                 val confirmedDisabled = cleanupVerification.confirmedDisabledPackages.toList().sorted()
