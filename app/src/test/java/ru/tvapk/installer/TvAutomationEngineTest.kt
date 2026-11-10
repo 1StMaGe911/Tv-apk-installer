@@ -560,6 +560,15 @@ class TvAutomationEngineTest {
 
 
     @Test
+    fun storageDeltaReportsActualFreeSpaceChangeAndUnknownMeasurements() {
+        assertEquals("+12.5 МБ", TvAutomationEngine.formatStorageDelta(10L * 1048576L, (22L * 1048576L) + 512L * 1024L))
+        assertEquals("−3.0 МБ", TvAutomationEngine.formatStorageDelta(10L * 1048576L, 7L * 1048576L))
+        assertEquals("0 МБ", TvAutomationEngine.formatStorageDelta(10L, 10L))
+        assertEquals("н/д", TvAutomationEngine.formatStorageDelta(null, 10L))
+        assertEquals("н/д", TvAutomationEngine.formatStorageDelta(-1L, 10L))
+    }
+
+    @Test
     fun longUptimeSuggestsRebootWithoutTreatingItAsAnAutomaticAction() {
         val diagnostics = """
             ВРЕМЯ РАБОТЫ
