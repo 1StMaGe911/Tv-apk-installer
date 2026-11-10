@@ -4125,6 +4125,7 @@ fun TvInstallerApp() {
     var automationReport by remember { mutableStateOf("") }
     var dataStorageUsedPercent by remember { mutableStateOf<Int?>(null) }
     var pendingCacheTrim by remember { mutableStateOf(false) }
+    var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -4502,6 +4503,7 @@ fun TvInstallerApp() {
                     automationReport = report
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
+                    pendingCombinedCacheTrim = !cacheTrimWasAttempted && disableSupported && plan.safeToDisable.isNotEmpty() && healthAssessment.dataUsedPercent?.let { it >= 90 } == true
                 }
                 report
             }
@@ -7721,16 +7723,18 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             }
                         }
                         if (cleanupCandidates.isNotEmpty()) Text(if (packageDisableSupported) "Для пакетного отключения доступны только компоненты точного профиля модели с правилом ask=false. Остальные рекомендации справочные. Перед каждой операцией результат проверяется через Package Manager." else "Пакетная очистка заблокирована: устройство ещё не подтвердило поддержку команды отключения и чтения фактического состояния пакетов. Повтори определение устройства.", color = Color(0xFFFFD98A), fontSize = 11.sp)
-                        if (pendingCleanupPackages.isNotEmpty()) {
+                        if (pendingCleanupPackages.isNotEmpty() || pendingCombinedCacheTrim) {
                             AlertDialog(
-                                onDismissRequest = { pendingCleanupPackages = emptyList() },
-                                title = { Text("Отключить выбранные компоненты?") },
+                                onDismissRequest = { pendingCleanupPackages = emptyList(); pendingCombinedCacheTrim = false },
+                                title = { Text(if (pendingCombinedCacheTrim) "Выполнить комплексную оптимизацию?" else "Отключить выбранные компоненты?") },
                                 text = {
-                                    Text("Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?")
+                                    Text((if (pendingCombinedCacheTrim) "Дополнительно будет выполнена штатная очистка только кэша приложений (без удаления приложений и личных данных).\n\n" else "") + "Будут отключены, но не удалены, только эти пакеты:\n\n${pendingCleanupPackages.joinToString("\n")}\n\nПеред изменениями приложение автоматически создаст полную точку восстановления: состояние отключённых приложений, системных пакетов и отслеживаемого автозапуска. Также будет сохранён журнал для точечного отката. Системные функции телевизора могут зависеть от этих компонентов. Продолжить?")
                                 },
                                 confirmButton = {
                                     TextButton(enabled = !busy, onClick = {
                                         val selected = pendingCleanupPackages
+                                        val includeCacheTrim = pendingCombinedCacheTrim
+                                        pendingCombinedCacheTrim = false
                                         val managedUsersBeforeCleanup = disabledPackages.toSet()
                                         val managedSystemsBeforeCleanup = managedSystemDisabledPackages.toSet()
                                         val managedAutoStartBeforeCleanup = disabledAutoStart.toSet()
@@ -7800,6 +7804,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Не удалось надёжно сохранить журнал очистки. Изменения на ТВ не выполнялись."
                                                 }
                                                 activity.runOnUiThread { cleanupJournal = journal }
+                                                val combinedCacheResult = if (includeCacheTrim) {
+                                                    runCatching { trimTvApplicationCaches(adb) }
+                                                        .fold({ "Очистка кэша: $it" }, { "Очистка кэша не выполнена: ${errorText(it)}" })
+                                                } else ""
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
                                                 safeSelected.forEach { pkg ->
@@ -7868,7 +7876,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "\nСостояние после оптимизации: ${health.summary}" +
                                                         if (health.warnings.isEmpty()) "" else "\n" + health.warnings.joinToString("\n")
                                                 }.orEmpty()
-                                                "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
+                                                (if (combinedCacheResult.isBlank()) "" else combinedCacheResult + "\n") +
+                                                    "Отключено: ${disabledNow.size} из ${safeSelected.size}. Ошибок: ${failures.size}" +
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
                                                     verificationSummary + healthSummary
                                             }
