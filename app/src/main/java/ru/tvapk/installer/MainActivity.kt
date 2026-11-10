@@ -64,6 +64,16 @@ import java.net.NetworkInterface
 import java.net.URL
 import java.security.MessageDigest
 
+private fun formatPercentDelta(before: Int?, after: Int?): String {
+    if (before == null || after == null) return "изменение н/д"
+    val delta = after - before
+    return when {
+        delta > 0 -> "+$delta п.п."
+        delta < 0 -> "$delta п.п."
+        else -> "без изменений"
+    }
+}
+
 private const val APP_VERSION = "0.9.86"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
@@ -8017,7 +8027,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.cacheTrimOutcome}",
                                                 color = TextMain, fontSize = 11.sp)
-                                            Text("RAM: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"}; /data: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"}",
+                                            Text("RAM доступно: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.memoryBefore, entry.memoryAfter)}); /data занято: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.storageBefore, entry.storageAfter)})",
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
