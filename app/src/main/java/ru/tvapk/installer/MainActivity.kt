@@ -1174,12 +1174,6 @@ private fun checkLatestVersion(): UpdateInfo {
 
 private const val MAX_UPDATE_APK_BYTES = UpdateArtifactPolicy.MAX_APK_BYTES
 
-private val UPDATE_DOWNLOAD_HOSTS = setOf(
-    "github.com",
-    "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com"
-)
-
 /**
  * Follows only the small set of HTTPS hosts used by GitHub release assets.
  * Redirects are handled explicitly so a compromised release URL cannot send the
@@ -1190,13 +1184,9 @@ private fun openUpdateDownloadConnection(initialUrl: URL): HttpURLConnection {
     var redirects = 0
     while (true) {
         val uri = current.toURI()
-        require(
-            current.protocol.equals("https", true) &&
-                current.host.lowercase(java.util.Locale.ROOT) in UPDATE_DOWNLOAD_HOSTS &&
-                current.port in setOf(-1, 443) &&
-                uri.rawUserInfo == null &&
-                uri.fragment == null
-        ) { "Перенаправление APK ведёт на недоверенный адрес" }
+        require(UpdateArtifactPolicy.isAllowedDownloadUrl(current.toString())) {
+            "Перенаправление APK ведёт на недоверенный адрес"
+        }
 
         val connection = current.openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
@@ -1238,13 +1228,10 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
     if (!directory.exists() && !directory.mkdirs()) throw Exception("Не удалось создать папку обновлений")
     val apkFile = File(directory, "tv-apk-installer-update.apk")
     val stagingFile = File(directory, "tv-apk-installer-update.apk.part")
+    require(UpdateArtifactPolicy.isAllowedDownloadUrl(downloadUrl)) {
+        "Разрешены только HTTPS-ссылки на доверенные GitHub Release-хосты"
+    }
     val parsedUrl = URL(downloadUrl)
-    require(
-        parsedUrl.protocol == "https" &&
-            parsedUrl.host.equals("github.com", ignoreCase = true) &&
-            parsedUrl.port in setOf(-1, 443) &&
-            parsedUrl.userInfo == null
-    ) { "Разрешены только исходные HTTPS-ссылки на GitHub Releases" }
 
     val backupFile = File(directory, "tv-apk-installer-update.apk.bak")
     val connection = openUpdateDownloadConnection(parsedUrl)

@@ -6,6 +6,27 @@ import org.junit.Test
 
 class UpdateArtifactPolicyTest {
     @Test
+    fun allowsOnlyExactGitHubReleaseHttpsHosts() {
+        assertTrue(UpdateArtifactPolicy.isAllowedDownloadUrl(
+            "https://github.com/owner/repo/releases/download/v1/app.apk"
+        ))
+        assertTrue(UpdateArtifactPolicy.isAllowedDownloadUrl(
+            "https://objects.githubusercontent.com/release-assets/app.apk"
+        ))
+        assertTrue(UpdateArtifactPolicy.isAllowedDownloadUrl(
+            "https://release-assets.githubusercontent.com/app.apk"
+        ))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("http://github.com/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("https://github.com.evil.example/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("https://evil.example/github.com/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("https://github.com:8443/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("https://user@github.com/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("https://github.com/app.apk#fragment"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("file:///tmp/app.apk"))
+        assertFalse(UpdateArtifactPolicy.isAllowedDownloadUrl("not a url"))
+    }
+
+    @Test
     fun acceptsOnlyBoundedNonTrivialApkSizes() {
         assertFalse(UpdateArtifactPolicy.isValidSize(0L))
         assertFalse(UpdateArtifactPolicy.isValidSize(1023L))
