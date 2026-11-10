@@ -8697,7 +8697,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     )
                                                     updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.REPORTING))
                                                     val historySaved = appendMaintenanceRunHistory(context, historyEntry)
-                                                    updateMaintenanceProgress(executionTracker.finish(historySaved))
+                                                    updateMaintenanceProgress(executionTracker.finish(historySaved && trimAttempt.isSuccess && refreshedDiagnostics != null))
                                                     activity.runOnUiThread {
                                                         refreshedDiagnostics?.let { diagnostics = it }
                                                         dataStorageUsedPercent = refreshedHealth?.dataUsedPercent
