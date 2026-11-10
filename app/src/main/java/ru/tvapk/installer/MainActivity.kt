@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.116"
+private const val APP_VERSION = "0.9.117"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -4429,17 +4429,19 @@ fun TvInstallerApp() {
             status = "Сначала выбери телевизор и проверь IP/порт ADB"
             return
         }
-        maintenanceProgress = "Подключаемся к телевизору по ADB…"
+        val progressTracker = MaintenanceProgressTracker()
+        maintenanceProgress = progressTracker.advance(MaintenanceStage.CONNECTING)
         runTask({
             connectWithRetry(context, host, adbPort) { adb ->
-                updateMaintenanceProgress("Определяем модель и совместимость…")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.IDENTIFYING))
                 val details = readTvDetails(adb)
-                updateMaintenanceProgress("Считываем диагностику и ресурсы…")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.DIAGNOSTICS))
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
                 val healthBeforeMaintenance = healthAssessment
                 val storageSnapshotBefore = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
                 val deviceIdentityForHistory = runCatching { readTvIdentity(adb) }.getOrDefault("неизвестно")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.CACHE_POLICY))
                 var cacheTrimWasAttempted = false
                 val autoCacheTrimEnabledNow = settings.getBoolean("auto_cache_trim", false)
                 val autoCacheTrimMessage = if (TvAutomationEngine.shouldAutomaticallyTrimCache(
@@ -4463,7 +4465,7 @@ fun TvInstallerApp() {
                 } else if (autoCacheTrimEnabledNow && healthAssessment.dataUsedPercent == null) {
                     "Автоматическая очистка кэша пропущена: нет достоверных данных о заполнении /data."
                 } else ""
-                updateMaintenanceProgress("Проверяем установленные приложения и профиль устройства…")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.APP_SCAN))
                 val compatibility = readTvCompatibilityReport(adb)
                 val disableSupported = readPackageDisableCapability(adb)
                 val users = readUserPackages(adb)
@@ -4478,7 +4480,7 @@ fun TvInstallerApp() {
                     ?.toSet()
                     ?: emptySet()
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
-                updateMaintenanceProgress("Формируем безопасный план обслуживания…")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.PLAN))
                 val plan = TvAutomationEngine.buildPlan(
                     installedPackages = installed.toSet(),
                     disabledPackages = disabled,
@@ -4508,7 +4510,7 @@ fun TvInstallerApp() {
                     warnings = healthAssessment.warnings,
                     warningsBefore = healthBeforeMaintenance.warnings
                 )
-                updateMaintenanceProgress("Сохраняем отчёт и историю обслуживания…")
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.REPORT))
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
                     appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
@@ -4534,6 +4536,7 @@ fun TvInstallerApp() {
                     if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
                     else appendLine("Подготовлен предварительный план из ${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
                 }
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.COMPLETE))
                 activity.runOnUiThread {
                     tvDetails = details
                     diagnostics = diagnosticsSnapshot
