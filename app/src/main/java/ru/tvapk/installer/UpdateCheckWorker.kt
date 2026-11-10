@@ -60,11 +60,11 @@ class UpdateCheckWorker(
                 connection.setRequestProperty("User-Agent", "TV-APK-Installer")
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
                 val responseCode = connection.responseCode
-                if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) return Result.success()
-                if (responseCode != HttpURLConnection.HTTP_OK) {
-                    return if (responseCode == 403 || responseCode == 408 || responseCode == 429 ||
-                        responseCode >= 500
-                    ) Result.retry() else Result.failure()
+                when (UpdateCheckHttpPolicy.actionFor(responseCode)) {
+                    UpdateCheckHttpAction.NO_RELEASE -> return Result.success()
+                    UpdateCheckHttpAction.RETRY -> return Result.retry()
+                    UpdateCheckHttpAction.FAIL -> return Result.failure()
+                    UpdateCheckHttpAction.CONTINUE -> Unit
                 }
                 val declaredLength = connection.contentLengthLong
                 if (declaredLength > MAX_RELEASE_METADATA_BYTES) {
