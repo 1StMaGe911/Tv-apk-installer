@@ -15,6 +15,15 @@ class UpdateArtifactPolicyTest {
     }
 
     @Test
+    fun matchesSha256WithoutCaseSensitivityAndRejectsMalformedHashes() {
+        val hash = "a".repeat(64)
+        assertTrue(UpdateArtifactPolicy.matchesSha256(hash, hash.uppercase()))
+        assertFalse(UpdateArtifactPolicy.matchesSha256("b".repeat(64), hash))
+        assertFalse(UpdateArtifactPolicy.matchesSha256(hash, "not-a-hash"))
+        assertFalse(UpdateArtifactPolicy.matchesSha256("short", hash))
+    }
+
+    @Test
     fun requiresActualDownloadSizeToMatchReleaseMetadata() {
         assertTrue(UpdateArtifactPolicy.matchesSize(4096L, 4096L))
         assertFalse(UpdateArtifactPolicy.matchesSize(4095L, 4096L))
