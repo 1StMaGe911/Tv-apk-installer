@@ -597,4 +597,15 @@ class TvAutomationEngineTest {
         assertTrue(result.warnings.isEmpty())
         assertTrue(result.summary.contains("Недостаточно данных"))
     }
+    @Test
+    fun automaticDeviceDiscoverySelectsOnlyOneUnambiguousTv() {
+        val tv = TvDevice(name = "Living Room TV", ip = "192.168.1.20", port = 5555)
+        assertNull(TvAutomationEngine.uniqueDiscoveredDevice(emptyList()))
+        assertEquals(tv, TvAutomationEngine.uniqueDiscoveredDevice(listOf(tv)))
+        assertNull(TvAutomationEngine.uniqueDiscoveredDevice(listOf(
+            tv,
+            TvDevice(name = "Bedroom TV", ip = "192.168.1.21", port = 5555)
+        )))
+    }
+
 }
