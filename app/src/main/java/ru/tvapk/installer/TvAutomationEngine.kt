@@ -104,9 +104,12 @@ internal object TvAutomationEngine {
             } else if (dataUsedPercent != null && dataUsedPercent >= 90) {
                 add("Мало свободного места во внутреннем хранилище: занято $dataUsedPercent%.")
             }
+            if (uptimeDays != null && uptimeDays >= 30) {
+                add("Телевизор работает без перезагрузки уже $uptimeDays дней. Рекомендуется обычная перезагрузка в удобное время; принудительное завершение приложений не выполнялось.")
+            }
         }
 
-        val measured = memoryPercent != null || dataUsedPercent != null
+        val measured = memoryPercent != null || dataUsedPercent != null || uptimeDays != null
         val summary = when {
             warnings.isNotEmpty() -> "Обнаружены показатели, требующие внимания"
             measured -> "По доступным показателям критических предупреждений нет"
