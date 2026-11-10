@@ -602,6 +602,10 @@ class TvAutomationEngineTest {
         val tv = TvDevice(name = "Living Room TV", ip = "192.168.1.20", port = 5555)
         assertNull(TvAutomationEngine.uniqueDiscoveredDevice(emptyList()))
         assertEquals(tv, TvAutomationEngine.uniqueDiscoveredDevice(listOf(tv)))
+        assertEquals(tv, TvAutomationEngine.uniqueDiscoveredDevice(listOf(
+            tv,
+            tv.copy(name = "Repeated service announcement")
+        )))
         assertNull(TvAutomationEngine.uniqueDiscoveredDevice(listOf(
             tv,
             TvDevice(name = "Bedroom TV", ip = "192.168.1.21", port = 5555)
