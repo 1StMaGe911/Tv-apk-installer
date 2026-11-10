@@ -89,7 +89,8 @@ private val TextMuted = Color(0xFFBDB4A3)
 data class TvDevice(
     val name: String,
     val ip: String,
-    val port: Int
+    val port: Int,
+    val isTlsConnect: Boolean = false
 )
 
 // Ищет только устройства, которые сами объявили ADB в локальной сети.
@@ -133,7 +134,12 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
                     val port = serviceInfo.port
                     if (!stopped.get() && host != null && port in 1..65535) {
                         val key = "$host:$port"
-                        found[key] = TvDevice(serviceInfo.serviceName.ifBlank { "Android TV" }, host, port)
+                        found[key] = TvDevice(
+                            serviceInfo.serviceName.ifBlank { "Android TV" },
+                            host,
+                            port,
+                            isTlsConnect = serviceInfo.serviceType == "_adb-tls-connect._tcp."
+                        )
                     }
                     resolving.set(false)
                     resolveNext()
@@ -1047,7 +1053,11 @@ private fun connectWithRetry(
             retryDelayMillis = 1500L,
             connect = {
                 val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
-                if (pairedHost != null && pairedHost.equals(host.trim(), ignoreCase = true)) {
+                val pairedConnectPort = prefs(context).getInt("adb_tls_connect_port", 0)
+                if (pairedHost != null &&
+                    pairedHost.equals(host.trim(), ignoreCase = true) &&
+                    pairedConnectPort == port
+                ) {
                     // The selected endpoint is the TLS-connect port advertised separately
                     // from the pairing port. Keep legacy ADB for devices not yet paired.
                     KadbTlsTransport.connect(context, host, port)
@@ -1076,7 +1086,8 @@ private fun loadDevices(context: Context): List<TvDevice> {
             TvDevice(
                 item.getString("name"),
                 item.getString("ip"),
-                item.getInt("port")
+                item.getInt("port"),
+                item.optBoolean("tlsConnect", false)
             )
         }
     } catch (_: Exception) {
@@ -1092,6 +1103,7 @@ private fun saveDevices(context: Context, devices: List<TvDevice>) {
                 .put("name", it.name)
                 .put("ip", it.ip)
                 .put("port", it.port)
+                .put("tlsConnect", it.isTlsConnect)
         )
     }
     prefs(context).edit().putString("devices", array.toString()).apply()
@@ -6547,12 +6559,19 @@ fun TvInstallerApp() {
                                             tvName = device.name
                                             ip = device.ip
                                             port = device.port.toString()
+                                            settings.edit().putInt(
+                                                "adb_tls_connect_port",
+                                                if (device.isTlsConnect) device.port else 0
+                                            ).apply()
                                             discoveredDevices = emptyList()
                                             status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("${device.name} — ${device.ip}:${device.port}")
+                                        Text(
+                                            "${device.name} — ${device.ip}:${device.port}" +
+                                                if (device.isTlsConnect) " · TLS" else " · ADB"
+                                        )
                                     }
                                 }
                             }
