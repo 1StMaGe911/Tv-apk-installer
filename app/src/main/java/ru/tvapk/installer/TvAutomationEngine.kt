@@ -259,11 +259,17 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         val installedCandidates = detectedCandidates intersect installedPackages
         val alreadyDisabled = installedCandidates intersect disabledPackages
         val eligible = installedCandidates - alreadyDisabled
-        val protected = eligible intersect (protectedPackages + neverDisablePackages)
+        // Defense in depth: the planner enforces the engine's core package
+        // policy even if a caller accidentally omits a package from its snapshot.
+        val protected = eligible.filterTo(mutableSetOf()) { packageName ->
+            packageName in protectedPackages ||
+                packageName in neverDisablePackages ||
+                isProtectedSystemPackage(packageName)
+        }
         val profileApproved = eligible intersect profileApprovedPackages
         val safe = (profileApproved - protected).toSortedSet()
         val review = eligible - profileApproved - protected
-        val blocked = protected + (eligible intersect protectedPackages)
+        val blocked = protected
         return Plan(
             detectedCount = installedCandidates.size,
             approvedCount = safe.size,
