@@ -8,6 +8,23 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun manualPackageRollbackDecisionRequiresInstalledPackageAndExpectedState() {
+        assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.MISSING, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = false, currentDisabled = true, wasDisabled = false, isDisabled = true
+        ))
+        assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.ALREADY_ORIGINAL, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = false, wasDisabled = false, isDisabled = true
+        ))
+        assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.RESTORE, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = true, wasDisabled = false, isDisabled = true
+        ))
+        // A journal entry that claims no state transition is internally inconsistent.
+        assertEquals(TvAutomationEngine.ManualPackageRollbackDecision.CONFLICT, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = true, wasDisabled = false, isDisabled = false
+        ))
+    }
+
+    @Test
     fun uniqueBestCandidateSelectionRejectsTiesAndEmptyInput() {
         assertNull(TvAutomationEngine.uniqueBestCandidateIndex(emptyList()))
         assertEquals(0, TvAutomationEngine.uniqueBestCandidateIndex(listOf(7)))

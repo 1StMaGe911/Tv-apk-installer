@@ -36,6 +36,27 @@ internal object CleanupJournalValidator {
 }
 
 internal object TvAutomationEngine {
+    internal enum class ManualPackageRollbackDecision {
+        MISSING,
+        ALREADY_ORIGINAL,
+        RESTORE,
+        CONFLICT
+    }
+
+    /** Classifies a journal entry against a fresh device snapshot before rollback. */
+    internal fun manualPackageRollbackDecision(
+        installed: Boolean,
+        currentDisabled: Boolean,
+        wasDisabled: Boolean,
+        isDisabled: Boolean
+    ): ManualPackageRollbackDecision = when {
+        !installed -> ManualPackageRollbackDecision.MISSING
+        wasDisabled == isDisabled -> ManualPackageRollbackDecision.CONFLICT
+        currentDisabled == wasDisabled -> ManualPackageRollbackDecision.ALREADY_ORIGINAL
+        currentDisabled == isDisabled -> ManualPackageRollbackDecision.RESTORE
+        else -> ManualPackageRollbackDecision.CONFLICT
+    }
+
     /** Returns the unique index of the highest-scoring candidate; ties fail closed. */
     internal fun uniqueBestCandidateIndex(scores: List<Int>): Int? {
         if (scores.isEmpty()) return null
