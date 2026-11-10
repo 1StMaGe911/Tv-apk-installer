@@ -29,5 +29,5 @@ internal class MaintenanceProgressTracker {
     }
 
     @Synchronized
-    fun isComplete(): Boolean = currentIndex == MaintenanceStage.COMPLETE.ordinal
+    fun isComplete(): Boolean = currentIndex == MaintenanceStage.REVIEW_READY.ordinal
 }
