@@ -8,6 +8,23 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun manualPackageRollbackDecisionRequiresInstalledPackageAndExpectedState() {
+        val decision = TvAutomationEngine.ManualPackageRollbackDecision
+        assertEquals(decision.MISSING, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = false, currentDisabled = true, wasDisabled = false, isDisabled = true
+        ))
+        assertEquals(decision.ALREADY_ORIGINAL, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = false, wasDisabled = false, isDisabled = true
+        ))
+        assertEquals(decision.RESTORE, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = true, wasDisabled = false, isDisabled = true
+        ))
+        assertEquals(decision.CONFLICT, TvAutomationEngine.manualPackageRollbackDecision(
+            installed = true, currentDisabled = false, wasDisabled = true, isDisabled = false
+        ))
+    }
+
+    @Test
     fun uniqueBestCandidateSelectionRejectsTiesAndEmptyInput() {
         assertNull(TvAutomationEngine.uniqueBestCandidateIndex(emptyList()))
         assertEquals(0, TvAutomationEngine.uniqueBestCandidateIndex(listOf(7)))
