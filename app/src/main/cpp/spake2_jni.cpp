@@ -4,6 +4,7 @@
 #include <openssl/mem.h>
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace {
