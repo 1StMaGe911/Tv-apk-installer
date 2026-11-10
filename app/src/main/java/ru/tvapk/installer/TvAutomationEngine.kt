@@ -41,11 +41,11 @@ internal object TvAutomationEngine {
         "bash" -> listOf(
             "printf '%s' 'Восстановление изменит состояние пакетов и автозапуска. Введи RESTORE для продолжения: '",
             "read -r confirmation",
-            "[[ \\$confirmation == 'RESTORE' ]] || { echo 'Отменено: подтверждение не получено. Изменений нет.' >&2; exit 4; }"
+            "[[ \$confirmation == 'RESTORE' ]] || { echo 'Отменено: подтверждение не получено. Изменений нет.' >&2; exit 4; }"
         )
         "powershell" -> listOf(
-            "\\$confirmation = Read-Host 'Восстановление изменит состояние пакетов и автозапуска. Введи RESTORE для продолжения'",
-            "if (\\$confirmation -cne 'RESTORE') { throw 'Отменено: подтверждение не получено. Изменений нет.' }"
+            "\$confirmation = Read-Host 'Восстановление изменит состояние пакетов и автозапуска. Введи RESTORE для продолжения'",
+            "if (\$confirmation -cne 'RESTORE') { throw 'Отменено: подтверждение не получено. Изменений нет.' }"
         )
         else -> emptyList()
     }
