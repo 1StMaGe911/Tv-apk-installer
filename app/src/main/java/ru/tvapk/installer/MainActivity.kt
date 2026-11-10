@@ -4121,11 +4121,10 @@ private fun buildHelpAddTvReport(tvDetails: String): String {
 
 private fun loadPackageFacts(context: Context): Map<String, PackageFact> {
     return try {
-        val cached = File(context.filesDir, "cleanyourtv-catalog/facts.tsv")
-        val input = if (cached.isFile && cached.length() in 1..(2L * 1024 * 1024)) {
-            cached.inputStream()
-        } else context.assets.open("cleanyourtv/facts.tsv")
-        input.bufferedReader().useLines { lines ->
+        // Automatic global approvals must come only from the facts catalog bundled
+        // into this signed app build. A writable app-data cache is useful for display
+        // metadata, but it must never expand the set of packages disabled automatically.
+        context.assets.open("cleanyourtv/facts.tsv").bufferedReader().useLines { lines ->
             lines.drop(1).mapNotNull { line ->
                 val columns = line.split('\t', limit = 4)
                 if (columns.size < 4 || columns[0].isBlank()) null
@@ -4960,9 +4959,14 @@ fun TvInstallerApp() {
                 val profileMatch = matchTvModelProfile(details, tvModelProfiles, packageFacts)
                 val profile = profileMatch?.profile
                 val candidates = findCleanupCandidates(installed, packageFacts, profile).toSet()
+                val bundledAdAndTrackingPackages = packageFacts.values.asSequence()
+                    .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
+                    .map { it.packageName }
+                    .toSet()
                 val approved = TvAutomationEngine.automaticallyApprovedPackages(
                     packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
-                    trustedProfile = profile?.automaticDisableTrusted == true
+                    trustedProfile = profile?.automaticDisableTrusted == true,
+                    knownGlobalPackages = bundledAdAndTrackingPackages
                 )
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.PLAN))
