@@ -4239,7 +4239,7 @@ private fun matchTvModelProfile(
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase() }
         .mapNotNull { candidate ->
-            val normalized = normalized(candidate)
+            val normalized = TvAutomationEngine.normalizeProfileBrandIdentifier(candidate)
             if (normalized.length < 3 || !matchesReportedBrand(candidate)) null
             else candidate to normalized.length
         }
