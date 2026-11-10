@@ -112,11 +112,19 @@ internal object TvAutomationEngine {
     /** Only the bundled trusted profile baseline may authorize automatic package changes. */
     internal fun automaticallyApprovedPackages(
         packageReviewFlags: Map<String, Boolean>,
-        trustedProfile: Boolean
-    ): Set<String> = if (!trustedProfile) {
-        emptySet()
-    } else {
-        packageReviewFlags.filterValues { asksForReview -> !asksForReview }.keys
+        trustedProfile: Boolean,
+        knownGlobalPackages: Set<String> = emptySet()
+    ): Set<String> {
+        // The model-specific profile is optional for exact package IDs present in
+        // the app-bundled, curated facts catalog. The caller must not pass packages
+        // from an untrusted remote cache here. buildPlan still intersects approvals
+        // with installed candidates and removes protected / never-disable packages.
+        val profileApproved = if (trustedProfile) {
+            packageReviewFlags.filterValues { asksForReview -> !asksForReview }.keys
+        } else {
+            emptySet()
+        }
+        return profileApproved + knownGlobalPackages
     }
 
     internal data class Plan(
