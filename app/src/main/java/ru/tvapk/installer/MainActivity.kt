@@ -8895,7 +8895,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     }
                                     (if (showAllMaintenanceHistory) maintenanceRunHistory else maintenanceRunHistory.take(5)).forEach { entry ->
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.cacheTrimOutcome}",
+                                            Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))}", color = TextMain, fontSize = 11.sp)
+                                            Text("Устройство: ${entry.deviceIdentity.ifBlank { "Не определено" }}", color = TextMuted, fontSize = 10.sp)
+                                            Text("Кэш: ${entry.cacheTrimOutcome}", color = TextMuted, fontSize = 10.sp)
                                                 color = TextMain, fontSize = 11.sp)
                                             Text("RAM доступно: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.memoryBefore, entry.memoryAfter)}); /data занято: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.storageBefore, entry.storageAfter)})",
                                                 color = TextMuted, fontSize = 10.sp)
