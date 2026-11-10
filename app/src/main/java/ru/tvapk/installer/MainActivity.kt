@@ -2388,6 +2388,18 @@ private fun uploadWallpaperCollection(adb: Dadb, files: List<File>, minutes: Int
         try {
             shellText(adb, "mv $staging $destination || exit 1")
             newCollectionActive = true
+            // Verify the active directory after the move, not only the staging copy.
+            // This is a read-only check; never retry the collection mutation itself.
+            val verifyCommand = buildString {
+                append("test \"\$(find $destination -type f | wc -l)\" -eq ${files.size}")
+                files.forEach { file ->
+                    append(" && test \"\$(wc -c < $destination/${file.name})\" -eq ${file.length()}")
+                }
+                append(" && echo verified")
+            }
+            require(readOnlyShellText(adb, verifyCommand).trim() == "verified") {
+                "Телевизор не подтвердил состав и размеры восстановленной коллекции обоев. Прежняя коллекция будет возвращена."
+            }
             config.put("wallpaper_rotation_minutes", minutes.coerceIn(0, 1440))
                 .put("wallpaper_order", order)
                 .put("wallpaper", true)
