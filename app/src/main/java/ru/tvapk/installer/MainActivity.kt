@@ -74,7 +74,7 @@ private fun formatPercentDelta(before: Int?, after: Int?): String {
     }
 }
 
-private const val APP_VERSION = "0.9.117"
+private const val APP_VERSION = "0.9.118"
 private const val RELEASES_URL =
     "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
 
@@ -205,8 +205,10 @@ private data class CleanupJournal(
     val createdAt: Long,
     val inFlightPackage: String? = null,
     val baselineDisabledPackages: List<String> = emptyList(),
-    val schemaVersion: Int = 2,
-    val restoredPackages: List<String> = emptyList()
+    val schemaVersion: Int = 3,
+    val restoredPackages: List<String> = emptyList(),
+    val cacheTrimState: String = "not_requested",
+    val cacheTrimOutcome: String = ""
 )
 
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
@@ -229,7 +231,9 @@ private fun loadCleanupJournal(context: Context): CleanupJournal? {
             schemaVersion = json.optInt("schemaVersion", 1),
             restoredPackages = (json.optJSONArray("restored") ?: JSONArray()).let { values ->
                 (0 until values.length()).map { values.optString(it) }.filter { it.isNotBlank() }
-            }
+            },
+            cacheTrimState = json.optString("cacheTrimState", "not_requested"),
+            cacheTrimOutcome = json.optString("cacheTrimOutcome", "")
         ).takeIf { it.deviceIdentity.isNotBlank() && it.plannedPackages.isNotEmpty() }
     } catch (_: Exception) { null }
 }
@@ -246,6 +250,8 @@ private fun saveCleanupJournal(context: Context, journal: CleanupJournal): Boole
         .put("baselineDisabled", JSONArray(journal.baselineDisabledPackages))
         .put("schemaVersion", journal.schemaVersion)
         .put("restored", JSONArray(journal.restoredPackages))
+        .put("cacheTrimState", journal.cacheTrimState)
+        .put("cacheTrimOutcome", journal.cacheTrimOutcome)
     return prefs(context).edit().putString("cleanup_operation_journal", json.toString()).commit()
 }
 
@@ -7866,9 +7872,27 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 }
                                                 activity.runOnUiThread { cleanupJournal = journal }
                                                 val combinedCacheResult = if (includeCacheTrim) {
+                                                    // Persist the in-flight marker before sending the cache-trim command.
+                                                    journal = journal.copy(cacheTrimState = "running", cacheTrimOutcome = "")
+                                                    check(saveCleanupJournal(context, journal)) {
+                                                        "Не удалось записать начало очистки кэша. Команда не отправлена."
+                                                    }
+                                                    activity.runOnUiThread { cleanupJournal = journal }
                                                     updateMaintenanceProgress("Очищаем только кэш приложений…")
-                                                    runCatching { trimTvApplicationCaches(adb) }
-                                                        .fold({ "Очистка кэша: $it" }, { "Очистка кэша не выполнена: ${errorText(it)}" })
+                                                    val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
+                                                    val outcome = trimAttempt.fold(
+                                                        { "Очистка кэша: " + it },
+                                                        { "Очистка кэша не выполнена: " + errorText(it) }
+                                                    )
+                                                    journal = journal.copy(
+                                                        cacheTrimState = if (trimAttempt.isSuccess) "completed" else "failed",
+                                                        cacheTrimOutcome = outcome
+                                                    )
+                                                    check(saveCleanupJournal(context, journal)) {
+                                                        "Не удалось сохранить результат очистки кэша. Журнал оставлен для проверки."
+                                                    }
+                                                    activity.runOnUiThread { cleanupJournal = journal }
+                                                    outcome
                                                 } else ""
                                                 val disabledNow = mutableListOf<String>()
                                                 val failures = mutableListOf<String>()
