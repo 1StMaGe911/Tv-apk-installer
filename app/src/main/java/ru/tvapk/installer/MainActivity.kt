@@ -5621,7 +5621,7 @@ fun TvInstallerApp() {
                     require(deviceSdk >= version.minSdk && deviceSdk >= archiveMinSdk) {
                         "Модулю требуется Android SDK ${maxOf(version.minSdk, archiveMinSdk)}, на ТВ SDK $deviceSdk"
                     }
-                    val deviceAbis = shellText(adb, "getprop ro.product.cpu.abilist").trim()
+                    val deviceAbis = readOnlyShellText(adb, "getprop ro.product.cpu.abilist").trim()
                         .ifBlank { retryTvReadOnly { shellText(adb, "getprop ro.product.cpu.abi").trim() } }
                         .split(',').map { it.trim() }.filter { it.isNotBlank() }.toSet()
                     require(version.abis.isEmpty() || version.abis.any { it in deviceAbis }) {
