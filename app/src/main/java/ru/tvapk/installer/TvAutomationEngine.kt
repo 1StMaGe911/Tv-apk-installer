@@ -4,6 +4,25 @@ package ru.tvapk.installer
  * Deterministic, side-effect-free planning stage for one-tap TV maintenance.
  * It never performs ADB operations; execution remains a separate, verified step.
  */
+internal object CleanupJournalValidator {
+    private val packageNamePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+
+    internal fun isValid(
+        deviceIdentity: String,
+        createdAt: Long,
+        schemaVersion: Int,
+        plannedPackages: List<String>,
+        completedPackages: List<String>,
+        inFlightPackage: String? = null
+    ): Boolean {
+        if (deviceIdentity.isBlank() || createdAt <= 0L || schemaVersion !in 1..3 || plannedPackages.isEmpty()) return false
+        if (plannedPackages.any { !packageNamePattern.matches(it) } || plannedPackages.distinct().size != plannedPackages.size) return false
+        if (completedPackages.any { it !in plannedPackages } || completedPackages.distinct().size != completedPackages.size) return false
+        if (inFlightPackage != null && inFlightPackage !in plannedPackages) return false
+        return true
+    }
+}
+
 internal object TvAutomationEngine {
     internal data class Plan(
         val detectedCount: Int,
