@@ -42,4 +42,58 @@ class AdbConnectionDiagnosticsTest {
         assertTrue(formatted.contains("broken pipe"))
         assertTrue(formatted.contains("Проверь"))
     }
+    @Test
+    fun retriesConnectionEstablishmentUntilConnected() {
+        var attempts = 0
+        val pauses = mutableListOf<Long>()
+        val connected = AdbConnectionDiagnostics.retryConnection(
+            maxAttempts = 3,
+            retryDelayMillis = 250L,
+            connect = {
+                attempts++
+                if (attempts < 3) throw java.net.SocketTimeoutException("timeout")
+                "connected"
+            },
+            isRetryable = { it is java.net.SocketTimeoutException },
+            pause = { pauses += it }
+        )
+        assertEquals("connected", connected)
+        assertEquals(3, attempts)
+        assertEquals(listOf(250L, 250L), pauses)
+    }
+
+    @Test
+    fun doesNotRetryNonRetryableConnectionFailures() {
+        var attempts = 0
+        try {
+            AdbConnectionDiagnostics.retryConnection(
+                maxAttempts = 3,
+                connect = { attempts++; throw IllegalArgumentException("bad endpoint") },
+                isRetryable = { false },
+                pause = {}
+            )
+        } catch (_: IllegalArgumentException) {
+            // Expected: invalid connection parameters are not retried.
+        }
+        assertEquals(1, attempts)
+    }
+
+    @Test
+    fun propagatesLastRetryableConnectionFailure() {
+        var attempts = 0
+        var thrown: Exception? = null
+        try {
+            AdbConnectionDiagnostics.retryConnection(
+                maxAttempts = 2,
+                connect = { attempts++; throw java.net.SocketTimeoutException("still offline") },
+                isRetryable = { true },
+                pause = {}
+            )
+        } catch (error: Exception) {
+            thrown = error
+        }
+        assertEquals(2, attempts)
+        assertTrue(thrown is java.net.SocketTimeoutException)
+    }
+
 }
