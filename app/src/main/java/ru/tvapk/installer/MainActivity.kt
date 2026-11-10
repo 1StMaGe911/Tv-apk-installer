@@ -4139,6 +4139,7 @@ fun TvInstallerApp() {
     var selectedName by remember { mutableStateOf("APK не выбран") }
 
     var busy by remember { mutableStateOf(false) }
+    var maintenanceProgress by remember { mutableStateOf("") }
     var verifiedCatalog by remember { mutableStateOf<CleanYourTvTrust.VerifiedCatalog?>(null) }
     var installedCatalogVersions by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var installedCatalogScanAt by remember { mutableStateOf("") }
@@ -4410,10 +4411,15 @@ fun TvInstallerApp() {
 
             activity.runOnUiThread {
                 status = result
+                maintenanceProgress = ""
                 busy = false
                 onFinished(result)
             }
         }.start()
+    }
+
+    fun updateMaintenanceProgress(message: String) {
+        activity.runOnUiThread { maintenanceProgress = message }
     }
 
     fun runAutomaticTvMaintenance() {
@@ -4423,9 +4429,12 @@ fun TvInstallerApp() {
             status = "Сначала выбери телевизор и проверь IP/порт ADB"
             return
         }
+        maintenanceProgress = "Подключаемся к телевизору по ADB…"
         runTask({
             connectWithRetry(context, host, adbPort) { adb ->
+                updateMaintenanceProgress("Определяем модель и совместимость…")
                 val details = readTvDetails(adb)
+                updateMaintenanceProgress("Считываем диагностику и ресурсы…")
                 var diagnosticsSnapshot = readTvDiagnostics(adb)
                 var healthAssessment = TvAutomationEngine.assessHealth(diagnosticsSnapshot)
                 val healthBeforeMaintenance = healthAssessment
@@ -4454,6 +4463,7 @@ fun TvInstallerApp() {
                 } else if (autoCacheTrimEnabledNow && healthAssessment.dataUsedPercent == null) {
                     "Автоматическая очистка кэша пропущена: нет достоверных данных о заполнении /data."
                 } else ""
+                updateMaintenanceProgress("Проверяем установленные приложения и профиль устройства…")
                 val compatibility = readTvCompatibilityReport(adb)
                 val disableSupported = readPackageDisableCapability(adb)
                 val users = readUserPackages(adb)
@@ -4468,6 +4478,7 @@ fun TvInstallerApp() {
                     ?.toSet()
                     ?: emptySet()
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
+                updateMaintenanceProgress("Формируем безопасный план обслуживания…")
                 val plan = TvAutomationEngine.buildPlan(
                     installedPackages = installed.toSet(),
                     disabledPackages = disabled,
@@ -4497,6 +4508,7 @@ fun TvInstallerApp() {
                     warnings = healthAssessment.warnings,
                     warningsBefore = healthBeforeMaintenance.warnings
                 )
+                updateMaintenanceProgress("Сохраняем отчёт и историю обслуживания…")
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
                     appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
@@ -7024,6 +7036,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                         Button(enabled = !busy, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
                             Text("⚡ Проверить и оптимизировать ТВ")
                         }
+                        if (busy && maintenanceProgress.isNotBlank()) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text(maintenanceProgress, color = GoldLight, fontSize = 11.sp)
+                        }
                         if ((dataStorageUsedPercent ?: 0) >= 90) {
                             Text("Хранилище заполнено на ${dataStorageUsedPercent}%. Можно безопасно попросить Android освободить только кэш приложений.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             OutlinedButton(
@@ -8021,6 +8037,10 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             modifier = Modifier.fillMaxWidth(),
                             onClick = { runAutomaticTvMaintenance() }
                         ) { Text("⚡ Автоматически проверить и подготовить план") }
+                        if (busy && maintenanceProgress.isNotBlank()) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text(maintenanceProgress, color = GoldLight, fontSize = 11.sp)
+                        }
                         if (automationReport.isNotBlank()) {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
