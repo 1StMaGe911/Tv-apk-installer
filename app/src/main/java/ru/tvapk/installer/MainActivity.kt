@@ -4539,6 +4539,8 @@ fun TvInstallerApp() {
     var dataStorageUsedPercent by remember { mutableStateOf<Int?>(null) }
     var pendingCacheTrim by remember { mutableStateOf(false) }
     var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
+    var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
+    var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -5058,12 +5060,21 @@ fun TvInstallerApp() {
                     // Continue the one-button flow directly to the review screen when
                     // there are trusted package candidates or a cache-only recommendation.
                     // The existing confirmation dialog remains mandatory before changes.
-                    if ((disableSupported && plan.safeToDisable.isNotEmpty()) || pendingCombinedCacheTrim) {
+                    val hasPendingCleanupWork =
+                        (disableSupported && plan.safeToDisable.isNotEmpty()) || pendingCombinedCacheTrim
+                    if (hasPendingCleanupWork) {
                         showSettings = false
                         activeSection = "clean"
+                    } else if (installLauncherAfterMaintenance) {
+                        maintenanceReadyToInstallLauncher = true
                     }
                 }
                 report
+            }
+        }, onFinished = { result ->
+            if (result.startsWith("Ошибка:")) {
+                installLauncherAfterMaintenance = false
+                maintenanceReadyToInstallLauncher = false
             }
         })
     }
@@ -5720,6 +5731,14 @@ fun TvInstallerApp() {
 
                 }
             })
+        }
+    }
+
+    LaunchedEffect(installLauncherAfterMaintenance, maintenanceReadyToInstallLauncher, busy) {
+        if (installLauncherAfterMaintenance && maintenanceReadyToInstallLauncher && !busy) {
+            installLauncherAfterMaintenance = false
+            maintenanceReadyToInstallLauncher = false
+            installCleanYourTvModules()
         }
     }
 
@@ -7584,6 +7603,18 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                         Button(enabled = canStartMaintenance, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
                             Text("⚡ Проверить и оптимизировать ТВ")
                         }
+                        Button(enabled = canStartMaintenance, onClick = {
+                            installLauncherAfterMaintenance = true
+                            maintenanceReadyToInstallLauncher = false
+                            runAutomaticTvMaintenance()
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("⚡ Очистить ТВ и установить Launcher")
+                        }
+                        Text(
+                            "Комбинированный запуск сначала проверяет совместимость и выполняет подтверждённую очистку, затем устанавливает и проверяет Clean Your TV Launcher и Curtain. Если очистка не прошла проверку, установка Launcher не запускается.",
+                            color = TextMuted,
+                            fontSize = 11.sp
+                        )
                         if (!busy && !canStartMaintenance) {
                             Text(
                                 if (cleanupJournalCorrupt) {
@@ -8657,7 +8688,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                         if (cleanupCandidates.isNotEmpty()) Text(if (packageDisableSupported) "Для пакетного отключения доступны только компоненты точного профиля модели с правилом ask=false. Остальные рекомендации справочные. Перед каждой операцией результат проверяется через Package Manager." else "Пакетная очистка заблокирована: устройство ещё не подтвердило поддержку команды отключения и чтения фактического состояния пакетов. Повтори определение устройства.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                         if (pendingCleanupPackages.isNotEmpty() || pendingCombinedCacheTrim) {
                             AlertDialog(
-                                onDismissRequest = { pendingCleanupPackages = emptyList(); pendingCombinedCacheTrim = false },
+                                onDismissRequest = {
+                                    pendingCleanupPackages = emptyList()
+                                    pendingCombinedCacheTrim = false
+                                    installLauncherAfterMaintenance = false
+                                    maintenanceReadyToInstallLauncher = false
+                                },
                                 title = {
                                     Text(
                                         when {
@@ -8953,12 +8989,30 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     (if (failures.isEmpty()) "" else "\nНе удалось отключить: ${failures.joinToString()}") +
                                                     verificationSummary + healthSummary
                                             }
+                                        }, onFinished = { result ->
+                                            val cleanupVerified =
+                                                (result.contains("Отключено:") && result.contains("Ошибок: 0")) ||
+                                                    result.startsWith("Очистка кэша выполнена:")
+                                            if (installLauncherAfterMaintenance) {
+                                                if (cleanupVerified) {
+                                                    maintenanceReadyToInstallLauncher = true
+                                                } else {
+                                                    installLauncherAfterMaintenance = false
+                                                    maintenanceReadyToInstallLauncher = false
+                                                    status = "$result\\nLauncher не установлен: этап очистки не завершился успешно."
+                                                }
+                                            }
                                         })
                                         }
                                     }) { Text(if (pendingCleanupPackages.isEmpty()) "Очистить кэш" else "Отключить выбранные") }
                                 },
                                 dismissButton = {
-                                    TextButton(onClick = { pendingCleanupPackages = emptyList(); pendingCombinedCacheTrim = false }) { Text("Отмена") }
+                                    TextButton(onClick = {
+                                        pendingCleanupPackages = emptyList()
+                                        pendingCombinedCacheTrim = false
+                                        installLauncherAfterMaintenance = false
+                                        maintenanceReadyToInstallLauncher = false
+                                    }) { Text("Отмена") }
                                 }
                             )
                         }
