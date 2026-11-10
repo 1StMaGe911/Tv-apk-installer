@@ -7,6 +7,12 @@ internal object MaintenanceHistoryWritePolicy {
     fun canAppend(existingValuePresent: Boolean, existingValueValid: Boolean): Boolean =
         !existingValuePresent || existingValueValid
 
-    fun isCorrupt(existingRaw: String?): Boolean =
-        existingRaw != null && runCatching { JSONArray(existingRaw) }.isFailure
+    fun isCorrupt(existingRaw: String?): Boolean {
+        if (existingRaw == null) return false
+        return runCatching {
+            val normalized = existingRaw.trim()
+            require(normalized.startsWith("["))
+            JSONArray(normalized)
+        }.isFailure
+    }
 }
