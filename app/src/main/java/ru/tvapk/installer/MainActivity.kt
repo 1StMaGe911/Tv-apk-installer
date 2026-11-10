@@ -4369,6 +4369,7 @@ fun TvInstallerApp() {
     var cleanupJournalCorrupt by remember { mutableStateOf(hasCorruptCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var maintenanceRunHistory by remember { mutableStateOf(loadMaintenanceRunHistory(context)) }
+    var showAllMaintenanceHistory by remember { mutableStateOf(false) }
     var maintenanceHistoryCorrupt by remember {
         mutableStateOf(MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null)))
     }
@@ -8883,7 +8884,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(),
                                         onClick = { maintenanceRunHistoryExporter.launch("tv-apk-maintenance-history.json") }
                                     ) { Text("Экспортировать отчёт (JSON)") }
-                                    maintenanceRunHistory.take(5).forEach { entry ->
+                                    if (maintenanceRunHistory.size > 5) {
+                                        OutlinedButton(
+                                            enabled = !busy,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            onClick = { showAllMaintenanceHistory = !showAllMaintenanceHistory }
+                                        ) {
+                                            Text(if (showAllMaintenanceHistory) "Свернуть историю" else "Показать все записи (${maintenanceRunHistory.size})")
+                                        }
+                                    }
+                                    (if (showAllMaintenanceHistory) maintenanceRunHistory else maintenanceRunHistory.take(5)).forEach { entry ->
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.cacheTrimOutcome}",
                                                 color = TextMain, fontSize = 11.sp)
