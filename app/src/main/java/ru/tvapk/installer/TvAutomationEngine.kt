@@ -36,6 +36,16 @@ internal object CleanupJournalValidator {
 }
 
 internal object TvAutomationEngine {
+    /** Only the bundled trusted profile baseline may authorize automatic package changes. */
+    internal fun automaticallyApprovedPackages(
+        packageReviewFlags: Map<String, Boolean>,
+        trustedProfile: Boolean
+    ): Set<String> = if (!trustedProfile) {
+        emptySet()
+    } else {
+        packageReviewFlags.filterValues { asksForReview -> !asksForReview }.keys
+    }
+
     internal data class Plan(
         val detectedCount: Int,
         val approvedCount: Int,
