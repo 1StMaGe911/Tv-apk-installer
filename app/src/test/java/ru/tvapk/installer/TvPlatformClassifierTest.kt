@@ -78,4 +78,32 @@ class TvPlatformClassifierTest {
 
         assertEquals(TvPlatformKind.UNKNOWN, TvPlatformClassifier.classify(signals))
     }
+
+    @Test
+    fun profileLabelMatchesOemNamesAsWholeTokens() {
+        assertEquals("LG • Android TV / Android", TvPlatformClassifier.profileLabel("manufacturer=LG; model=OLED"))
+        assertEquals("Универсальный профиль • Android TV / Android", TvPlatformClassifier.profileLabel(
+            "model=Google TV; package=com.google.android.apps.tv.launcherx"
+        ))
+        assertEquals("TCL • Android TV / Android", TvPlatformClassifier.profileLabel("brand=TCL; build=tv"))
+        assertEquals("Xiaomi • Android TV / Android", TvPlatformClassifier.profileLabel("manufacturer=Redmi"))
+    }
+
+    @Test
+    fun profileLabelDoesNotMatchShortOemNamesInsideUnrelatedWords() {
+        assertEquals("Универсальный профиль • Android TV / Android", TvPlatformClassifier.profileLabel(
+            "manufacturer=Google; model=Building-2026; build=android"
+        ))
+        assertEquals("Универсальный профиль • Android-совместимое устройство",
+            TvPlatformClassifier.profileLabel("manufacturer=Unknown; model=Galaxy"))
+    }
+
+    @Test
+    fun profileLabelRecognizesFireTvAndVidaa() {
+        assertEquals("Amazon Fire TV • Fire TV / Fire OS",
+            TvPlatformClassifier.profileLabel("manufacturer=Amazon; model=AFTMM"))
+        assertEquals("Универсальный профиль • VIDAA (не Android)",
+            TvPlatformClassifier.profileLabel("platform=VIDAA"))
+    }
+
 }
