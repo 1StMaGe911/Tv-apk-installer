@@ -120,6 +120,27 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         }
     }
 
+    /** Rejects an exact model/device profile when known OEM or Android version conflicts. */
+    internal fun isProfileBrandCompatible(profileBrand: String, reportedBrands: List<String>): Boolean {
+        val expected = profileBrand.lowercase(java.util.Locale.ROOT)
+            .replace(Regex("[^a-z0-9]"), "")
+        if (expected.isBlank()) return true
+        val unknownValues = setOf("", "unknown", "unknown0", "неизвестно", "na", "null", "none")
+        val reported = reportedBrands.map {
+            it.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9а-яё]"), "")
+        }.filter { it.length >= 3 && it !in unknownValues }
+        if (reported.isEmpty()) return true
+        return expected.length >= 3 && reported.any { it.contains(expected) || expected.contains(it) }
+    }
+
+    /** Missing SDK data does not invent a mismatch; known out-of-range SDK always rejects. */
+    internal fun isProfileSdkCompatible(sdk: Int?, sdkMin: Int?, sdkMax: Int?): Boolean {
+        if (sdk == null) return true
+        if (sdkMin != null && sdk < sdkMin) return false
+        if (sdkMax != null && sdk > sdkMax) return false
+        return true
+    }
+
     private fun normalizedCategories(vararg categories: String?): List<String> =
         categories.mapNotNull { it?.trim()?.lowercase(java.util.Locale.ROOT) }
 
