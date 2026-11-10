@@ -7930,7 +7930,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     val isDisabledAfterAttempt = pkg in readDisabledPackages(adb)
                                                     if (!isDisabledAfterAttempt) failures.add(pkg)
                                                     journal = journal.copy(
-                                                        completedPackages = (journal.completedPackages + if (isDisabledAfterAttempt) listOf(pkg) else emptyList()).distinct(),
+                                                        completedPackages = (journal.completedPackages + listOfNotNull(pkg.takeIf { isDisabledAfterAttempt })).distinct(),
                                                         inFlightPackage = null
                                                     )
                                                     check(saveCleanupJournal(context, journal)) {
