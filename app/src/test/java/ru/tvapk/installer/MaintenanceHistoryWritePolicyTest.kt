@@ -18,9 +18,12 @@ class MaintenanceHistoryWritePolicyTest {
     }
 
     @Test
-    fun detectsMalformedHistoryWithoutTreatingMissingValueAsCorrupt() {
+    fun detectsMalformedOrWrongRootHistoryWithoutTreatingMissingValueAsCorrupt() {
         assertFalse(MaintenanceHistoryWritePolicy.isCorrupt(null))
         assertFalse(MaintenanceHistoryWritePolicy.isCorrupt("[]"))
+        assertFalse(MaintenanceHistoryWritePolicy.isCorrupt("  [ ]  "))
         assertTrue(MaintenanceHistoryWritePolicy.isCorrupt("{broken"))
+        assertTrue(MaintenanceHistoryWritePolicy.isCorrupt("{}"))
+        assertTrue(MaintenanceHistoryWritePolicy.isCorrupt("not-json"))
     }
 }
