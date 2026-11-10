@@ -44,6 +44,27 @@ internal object TvAutomationEngine {
         return uniqueEndpoints.singleOrNull()
     }
 
+    /** Retries only explicitly read-only operations; callers must never pass mutations here. */
+    internal fun <T> retryReadOnlyCommand(
+        maxAttempts: Int = 3,
+        retryDelayMillis: Long = 350L,
+        wait: (Long) -> Unit = { Thread.sleep(it) },
+        action: () -> T
+    ): T {
+        require(maxAttempts in 1..5) { "maxAttempts must be between 1 and 5" }
+        require(retryDelayMillis >= 0L) { "retryDelayMillis must not be negative" }
+        var lastError: Exception? = null
+        for (attempt in 1..maxAttempts) {
+            try {
+                return action()
+            } catch (error: Exception) {
+                lastError = error
+                if (attempt < maxAttempts && retryDelayMillis > 0L) wait(retryDelayMillis)
+            }
+        }
+        throw lastError ?: IllegalStateException("Read-only command failed without an exception")
+    }
+
     /** Explicit interactive gate shared by exported restore scripts. */
     internal fun portableRestoreConfirmationGuard(shell: String): List<String> = when (shell) {
         "bash" -> listOf(
