@@ -381,6 +381,15 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun rejectsAmbiguousMultipleDataMountRows() {
+        val output = """
+            /dev/block/dm-1 1000 700 300 70% /data
+            /dev/block/dm-2 2000 1500 500 75% /data
+        """.trimIndent()
+        assertNull(TvAutomationEngine.parseDataStorageSnapshot(output))
+    }
+
+    @Test
     fun rejectsStorageSnapshotsWhoseUsedAndAvailableSpaceExceedTotal() {
         assertNull(TvAutomationEngine.parseDataStorageSnapshot(
             "/dev/block/dm-1 100 70 40 70% /data"
