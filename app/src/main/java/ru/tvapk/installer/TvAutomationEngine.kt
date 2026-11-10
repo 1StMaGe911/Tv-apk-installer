@@ -196,8 +196,12 @@ internal object TvAutomationEngine {
 
     /** Parses machine-readable df -k /data output conservatively. */
     internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
-        val match = Regex("""(?m)^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/data\s*$""")
-            .find(output) ?: return null
+        // Multiple /data rows make the source ambiguous; fail closed instead of
+        // silently selecting whichever mount happens to appear first.
+        val matches = Regex("""(?m)^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/data\s*$""")
+            .findAll(output).toList()
+        if (matches.size != 1) return null
+        val match = matches.single()
         val totalKb = match.groupValues[1].toLongOrNull() ?: return null
         val usedKb = match.groupValues[2].toLongOrNull() ?: return null
         val availableKb = match.groupValues[3].toLongOrNull() ?: return null
