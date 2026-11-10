@@ -59,3 +59,11 @@ jobs:
 
       - name: Выполнить модульные тесты и собрать APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+
+      - name: Загрузить APK для ручной проверки на телевизоре
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-APK-Installer-debug-PR
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
