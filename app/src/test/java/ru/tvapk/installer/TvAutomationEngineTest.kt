@@ -148,7 +148,7 @@ class TvAutomationEngineTest {
 
         assertEquals(29, result.uptimeDays)
         assertTrue(result.warnings.isEmpty())
-        assertTrue(result.summary.contains("Недостаточно данных").not())
+        assertTrue(result.summary.contains("Недостаточно данных"))
     }
 
     @Test
