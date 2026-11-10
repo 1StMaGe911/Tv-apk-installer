@@ -4621,7 +4621,7 @@ fun TvInstallerApp() {
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.REPORT))
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
-                    appendLine("АВТОМАТИЧЕСКАЯ ПРОВЕРКА ЗАВЕРШЕНА")
+                    appendLine(MaintenanceReportStatus.title(historySaved))
                     if (!historySaved) appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
                     appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
                     appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
