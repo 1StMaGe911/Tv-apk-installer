@@ -438,14 +438,19 @@ private fun rollbackTrackedPackageChanges(context: Context, adb: Dadb): String {
     var missing = 0
     var failed = 0
     candidates.forEach { entry ->
-        when {
-            entry.packageName !in installed -> { missing++ }
-            (entry.packageName in disabled) == entry.wasDisabled -> {
+        when (TvAutomationEngine.manualPackageRollbackDecision(
+            installed = entry.packageName in installed,
+            currentDisabled = entry.packageName in disabled,
+            wasDisabled = entry.wasDisabled,
+            isDisabled = entry.isDisabled
+        )) {
+            TvAutomationEngine.ManualPackageRollbackDecision.MISSING -> missing++
+            TvAutomationEngine.ManualPackageRollbackDecision.ALREADY_ORIGINAL -> {
                 remaining.removeAll { it.deviceIdentity == identity && it.packageName == entry.packageName }
                 alreadyOriginal++
             }
-            (entry.packageName in disabled) != entry.isDisabled -> { conflicts++ }
-            else -> {
+            TvAutomationEngine.ManualPackageRollbackDecision.CONFLICT -> conflicts++
+            TvAutomationEngine.ManualPackageRollbackDecision.RESTORE -> {
                 try {
                     changePackageStateVerified(adb, entry.packageName, enabled = !entry.wasDisabled)
                     disabled = readDisabledPackages(adb)
