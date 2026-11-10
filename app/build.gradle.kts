@@ -1,13 +1,16 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
-    // Kadb 2.1.5 requires Android 17 (API 37) at compile time.
+    // Kadb 2.1.5 requires Android 17 (API 37.0) at compile time.
     // Keep targetSdk unchanged; this does not opt the app into API 37 runtime behavior.
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     namespace = "ru.tvapk.installer"
 
@@ -39,8 +42,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 
     buildFeatures {
