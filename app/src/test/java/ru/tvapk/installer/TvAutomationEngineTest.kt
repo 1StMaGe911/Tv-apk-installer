@@ -26,6 +26,17 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun exactHardwareIdentifiersIgnoreCaseAndSeparatorsButRequireFullMatch() {
+        assertTrue(TvAutomationEngine.isSameHardwareIdentifier("BRAVIA-XR-55A80L", "bravia_xr 55a80l"))
+        assertTrue(TvAutomationEngine.isSameHardwareIdentifier("Модель ТВ-2026", "модель_тв 2026"))
+        assertFalse(TvAutomationEngine.isSameHardwareIdentifier("TV-123", "TV-1234"))
+        assertFalse(TvAutomationEngine.isSameHardwareIdentifier("TV-1234", "TV-123"))
+        assertFalse(TvAutomationEngine.isSameHardwareIdentifier("", ""))
+        assertFalse(TvAutomationEngine.isSameHardwareIdentifier("   ", "TV-123"))
+        assertFalse(TvAutomationEngine.isSameHardwareIdentifier("TV-123", ""))
+    }
+
+    @Test
     fun portableRestoreScriptsRequireExactInteractiveConfirmation() {
         assertEquals(3, TvAutomationEngine.portableRestoreConfirmationGuard("bash").size)
         assertTrue(TvAutomationEngine.portableRestoreConfirmationGuard("bash").last().contains("RESTORE"))
