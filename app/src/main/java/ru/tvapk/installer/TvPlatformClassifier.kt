@@ -29,6 +29,7 @@ internal object TvPlatformClassifier {
         "com.android.tv.launcher"
     )
     private const val LEANBACK_FEATURE = "android.software.leanback"
+    private const val TELEVISION_HARDWARE_FEATURE = "android.hardware.type.television"
 
     fun classify(signals: TvPlatformSignals): TvPlatformKind {
         val amazonDevice = signals.manufacturer.equals("Amazon", ignoreCase = true) ||
@@ -49,10 +50,13 @@ internal object TvPlatformClassifier {
         val hasLeanback = signals.systemFeatures.any {
             it.equals(LEANBACK_FEATURE, ignoreCase = true)
         }
+        val hasTelevisionHardware = signals.systemFeatures.any {
+            it.equals(TELEVISION_HARDWARE_FEATURE, ignoreCase = true)
+        }
         val hasAndroidTvHome = signals.installedPackages.any {
             it in androidTvHomePackages
         }
-        return if (isTvBuild || hasLeanback || hasAndroidTvHome) {
+        return if (isTvBuild || hasLeanback || hasTelevisionHardware || hasAndroidTvHome) {
             TvPlatformKind.ANDROID_TV
         } else {
             TvPlatformKind.UNKNOWN
