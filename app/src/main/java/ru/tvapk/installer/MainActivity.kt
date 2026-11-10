@@ -4684,8 +4684,36 @@ fun TvInstallerApp() {
         }
         val host = ip.trim()
         val adbPort = port.toIntOrNull()
-        if (host.isBlank() || adbPort == null || adbPort !in 1..65535) {
-            status = "Сначала выбери телевизор и проверь IP/порт ADB"
+        if (host.isBlank()) {
+            // With one unambiguous ADB TV on the LAN, discover and start maintenance
+            // in the same user action. Multiple devices remain an explicit selection.
+            runTask(action = {
+                val found = discoverAdbDevices(context)
+                val device = TvAutomationEngine.uniqueDiscoveredDevice(found)
+                if (device == null) {
+                    activity.runOnUiThread { discoveredDevices = found }
+                    if (found.isEmpty()) {
+                        "Автопоиск не нашёл Android TV. Включи ADB по сети или выбери ТВ вручную."
+                    } else {
+                        "Найдено устройств: ${found.size}. Выбери нужный ТВ в разделе подключения."
+                    }
+                } else {
+                    settings.edit().putString("ip", device.ip).putString("port", device.port.toString()).apply()
+                    activity.runOnUiThread {
+                        tvName = device.name
+                        ip = device.ip
+                        port = device.port.toString()
+                        discoveredDevices = emptyList()
+                    }
+                    "AUTO_DISCOVERED_TV"
+                }
+            }, onFinished = { result ->
+                if (result == "AUTO_DISCOVERED_TV") runAutomaticTvMaintenance()
+            })
+            return
+        }
+        if (adbPort == null || adbPort !in 1..65535) {
+            status = "Проверь порт ADB"
             return
         }
         val progressTracker = MaintenanceProgressTracker()
