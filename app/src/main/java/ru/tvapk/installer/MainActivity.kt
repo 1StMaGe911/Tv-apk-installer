@@ -5000,7 +5000,7 @@ fun TvInstallerApp() {
                     if (plan.safeToDisable.isEmpty()) appendLine("Автоматических изменений не предложено.")
                     else appendLine("Подготовлен предварительный план из ${plan.safeToDisable.size} пакетов. Ничего ещё не изменено.")
                 }
-                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.COMPLETE))
+                updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.REVIEW_READY))
                 activity.runOnUiThread {
                     tvDetails = details
                     diagnostics = diagnosticsSnapshot
@@ -8653,7 +8653,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         if (host.isBlank() || p == null || p !in 1..65535) {
                                             status = "Сначала укажи IP и порт ADB"
                                         } else {
-                                            maintenanceProgress = "Подготавливаем подтверждённую очистку…"
+                                            val executionTracker = MaintenanceExecutionTracker()
+                                            updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.PREPARING))
                                             runTask({
                                             connectWithRetry(context, host, p) { adb ->
                                                 if (selected.isEmpty()) {
@@ -8666,12 +8667,13 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     val healthBefore = TvAutomationEngine.assessHealth(diagnosticsBefore)
                                                     val storageBefore = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
 
-                                                    updateMaintenanceProgress("Очищаем только кэш приложений…")
+                                                    updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.APPLYING))
                                                     val trimAttempt = runCatching { trimTvApplicationCaches(adb) }
                                                     val cacheOutcome = trimAttempt.fold(
                                                         { "Очистка кэша выполнена: $it" },
                                                         { "Очистка кэша не выполнена: ${errorText(it)}" }
                                                     )
+                                                    updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.VERIFYING))
                                                     val refreshedDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
                                                     val refreshedHealth = refreshedDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
                                                     val storageAfter = runCatching { readDataStorageSnapshot(adb) }.getOrNull()
@@ -8693,7 +8695,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                         warnings = refreshedHealth?.warnings.orEmpty(),
                                                         warningsBefore = healthBefore.warnings
                                                     )
+                                                    updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.REPORTING))
                                                     val historySaved = appendMaintenanceRunHistory(context, historyEntry)
+                                                    updateMaintenanceProgress(executionTracker.finish(historySaved && trimAttempt.isSuccess && refreshedDiagnostics != null))
                                                     activity.runOnUiThread {
                                                         refreshedDiagnostics?.let { diagnostics = it }
                                                         dataStorageUsedPercent = refreshedHealth?.dataUsedPercent
@@ -8788,6 +8792,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Не удалось надёжно сохранить журнал очистки. Изменения на ТВ не выполнялись."
                                                 }
                                                 activity.runOnUiThread { cleanupJournal = journal }
+                                                updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.APPLYING))
                                                 val combinedCacheResult = if (includeCacheTrim) {
                                                     // Persist the in-flight marker before sending the cache-trim command.
                                                     journal = journal.copy(cacheTrimState = "running", cacheTrimOutcome = "")
@@ -8834,6 +8839,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     }
                                                 }
                                                 updateMaintenanceProgress("Проверяем итоговое состояние пакетов и системы…")
+                                                updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.VERIFYING))
                                                 val finalInstalledState = readAllPackages(adb).toSet()
                                                 val finalDisabledState = readDisabledPackages(adb)
                                                 val cleanupVerification = TvAutomationEngine.verifyCleanupState(
@@ -8862,6 +8868,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 } else {
                                                     activity.runOnUiThread { cleanupJournal = journal }
                                                 }
+                                                updateMaintenanceProgress(executionTracker.advance(MaintenanceExecutionStage.REPORTING))
                                                 val postCleanupDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
                                                 val postCleanupHealth = postCleanupDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
                                                 val cleanupOutcome = when {
@@ -8890,6 +8897,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     if (postCleanupDiagnostics != null) diagnostics = postCleanupDiagnostics
                                                 }
                                                 if (!historyUpdated) failures.add("не удалось сохранить результат пакетной операции в истории обслуживания")
+                                                updateMaintenanceProgress(executionTracker.finish(historyUpdated && failures.isEmpty()))
                                                 val verificationSummary = "\nИтоговая проверка на ТВ: ${confirmedDisabled.size} из ${safeSelected.size} пакетов действительно установлено и отключено."
                                                 val healthSummary = postCleanupHealth?.let { health ->
                                                     "\nСостояние после оптимизации: ${health.summary}" +
