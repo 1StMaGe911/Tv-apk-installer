@@ -123,7 +123,10 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             "tracking", "analytics", "promo", "promotion", "feedback", "demo"
         )
         return components.any { component ->
-            markers.any { marker -> component.startsWith(marker) }
+            markers.any { marker ->
+                if (marker == "adid") component == marker
+                else component.startsWith(marker)
+            }
         }
     }
 
