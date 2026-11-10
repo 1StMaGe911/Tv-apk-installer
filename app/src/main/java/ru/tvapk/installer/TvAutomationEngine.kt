@@ -145,30 +145,25 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
 
     /** Rejects an exact model/device profile when known OEM or Android version conflicts. */
     internal fun isProfileBrandCompatible(profileBrand: String, reportedBrands: List<String>): Boolean {
-        val expected = profileBrand.lowercase(java.util.Locale.ROOT)
-            .replace(Regex("[^a-z0-9]"), "")
+        val expected = normalizeProfileBrandIdentifier(profileBrand)
         if (expected.isBlank()) return true
         val unknownValues = setOf("", "unknown", "unknown0", "неизвестно", "na", "null", "none")
-        val meaningfulBrands = reportedBrands.mapNotNull { brand ->
-            val normalized = brand.lowercase(java.util.Locale.ROOT)
-                .replace(Regex("[^a-z0-9а-яё]"), "")
-            if (normalized.isBlank() || normalized in unknownValues) null else brand
-        }
+            .map(::normalizeProfileBrandIdentifier).toSet()
+        val meaningfulBrands = reportedBrands.map(::normalizeProfileBrandIdentifier)
+            .filter { it.isNotBlank() && it !in unknownValues }
         if (meaningfulBrands.isEmpty()) return true
 
         // Short OEM marks such as "LG" must match a complete token, not a
         // substring (which would incorrectly match words such as "bulge").
         if (expected.length < 3) {
-            val reportedTokens = meaningfulBrands.flatMap { brand ->
+            val reportedTokens = reportedBrands.flatMap { brand ->
                 brand.lowercase(java.util.Locale.ROOT)
-                    .split(Regex("[^a-z0-9а-яё]+"))
+                    .split(Regex("[^\\p{L}\\p{N}]+"))
+                    .map(::normalizeProfileBrandIdentifier)
             }.filter { it.isNotBlank() }
             return expected in reportedTokens
         }
-        val normalizedReported = meaningfulBrands.map {
-            it.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9а-яё]"), "")
-        }.filter { it.length >= 3 }
-        return normalizedReported.any { it.contains(expected) || expected.contains(it) }
+        return meaningfulBrands.any { it.contains(expected) || expected.contains(it) }
     }
 
     /** Missing SDK data does not invent a mismatch; known out-of-range SDK always rejects. */
