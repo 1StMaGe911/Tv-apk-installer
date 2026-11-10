@@ -7124,8 +7124,24 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("АВТОМАТИЧЕСКОЕ ОБСЛУЖИВАНИЕ", color = GoldLight, style = MaterialTheme.typography.titleMedium)
                         Text("Одна кнопка проверит Android TV, оценит память и хранилище, найдёт безопасные кандидаты для очистки и покажет подтверждение перед изменениями.", color = TextMuted, fontSize = 12.sp)
-                        Button(enabled = !busy, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
+                        val canStartMaintenance = MaintenanceDashboardPolicy.canStartMaintenance(
+                            busy = busy,
+                            cleanupJournalCorrupt = cleanupJournalCorrupt,
+                            hasPendingCleanupJournal = cleanupJournal != null
+                        )
+                        Button(enabled = canStartMaintenance, onClick = { runAutomaticTvMaintenance() }, modifier = Modifier.fillMaxWidth()) {
                             Text("⚡ Проверить и оптимизировать ТВ")
+                        }
+                        if (!busy && !canStartMaintenance) {
+                            Text(
+                                if (cleanupJournalCorrupt) {
+                                    "Новое обслуживание заблокировано: сначала проверь повреждённый журнал восстановления."
+                                } else {
+                                    "Новое обслуживание заблокировано: сначала заверши проверку или восстановление предыдущей операции."
+                                },
+                                color = Color(0xFFFFD98A),
+                                fontSize = 11.sp
+                            )
                         }
                         if (busy && maintenanceProgress.isNotBlank()) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
