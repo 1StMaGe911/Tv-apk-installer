@@ -7924,6 +7924,15 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     }
                                                 }
                                                 updateMaintenanceProgress("Проверяем итоговое состояние пакетов и системы…")
+                                                val finalDisabledState = readDisabledPackages(adb)
+                                                val noLongerDisabled = disabledNow.filter { it !in finalDisabledState }
+                                                if (noLongerDisabled.isNotEmpty()) {
+                                                    failures.addAll(noLongerDisabled.map { "$it (состояние изменилось после отключения)" })
+                                                }
+                                                journal = journal.copy(completedPackages = disabledNow.filter { it in finalDisabledState }, inFlightPackage = null)
+                                                check(saveCleanupJournal(context, journal)) {
+                                                    "Не удалось сохранить итоговую проверку пакетов. Журнал оставлен для восстановления."
+                                                }
                                                 if (failures.isEmpty()) {
                                                     appendCleanupHistory(context, journal, "Очистка завершена", disabledNow)
                                                     check(clearCleanupJournal(context)) {
@@ -7936,7 +7945,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 } else {
                                                     activity.runOnUiThread { cleanupJournal = journal }
                                                 }
-                                                val finalDisabledState = runCatching { readDisabledPackages(adb) }.getOrNull()
                                                 val postCleanupDiagnostics = runCatching { readTvDiagnostics(adb) }.getOrNull()
                                                 val postCleanupHealth = postCleanupDiagnostics?.let { TvAutomationEngine.assessHealth(it) }
                                                 val cleanupOutcome = when {
