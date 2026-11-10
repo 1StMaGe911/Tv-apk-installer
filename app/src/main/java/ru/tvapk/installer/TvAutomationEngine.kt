@@ -126,11 +126,22 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             .replace(Regex("[^a-z0-9]"), "")
         if (expected.isBlank()) return true
         val unknownValues = setOf("", "unknown", "unknown0", "неизвестно", "na", "null", "none")
-        val reported = reportedBrands.map {
+        val normalizedReported = reportedBrands.map {
             it.lowercase(java.util.Locale.ROOT).replace(Regex("[^a-z0-9а-яё]"), "")
         }.filter { it.length >= 3 && it !in unknownValues }
-        if (reported.isEmpty()) return true
-        return expected.length >= 3 && reported.any { it.contains(expected) || expected.contains(it) }
+        if (normalizedReported.isEmpty()) return true
+
+        // Short OEM marks such as "LG" must match a complete token, not a
+        // substring (which would incorrectly match words such as "bulge").
+        if (expected.length < 3) {
+            val expectedToken = expected
+            val reportedTokens = reportedBrands.flatMap { brand ->
+                brand.lowercase(java.util.Locale.ROOT)
+                    .split(Regex("[^a-z0-9а-яё]+"))
+            }.filter { it.isNotBlank() && it !in unknownValues }
+            return expectedToken in reportedTokens
+        }
+        return normalizedReported.any { it.contains(expected) || expected.contains(it) }
     }
 
     /** Missing SDK data does not invent a mismatch; known out-of-range SDK always rejects. */
