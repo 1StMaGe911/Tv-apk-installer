@@ -7772,8 +7772,12 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                             if (failures.isEmpty()) {
                                                                 val finalInstalled = readAllPackages(adb).toSet()
                                                                 val finalDisabled = readDisabledPackages(adb)
+                                                                // A package deliberately restored by rollback is no longer expected to be disabled.
+                                                                val expectedDisabled = currentJournal.plannedPackages.toSet() -
+                                                                    currentJournal.baselineDisabledPackages.toSet() -
+                                                                    currentJournal.restoredPackages.toSet()
                                                                 val verification = TvAutomationEngine.verifyCleanupState(
-                                                                    plannedPackages = currentJournal.plannedPackages.toSet(),
+                                                                    plannedPackages = expectedDisabled,
                                                                     installedPackages = finalInstalled,
                                                                     disabledPackages = finalDisabled
                                                                 )
@@ -7782,20 +7786,37 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 check(saveCleanupJournal(context, currentJournal)) {
                                                                     "Не удалось сохранить итоговую проверку. Журнал оставлен."
                                                                 }
+                                                                val cleanupOutcome = if (verification.notConfirmedPackages.isEmpty()) {
+                                                                    "Очистка завершена после восстановления"
+                                                                } else {
+                                                                    "Очистка продолжена частично"
+                                                                }
+                                                                check(appendCleanupHistory(context, currentJournal, cleanupOutcome, confirmed)) {
+                                                                    "Не удалось сохранить историю очистки. Журнал оставлен."
+                                                                }
+                                                                check(updateLatestMaintenanceCleanupHistory(
+                                                                    context,
+                                                                    currentJournal.deviceIdentity,
+                                                                    cleanupOutcome,
+                                                                    confirmed
+                                                                )) {
+                                                                    "Не удалось обновить историю обслуживания. Журнал оставлен."
+                                                                }
                                                                 if (verification.notConfirmedPackages.isEmpty()) {
-                                                                    check(appendCleanupHistory(context, currentJournal, "Очистка завершена после восстановления", confirmed)) {
-                                                                        "Не удалось сохранить историю. Журнал оставлен."
-                                                                    }
                                                                     check(clearCleanupJournal(context)) {
                                                                         "Операция завершена, но журнал не удалось очистить. Он сохранён для проверки."
                                                                     }
                                                                     activity.runOnUiThread {
                                                                         cleanupJournal = null
                                                                         cleanupHistory = loadCleanupHistory(context)
+                                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
                                                                     }
                                                                     "Продолжение очистки завершено. Проверено пакетов: ${confirmed.size}."
                                                                 } else {
-                                                                    activity.runOnUiThread { cleanupJournal = currentJournal }
+                                                                    activity.runOnUiThread {
+                                                                        cleanupJournal = currentJournal
+                                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                                    }
                                                                     "Очистка продолжена частично. Не подтверждены: ${verification.notConfirmedPackages.sorted().joinToString()}"
                                                                 }
                                                             } else {
