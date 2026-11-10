@@ -211,6 +211,27 @@ private data class CleanupJournal(
     val cacheTrimOutcome: String = ""
 )
 
+private fun hasCorruptCleanupJournal(context: Context): Boolean {
+    val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return false
+    return try {
+        val json = JSONObject(raw)
+        val planned = json.optJSONArray("planned") ?: return true
+        val identity = json.optString("deviceIdentity")
+        val createdAt = json.optLong("createdAt", 0L)
+        if (identity.isBlank() || createdAt <= 0L || planned.length() == 0) return true
+        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+        val plannedNames = (0 until planned.length()).map { planned.optString(it) }
+        if (plannedNames.any { !packagePattern.matches(it) } || plannedNames.distinct().size != plannedNames.size) return true
+        val completed = json.optJSONArray("completed") ?: return true
+        val completedNames = (0 until completed.length()).map { completed.optString(it) }
+        if (completedNames.any { it !in plannedNames }) return true
+        val schema = json.optInt("schemaVersion", 1)
+        schema !in 1..3
+    } catch (_: Exception) {
+        true
+    }
+}
+
 private fun loadCleanupJournal(context: Context): CleanupJournal? {
     return try {
         val raw = prefs(context).getString("cleanup_operation_journal", null) ?: return null
@@ -4175,6 +4196,7 @@ fun TvInstallerApp() {
     var selectedCleanupPackages by remember { mutableStateOf(emptySet<String>()) }
     var showCleanupPlan by remember { mutableStateOf(false) }
     var cleanupJournal by remember { mutableStateOf(loadCleanupJournal(context)) }
+    var cleanupJournalCorrupt by remember { mutableStateOf(hasCorruptCleanupJournal(context)) }
     var cleanupHistory by remember { mutableStateOf(loadCleanupHistory(context)) }
     var maintenanceRunHistory by remember { mutableStateOf(loadMaintenanceRunHistory(context)) }
     var trackedPackageChanges by remember { mutableStateOf(runCatching { loadTrackedPackageChanges(context) }.getOrDefault(emptyList())) }
@@ -7495,6 +7517,19 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             }
                         }
 
+                        if (cleanupJournalCorrupt) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("ЖУРНАЛ ВОССТАНОВЛЕНИЯ НЕ ЧИТАЕТСЯ", color = Color(0xFFFF8A80), style = MaterialTheme.typography.titleSmall)
+                                    Text("Исходный журнал сохранён без изменений. Новая очистка заблокирована, автоматический откат не запускается. Нужна проверка данных журнала.", color = TextMain, fontSize = 12.sp)
+                                    OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                                        cleanupJournalCorrupt = hasCorruptCleanupJournal(context)
+                                        cleanupJournal = loadCleanupJournal(context)
+                                    }) { Text("Повторно проверить журнал") }
+                                }
+                            }
+                        }
+
                         cleanupJournal?.let { journal ->
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -7620,7 +7655,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                                 "Откат частичный: восстановлено ${restored.size}. Осталось: ${remaining.joinToString()}. Ошибки: ${failures.joinToString()}" + if (historyUpdated) "" else " Не удалось обновить историю обслуживания."
                                                             }
                                                         }
-                                                    }, { cleanupJournal = loadCleanupJournal(context) })
+                                                    }, { cleanupJournal = loadCleanupJournal(context); cleanupJournalCorrupt = hasCorruptCleanupJournal(context) })
                                                 }) { Text("Восстановить") }
                                             },
                                             dismissButton = { TextButton(onClick = { pendingCleanupRollback = false }) { Text("Отмена") } }
@@ -7852,6 +7887,9 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val deviceIdentity = readTvIdentity(adb)
                                                 // A previous failed cleanup may still need rollback. Never overwrite
                                                 // its only durable recovery journal with a new operation.
+                                                require(!hasCorruptCleanupJournal(context)) {
+                                                    "Журнал восстановления повреждён или не читается. Исходные данные сохранены; новая очистка заблокирована. Экспортируй диагностический отчёт и восстанови журнал вручную."
+                                                }
                                                 require(loadCleanupJournal(context) == null) {
                                                     "Предыдущая очистка ещё не завершена или ожидает отката. Сначала проверь журнал и заверши восстановление; новый запуск очистки заблокирован, чтобы не потерять возможность отката."
                                                 }
