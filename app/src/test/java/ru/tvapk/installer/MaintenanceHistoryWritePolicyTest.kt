@@ -16,4 +16,11 @@ class MaintenanceHistoryWritePolicyTest {
         assertTrue(MaintenanceHistoryWritePolicy.canAppend(true, true))
         assertFalse(MaintenanceHistoryWritePolicy.canAppend(true, false))
     }
+
+    @Test
+    fun detectsMalformedHistoryWithoutTreatingMissingValueAsCorrupt() {
+        assertFalse(MaintenanceHistoryWritePolicy.isCorrupt(null))
+        assertFalse(MaintenanceHistoryWritePolicy.isCorrupt("[]"))
+        assertTrue(MaintenanceHistoryWritePolicy.isCorrupt("{broken"))
+    }
 }
