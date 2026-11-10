@@ -4684,42 +4684,45 @@ fun TvInstallerApp() {
         }
         val host = ip.trim()
         val adbPort = port.toIntOrNull()
-        if (host.isBlank()) {
-            // With one unambiguous ADB TV on the LAN, discover and start maintenance
-            // in the same user action. Multiple devices remain an explicit selection.
-            runTask(action = {
-                val found = discoverAdbDevices(context)
-                val device = TvAutomationEngine.uniqueDiscoveredDevice(found)
-                if (device == null) {
-                    activity.runOnUiThread { discoveredDevices = found }
-                    if (found.isEmpty()) {
-                        "Автопоиск не нашёл Android TV. Включи ADB по сети или выбери ТВ вручную."
-                    } else {
-                        "Найдено устройств: ${found.size}. Выбери нужный ТВ в разделе подключения."
-                    }
-                } else {
-                    settings.edit().putString("ip", device.ip).putString("port", device.port.toString()).apply()
-                    activity.runOnUiThread {
-                        tvName = device.name
-                        ip = device.ip
-                        port = device.port.toString()
-                        discoveredDevices = emptyList()
-                    }
-                    "AUTO_DISCOVERED_TV"
-                }
-            }, onFinished = { result ->
-                if (result == "AUTO_DISCOVERED_TV") runAutomaticTvMaintenance()
-            })
-            return
-        }
-        if (adbPort == null || adbPort !in 1..65535) {
-            status = "Проверь порт ADB"
-            return
-        }
+        val requestedPort = adbPort?.takeIf { it in 1..65535 } ?: 5555
         val progressTracker = MaintenanceProgressTracker()
         maintenanceProgress = progressTracker.advance(MaintenanceStage.CONNECTING)
         runTask({
-            connectWithRetry(context, host, adbPort) { adb ->
+            // First probe the remembered endpoint. If it is stale or the TV changed
+            // address, discover the single unambiguous ADB device and continue in
+            // this same maintenance run instead of asking the user to reconnect.
+            val target = if (host.isNotBlank()) {
+                runCatching {
+                    Dadb.create(host, requestedPort, getAdbKey(context)).use { }
+                    TvDevice(tvName.ifBlank { "Android TV" }, host, requestedPort)
+                }.getOrElse {
+                    val found = discoverAdbDevices(context)
+                    TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
+                        activity.runOnUiThread { discoveredDevices = found }
+                        throw Exception(
+                            if (found.isEmpty()) "Сохранённый адрес ТВ недоступен, а автопоиск не нашёл устройство. Включи ADB по сети."
+                            else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                        )
+                    }
+                }
+            } else {
+                val found = discoverAdbDevices(context)
+                TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
+                    activity.runOnUiThread { discoveredDevices = found }
+                    throw Exception(
+                        if (found.isEmpty()) "Автопоиск не нашёл Android TV. Включи ADB по сети."
+                        else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                    )
+                }
+            }
+            settings.edit().putString("ip", target.ip).putString("port", target.port.toString()).apply()
+            activity.runOnUiThread {
+                tvName = target.name
+                ip = target.ip
+                port = target.port.toString()
+                discoveredDevices = emptyList()
+            }
+            connectWithRetry(context, target.ip, target.port) { adb ->
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.IDENTIFYING))
                 val details = readTvDetails(adb)
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.DIAGNOSTICS))
