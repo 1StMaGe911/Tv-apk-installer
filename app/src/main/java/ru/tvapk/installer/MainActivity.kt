@@ -1251,6 +1251,35 @@ private fun downloadUpdateApk(context: Context, downloadUrl: String, expectedSha
 }
 
 
+private fun installApkAndVerify(context: Context, adb: Dadb, apkFile: File, transport: String): String {
+    val archiveInfo = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+        ?: throw Exception("Выбранный файл не является корректным APK")
+    val packageName = archiveInfo.packageName
+    val expectedVersionCode = if (Build.VERSION.SDK_INT >= 28) {
+        archiveInfo.longVersionCode
+    } else {
+        @Suppress("DEPRECATION")
+        archiveInfo.versionCode.toLong()
+    }
+    when (val result = adb.install(apkFile)) {
+        is InstallResult.Success -> Unit
+        is InstallResult.Failure -> throw Exception("ADB отклонил установку: ${result.reason}")
+    }
+    ensurePackageInstalledForMainUser(adb, packageName)
+    val pathOutput = shellText(adb, "pm path $packageName")
+    val installedPackages = if (pathOutput.lineSequence().any { it.trim().startsWith("package:") }) {
+        setOf(packageName)
+    } else emptySet()
+    val details = shellText(adb, "dumpsys package $packageName")
+    val installedVersionCode = Regex("versionCode=(\\d+)")
+        .find(details)?.groupValues?.getOrNull(1)?.toLongOrNull()
+    val verificationError = ApkInstallVerifier.verify(
+        packageName, expectedVersionCode, installedPackages, installedVersionCode
+    )
+    require(verificationError == null) { verificationError ?: "Не удалось проверить установку APK" }
+    return "APK успешно установлен и проверен ($transport): $packageName, versionCode $expectedVersionCode"
+}
+
 private fun shellText(adb: Dadb, command: String): String {
     val response = adb.shell(command)
     if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
@@ -6044,13 +6073,10 @@ fun TvInstallerApp() {
                                                             getAdbKey(context)
                                                             val keyFile = File(File(context.filesDir, "adb"), "adbkey")
                                                             UsbDadb.connect(context, device, keyFile).use { adb ->
-                                                                when (val result = adb.install(apkFile)) {
-                                                                    is InstallResult.Success -> "APK успешно установлен через USB"
-                                                                    is InstallResult.Failure -> throw Exception(result.reason)
-                                                                }
+                                                                installApkAndVerify(context, adb, apkFile, "USB ADB")
                                                             }
                                                         }, onFinished = { result ->
-                                                            if (result == "APK успешно установлен через USB") {
+                                                            if (result.startsWith("APK успешно установлен и проверен")) {
                                                                 history.add(0, "$selectedName — USB ${device.productName ?: device.deviceName}")
                                                                 while (history.size > 30) history.removeAt(history.lastIndex)
                                                                 saveHistory(context, history)
@@ -9082,12 +9108,11 @@ val actualAfterRestore = readDisabledPackages(adb)
                                                 host,
                                                 p
                                             ) { adb ->
-                                                adb.install(apkFile)
-                                                "APK успешно установлен"
+                                                installApkAndVerify(context, adb, apkFile, "Wi-Fi ADB")
                                             }
                                         },
                                         onFinished = { result ->
-                                            if (result == "APK успешно установлен") {
+                                            if (result.startsWith("APK успешно установлен и проверен")) {
                                                 val entry =
                                                     "$selectedName — $host:$p"
 
