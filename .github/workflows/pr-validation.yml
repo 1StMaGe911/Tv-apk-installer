@@ -2,15 +2,19 @@ name: Проверка Pull Request
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main", "automation/kadb-wireless-pairing-foundation"]
 
 permissions:
   contents: read
 
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
@@ -22,6 +26,44 @@ jobs:
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '9.5.0'
           cache-disabled: false
-      - name: Выполнить модульные тесты и компиляцию приложения
-        run: gradle :app:testDebugUnitTest --no-daemon
+      - name: Установить Android SDK Platform 37
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" --channel=3
+          # AGP 9.3.1 resolves API 37.0 through compileSdk.minorApiLevel.
+          test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1"
+      - name: Проверить отсутствие GPL SPAKE2 в runtime-зависимостях
+        run: |
+          gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon > "$RUNNER_TEMP/dependencies.txt"
+          if grep -F "com.github.Flyfish233:spake2-java" "$RUNNER_TEMP/dependencies.txt"; then
+            echo "GPL SPAKE2 dependency is still present in the Android runtime graph."
+            exit 1
+          fi
+
+      - name: Проверить совместимость SPAKE2 на BoringSSL
+        run: |
+          CC=clang CXX=clang++ cmake -S app/src/main/cpp -B "$RUNNER_TEMP/spake2-host" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/spake2-host" --target adb_spake2 spake2_host_test --parallel 4
+          "$RUNNER_TEMP/spake2-host/spake2_host_test"
+          mkdir -p "$RUNNER_TEMP/spake2-classes"
+          javac -d "$RUNNER_TEMP/spake2-classes" \
+            app/src/main/java/com/flyfish233/crypto/spake2/Spake2Role.java \
+            app/src/main/java/com/flyfish233/crypto/spake2/Spake2Context.java \
+            app/src/test/native/Spake2JniHostTest.java
+          java -Djava.library.path="$RUNNER_TEMP/spake2-host" \
+            -cp "$RUNNER_TEMP/spake2-classes" \
+            com.flyfish233.crypto.spake2.Spake2JniHostTest
+
+      - name: Выполнить модульные тесты и собрать APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+
+      - name: Загрузить APK для ручной проверки на телевизоре
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-APK-Installer-debug-PR
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

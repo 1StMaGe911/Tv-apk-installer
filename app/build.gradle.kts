@@ -1,12 +1,15 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
+    // Kadb 2.1.5 requires Android 17 (API 37) at compile time.
+    // Keep targetSdk unchanged; this does not opt the app into API 37 runtime behavior.
+    compileSdk = 37
+    ndkVersion = "27.2.12479018"
+
     namespace = "ru.tvapk.installer"
-    compileSdk = 35
 
     defaultConfig {
         applicationId = "ru.tvapk.installer"
@@ -14,6 +17,9 @@ android {
         targetSdk = 35
         versionCode = 181
         versionName = "0.9.130"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+        }
     }
 
     signingConfigs {
@@ -27,7 +33,10 @@ android {
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            // CI PR validation uses the standard debug key; release builds opt in via secrets.
+            if (System.getenv("SIGNING_STORE_FILE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -36,19 +45,41 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    // Bouncy Castle 1.86 modules carry the same MIT license text at this path.
+    // Keep one copy in the APK rather than failing on duplicate archive entries.
+    packaging {
+        resources {
+            pickFirsts += "META-INF/LICENSE.md"
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
 dependencies {
     implementation("dev.mobile:dadb:2.0.0")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // TLS pairing + TLS ADB transport for Android 11+ Wireless Debugging.
+    implementation("com.flyfishxu:kadb:2.1.5") {
+        // Replace Kadb Android's GPL-3.0 SPAKE2 implementation with our JNI bridge to BoringSSL.
+        exclude(group = "com.github.Flyfish233", module = "spake2-java")
+    }
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     implementation("androidx.core:core:1.15.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
