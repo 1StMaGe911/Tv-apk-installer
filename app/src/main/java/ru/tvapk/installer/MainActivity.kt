@@ -4541,6 +4541,7 @@ fun TvInstallerApp() {
     var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
     var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
     var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
+    var maintenanceDeviceIdentity by remember { mutableStateOf<String?>(null) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -4965,10 +4966,14 @@ fun TvInstallerApp() {
                     .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
                     .map { it.packageName }
                     .toSet()
+                val rememberedDeviceApprovals = settings.getStringSet(
+                    TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentityForHistory),
+                    emptySet()
+                )?.toSet().orEmpty()
                 val approved = TvAutomationEngine.automaticallyApprovedPackages(
                     packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
                     trustedProfile = profile?.automaticDisableTrusted == true,
-                    knownGlobalPackages = bundledAdAndTrackingPackages
+                    knownGlobalPackages = bundledAdAndTrackingPackages + rememberedDeviceApprovals
                 )
                 val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.PLAN))
@@ -5040,6 +5045,7 @@ fun TvInstallerApp() {
                 }
                 updateMaintenanceProgress(progressTracker.advance(MaintenanceStage.REVIEW_READY))
                 activity.runOnUiThread {
+                    maintenanceDeviceIdentity = deviceIdentityForHistory
                     tvDetails = details
                     diagnostics = diagnosticsSnapshot
                     dataStorageUsedPercent = healthAssessment.dataUsedPercent
@@ -8802,13 +8808,18 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Прошивка не подтвердила поддержку отключения пакетов и чтения их состояния. Очистка отменена без изменений."
                                                 }
                                                 val installed = readAllPackages(adb).toSet()
+                                                val deviceIdentity = readTvIdentity(adb)
+                                                val rememberedDeviceApprovals = settings.getStringSet(
+                                                    TvAutomationEngine.cleanupApprovalPreferenceKey(deviceIdentity),
+                                                    emptySet()
+                                                )?.toSet().orEmpty()
                                                 val freshDetails = readTvDetails(adb)
                                                 val freshProfile = matchTvModelProfile(freshDetails, tvModelProfiles, packageFacts)?.profile
                                                 val freshCandidates = findCleanupCandidates(installed.toList(), packageFacts, freshProfile).toSet()
                                                 val freshGlobalApprovals = packageFacts.values.asSequence()
                                                     .filter { it.category.equals("ads", ignoreCase = true) || it.category.equals("tracking", ignoreCase = true) }
                                                     .map { it.packageName }
-                                                    .toSet()
+                                                    .toSet() + rememberedDeviceApprovals
                                                 val alreadyDisabled = readDisabledPackages(adb)
                                                 val safeSelected = selected.filter { pkg ->
                                                     val trustedModelApproval = freshProfile?.automaticDisableTrusted == true &&
@@ -8821,7 +8832,6 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     "Список пакетов телевизора изменился или часть компонентов защищена. Повтори определение устройства и проверь рекомендации."
                                                 }
                                                 updateMaintenanceProgress("Создаём точку восстановления…")
-                                                val deviceIdentity = readTvIdentity(adb)
                                                 // A previous failed cleanup may still need rollback. Never overwrite
                                                 // its only durable recovery journal with a new operation.
                                                 require(!hasCorruptCleanupJournal(context)) {
@@ -8992,6 +9002,17 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         }, onFinished = { result ->
                                             val cleanupVerified =
                                                 TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
+                                            if (cleanupVerified && selected.isNotEmpty()) {
+                                                val identity = maintenanceDeviceIdentity
+                                                if (identity != null) {
+                                                    val key = TvAutomationEngine.cleanupApprovalPreferenceKey(identity)
+                                                    val previous = settings.getStringSet(key, emptySet())?.toMutableSet() ?: mutableSetOf()
+                                                    previous.addAll(selected)
+                                                    check(settings.edit().putStringSet(key, previous).commit()) {
+                                                        "Не удалось сохранить разрешённые пакеты для этого телевизора."
+                                                    }
+                                                }
+                                            }
                                             if (installLauncherAfterMaintenance) {
                                                 if (cleanupVerified) {
                                                     maintenanceReadyToInstallLauncher = true
