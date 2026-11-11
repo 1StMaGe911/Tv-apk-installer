@@ -115,10 +115,10 @@ jobs:
             -o release.json
 
           jq -e --arg tag "$RELEASE_TAG" \
-            '.tag_name == $tag and any(.assets[]; .name == "app-debug.apk" and .size > 0)' \
+            '.tag_name == $tag and any(.assets[]; .name == "app-full-debug.apk" and .size > 0)' \
             release.json >/dev/null
 
-          APK_URL=$(jq -r '.assets[] | select(.name == "app-debug.apk") | .browser_download_url' release.json)
+          APK_URL=$(jq -r '.assets[] | select(.name == "app-full-debug.apk") | .browser_download_url' release.json)
           curl --fail --location --silent --show-error "$APK_URL" -o published.apk
 
           LOCAL_SHA=$(sha256sum "$LOCAL_APK" | cut -d' ' -f1)
