@@ -35,7 +35,7 @@ insert = '''                getByName("debug") {
 if insert not in source:
     app_plugin = source.index("class AndroidAppConventionPlugin")
     build_types = source.index("            buildTypes {", app_plugin)
-    insert_at = build_types + len("            buildTypes {\\n")
+    insert_at = build_types + len("            buildTypes {\n")
     source = source[:insert_at] + insert + source[insert_at:]
     convention.write_text(source, encoding="utf-8")
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.137 (188).")
