@@ -1,40 +1,60 @@
 package ru.tvapk.installer
 
 import android.content.Context
-import android.util.Base64
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import com.flyfishxu.kadb.cert.KadbPrivateKeyStore
 import java.security.KeyStore
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Persists the ADB host private key encrypted with an Android Keystore AES key.
- *
- * The encrypted payload is kept in app-private SharedPreferences. The AES key is
- * non-exportable and scoped to this application; the plaintext ADB key is never
- * written to disk by this store.
+ * Small boundaries keep persistence and key custody independently testable on the JVM.
+ * Production implementations below still use app-private SharedPreferences and Android Keystore.
  */
-internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivateKeyStore {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        PREFERENCES_NAME,
-        Context.MODE_PRIVATE
+internal interface AdbIdentityPreferences {
+    fun getString(key: String): String?
+    fun writeEncryptedIdentity(encryptedKey: String, initializationVector: String): Boolean
+    fun clearIdentity(): Boolean
+}
+
+internal interface AdbIdentitySecretKeyProvider {
+    fun getExistingSecretKey(): SecretKey
+    fun getOrCreateSecretKey(): SecretKey
+}
+
+internal class AndroidKeystoreAdbPrivateKeyStore internal constructor(
+    private val preferences: AdbIdentityPreferences,
+    private val secretKeys: AdbIdentitySecretKeyProvider
+) : KadbPrivateKeyStore {
+
+    constructor(context: Context) : this(
+        SharedPreferencesAdbIdentityPreferences(
+            context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        ),
+        AndroidKeystoreAdbIdentitySecretKeyProvider()
     )
 
     @Synchronized
     override fun readPrivateKeyPem(): ByteArray? {
-        val encoded = preferences.getString(ENCRYPTED_KEY, null)
-        val iv = preferences.getString(INITIALIZATION_VECTOR, null)
+        val encoded = preferences.getString(ENCRYPTED_KEY)
+        val iv = preferences.getString(INITIALIZATION_VECTOR)
         if (encoded == null && iv == null) return null
         check(encoded != null && iv != null) {
             "Saved ADB identity is incomplete; refusing to generate a new identity"
         }
-        return runCatching {
+        return try {
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, getExistingSecretKey(), GCMParameterSpec(TAG_LENGTH_BITS, Base64.decode(iv, Base64.NO_WRAP)))
-            cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP))
-        }.getOrElse { error ->
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                secretKeys.getExistingSecretKey(),
+                GCMParameterSpec(TAG_LENGTH_BITS, Base64.getDecoder().decode(iv))
+            )
+            cipher.doFinal(Base64.getDecoder().decode(encoded))
+        } catch (error: Exception) {
             throw IllegalStateException("Unable to decrypt the saved ADB identity", error)
         }
     }
@@ -43,43 +63,61 @@ internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivate
     override fun writePrivateKeyPemAtomic(privateKeyPem: ByteArray) {
         require(privateKeyPem.isNotEmpty()) { "ADB private key must not be empty" }
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
-        val encrypted = Base64.encodeToString(cipher.doFinal(privateKeyPem), Base64.NO_WRAP)
-        val iv = Base64.encodeToString(cipher.iv, Base64.NO_WRAP)
-        check(
-            preferences.edit()
-                .putString(ENCRYPTED_KEY, encrypted)
-                .putString(INITIALIZATION_VECTOR, iv)
-                .commit()
-        ) { "Unable to persist the encrypted ADB identity" }
+        cipher.init(Cipher.ENCRYPT_MODE, secretKeys.getOrCreateSecretKey())
+        val encrypted = Base64.getEncoder().encodeToString(cipher.doFinal(privateKeyPem))
+        val iv = Base64.getEncoder().encodeToString(cipher.iv)
+        check(preferences.writeEncryptedIdentity(encrypted, iv)) {
+            "Unable to persist the encrypted ADB identity"
+        }
     }
 
     @Synchronized
     override fun clear() {
-        check(preferences.edit().remove(ENCRYPTED_KEY).remove(INITIALIZATION_VECTOR).commit()) {
-            "Unable to clear the saved ADB identity"
-        }
+        check(preferences.clearIdentity()) { "Unable to clear the saved ADB identity" }
     }
 
-    private fun getExistingSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+    private companion object {
+        const val PREFERENCES_NAME = "wireless_adb_identity"
+        const val ENCRYPTED_KEY = "encrypted_private_key"
+        const val INITIALIZATION_VECTOR = "private_key_iv"
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val TAG_LENGTH_BITS = 128
+    }
+}
+
+private class SharedPreferencesAdbIdentityPreferences(
+    private val preferences: android.content.SharedPreferences
+) : AdbIdentityPreferences {
+    override fun getString(key: String): String? = preferences.getString(key, null)
+
+    override fun writeEncryptedIdentity(encryptedKey: String, initializationVector: String): Boolean =
+        preferences.edit()
+            .putString("encrypted_private_key", encryptedKey)
+            .putString("private_key_iv", initializationVector)
+            .commit()
+
+    override fun clearIdentity(): Boolean =
+        preferences.edit()
+            .remove("encrypted_private_key")
+            .remove("private_key_iv")
+            .commit()
+}
+
+private class AndroidKeystoreAdbIdentitySecretKeyProvider : AdbIdentitySecretKeyProvider {
+    override fun getExistingSecretKey(): SecretKey =
+        loadKeyStore().getKey(KEY_ALIAS, null) as? SecretKey
             ?: throw IllegalStateException("Android Keystore key for the saved ADB identity is missing")
-    }
 
-    private fun getOrCreateSecretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-
+    override fun getOrCreateSecretKey(): SecretKey {
+        (loadKeyStore().getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KEY_ALGORITHM, ANDROID_KEYSTORE)
         generator.init(
-            android.security.keystore.KeyGenParameterSpec.Builder(
+            KeyGenParameterSpec.Builder(
                 KEY_ALIAS,
-                android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or
-                    android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
             )
-                .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
                 .setRandomizedEncryptionRequired(true)
                 .build()
@@ -87,14 +125,12 @@ internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivate
         return generator.generateKey()
     }
 
+    private fun loadKeyStore(): KeyStore =
+        KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+
     private companion object {
-        const val PREFERENCES_NAME = "wireless_adb_identity"
-        const val ENCRYPTED_KEY = "encrypted_private_key"
-        const val INITIALIZATION_VECTOR = "private_key_iv"
         const val KEY_ALIAS = "tv_apk_installer_adb_identity"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val KEY_ALGORITHM = "AES"
-        const val TRANSFORMATION = "AES/GCM/NoPadding"
-        const val TAG_LENGTH_BITS = 128
     }
 }
