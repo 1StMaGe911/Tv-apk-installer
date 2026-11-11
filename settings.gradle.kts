@@ -32,7 +32,11 @@ val modules = listOf(
     "feature:connect", "feature:setup", "feature:manage", "feature:launcher",
     "feature:modules", "feature:backup", "app", "benchmark", "tv:curtain"
 )
+val parentModules = listOf("core", "adb", "testing", "android", "ui", "feature", "tv")
+parentModules.forEach { path ->
+    project(":$path").projectDir = cyt.resolve(path)
+}
 modules.forEach { path ->
     include(":$path")
-    project(":$path").projectDir = file(cyt.resolve(path.replace(':', '/')).path)
+    project(":$path").projectDir = cyt.resolve(path.replace(':', '/'))
 }
