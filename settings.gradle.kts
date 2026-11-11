@@ -34,6 +34,7 @@ val modules = listOf(
 )
 val parentModules = listOf("core", "adb", "testing", "android", "ui", "feature", "tv")
 parentModules.forEach { path ->
+    include(":$path")
     project(":$path").projectDir = cyt.resolve(path)
 }
 modules.forEach { path ->
