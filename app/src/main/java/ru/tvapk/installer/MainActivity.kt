@@ -3752,11 +3752,20 @@ private fun handOverToCleanYourTvLauncher(context: Context, adb: Dadb): String {
         throw watchdogError
     }
     try {
-        changePackageStateVerified(adb, currentPackage, false)
+        // Set the preferred HOME while the stock launcher is still enabled.
+        // Some Google TV firmware (including TCL tcl9618) routes HOME to the
+        // setup wizard's RecoveryActivity as soon as the stock launcher is disabled.
+        // Verifying the preference first means we never disable the only confirmed HOME.
         shellText(adb, "cmd package set-home-activity --user 0 $CLEAN_TV_LAUNCHER_COMPONENT")
+        val preferredHome = resolveHomeComponent(adb)
+        require(preferredHome?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
+            "Android не подтвердил Clean Your TV Launcher до отключения штатного Home (получено: ${preferredHome ?: "нет ответа"}). Штатный Launcher не отключён."
+        }
+
+        changePackageStateVerified(adb, currentPackage, false)
         val after = resolveHomeComponent(adb)
         require(after?.startsWith("$CLEAN_TV_LAUNCHER_PACKAGE/") == true) {
-            "Android не подтвердил новый Home (получено: ${after ?: "нет ответа"})."
+            "После отключения штатного Home Android выбрал другой экран (получено: ${after ?: "нет ответа"})."
         }
         // Persist the recoverable state BEFORE cancelling the TV-side dead-man timer.
         // If the phone disappears between these operations, the timer restores stock Home
