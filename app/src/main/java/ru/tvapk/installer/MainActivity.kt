@@ -1439,7 +1439,7 @@ private fun shellText(adb: Dadb, command: String): String {
     if (response.exitCode != 0) {
         val safeCommand = command.replace(Regex("\\s+"), " ").trim().take(180)
         val output = response.output.trim().take(400)
-        val details = if (output.isBlank()) "" else "\\nОтвет ТВ: $output"
+        val details = if (output.isBlank()) "" else "\nОтвет ТВ: $output"
         throw Exception("ADB-команда завершилась с кодом ${response.exitCode}: $safeCommand$details")
     }
     return response.output.trim()
