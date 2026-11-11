@@ -6645,18 +6645,22 @@ fun TvInstallerApp() {
 
                                         // Pairing and TLS connection use separate DNS-SD services.
                                         // Try to discover the connect endpoint immediately after pairing.
-                                        val tlsEndpoints = discoverAdbDevices(context)
-                                            .filter { it.isTlsConnect && it.ip.equals(host, ignoreCase = true) }
+                                        val tlsEndpoints = matchingAdbPairingEndpoints(
+                                            host,
+                                            discoverAdbDevices(context)
+                                                .filter { it.isTlsConnect }
+                                                .map { AdbPairingEndpoint(it.name, it.ip, it.port) }
+                                        )
                                         when (tlsEndpoints.size) {
                                             1 -> {
                                                 val endpoint = tlsEndpoints.single()
                                                 settings.edit()
                                                     .putInt("adb_tls_connect_port", endpoint.port)
-                                                    .putString("ip", endpoint.ip)
+                                                    .putString("ip", endpoint.host)
                                                     .putString("port", endpoint.port.toString())
                                                     .apply()
                                                 activity.runOnUiThread {
-                                                    ip = endpoint.ip
+                                                    ip = endpoint.host
                                                     port = endpoint.port.toString()
                                                     discoveredDevices = emptyList()
                                                 }
