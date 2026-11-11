@@ -23,6 +23,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Настроить исходники Clean Your TV
+        run: python3 scripts/prepare-cleanyourtv-integration.py
+
       - name: Определить версию приложения
         id: version
         run: |
@@ -33,15 +36,16 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '9.4.1'
           cache-disabled: false
 
       - name: Проверить логику автоматизации
-        run: gradle :app:testDebugUnitTest --no-daemon
+        run: gradle :app:testFullDebugUnitTest --no-daemon
 
       - name: Подготовить ключ подписи
         env:
@@ -75,7 +79,7 @@ jobs:
         run: |
           for attempt in 1 2 3 4; do
             echo "Попытка сборки $attempt из 4"
-            if gradle :app:assembleDebug --no-daemon; then
+            if gradle :app:assembleFullDebug --no-daemon; then
               exit 0
             fi
             if [ "$attempt" -lt 4 ]; then
@@ -89,7 +93,7 @@ jobs:
       - name: Вычислить SHA-256 APK
         id: apk
         run: |
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/full/debug/app-full-debug.apk"
           test -s "$APK"
           SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
@@ -98,7 +102,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TV-APK-Installer-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/full/debug/app-full-debug.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -123,7 +127,7 @@ jobs:
           RELEASE_TAG: v${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
-          LOCAL_APK="app/build/outputs/apk/debug/app-debug.apk"
+          LOCAL_APK="app/build/outputs/apk/full/debug/app-full-debug.apk"
           test -s "$LOCAL_APK"
 
           curl --fail --silent --show-error \
@@ -133,10 +137,10 @@ jobs:
             -o release.json
 
           jq -e --arg tag "$RELEASE_TAG" \
-            '.tag_name == $tag and any(.assets[]; .name == "app-debug.apk" and .size > 0)' \
+            '.tag_name == $tag and any(.assets[]; .name == "app-full-debug.apk" and .size > 0)' \
             release.json >/dev/null
 
-          APK_URL=$(jq -r '.assets[] | select(.name == "app-debug.apk") | .browser_download_url' release.json)
+          APK_URL=$(jq -r '.assets[] | select(.name == "app-full-debug.apk") | .browser_download_url' release.json)
           curl --fail --location --silent --show-error "$APK_URL" -o published.apk
 
           LOCAL_SHA=$(sha256sum "$LOCAL_APK" | cut -d' ' -f1)
