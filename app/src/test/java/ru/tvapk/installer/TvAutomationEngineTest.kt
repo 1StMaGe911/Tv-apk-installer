@@ -1093,4 +1093,48 @@ class TvAutomationEngineTest {
         assertEquals(corePackages, result.rejectedPackages)
     }
 
+
+    @Test
+    fun packageListParserAcceptsEmptyOptionalSnapshots() {
+        assertTrue(TvAutomationEngine.parsePackageListOutput("", allowEmpty = true).isEmpty())
+        assertTrue(TvAutomationEngine.parsePackageListOutput("\n  \n", allowEmpty = true).isEmpty())
+    }
+
+    @Test
+    fun packageListParserRequiresInstalledSnapshotToBeNonEmpty() {
+        assertFailsWith<IllegalArgumentException> {
+            TvAutomationEngine.parsePackageListOutput("", allowEmpty = false)
+        }
+    }
+
+    @Test
+    fun packageListParserNormalizesAndDeduplicatesValidPackageRows() {
+        assertEquals(
+            setOf("com.example.tv", "org.example.player"),
+            TvAutomationEngine.parsePackageListOutput(
+                "package:com.example.tv\n\n package:org.example.player \npackage:com.example.tv\n",
+                allowEmpty = false
+            )
+        )
+    }
+
+    @Test
+    fun packageListParserRejectsCommandErrorsInsteadOfReturningAnEmptySnapshot() {
+        assertFailsWith<IllegalArgumentException> {
+            TvAutomationEngine.parsePackageListOutput("Error: unknown option -d", allowEmpty = true)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            TvAutomationEngine.parsePackageListOutput("package:not a package", allowEmpty = true)
+        }
+    }
+
+    @Test
+    fun packageListParserRejectsOversizedAndExcessiveOutput() {
+        assertFailsWith<IllegalArgumentException> {
+            TvAutomationEngine.parsePackageListOutput("x".repeat(1_000_001), allowEmpty = true)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            TvAutomationEngine.parsePackageListOutput((1..10_001).joinToString("\n") { " " }, allowEmpty = true)
+        }
+    }
 }
