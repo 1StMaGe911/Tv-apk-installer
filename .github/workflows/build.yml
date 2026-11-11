@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TV-APK-Installer-debug
-          path: app/build/outputs/apk/full/debug/app-full-debug.apk
+          path: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -101,7 +101,7 @@ jobs:
             Установочный APK прикреплён к этому релизу.
             
             SHA-256: ${{ steps.apk.outputs.sha256 }}
-          files: app/build/outputs/apk/full/debug/app-full-debug.apk
+          files: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
           overwrite_files: true
           make_latest: true
 
@@ -111,7 +111,7 @@ jobs:
           RELEASE_TAG: v${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
-          LOCAL_APK="app/build/outputs/apk/full/debug/app-full-debug.apk"
+          LOCAL_APK="vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk"
           test -s "$LOCAL_APK"
 
           curl --fail --silent --show-error \
