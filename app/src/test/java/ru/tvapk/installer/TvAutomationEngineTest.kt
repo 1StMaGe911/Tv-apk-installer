@@ -231,12 +231,27 @@ class TvAutomationEngineTest {
     }
 
     @Test
-    fun cleanupCandidateClassifierDoesNotTreatUnreviewedCategoryAsAutomaticCandidate() {
-        assertFalse(TvAutomationEngine.isCleanupCandidate(
-            packageName = "com.vendor.video",
-            factCategory = "streaming",
-            profileCategory = "brand"
-        ))
+    fun cleanupCandidateClassifierDoesNotTreatUnreviewedCategoriesAsAutomaticCandidates() {
+        val unreviewedCategories = setOf(
+            "streaming", "brand", "other", "screensaver",
+            "updates", "accessibility", "casting", "voice", "home"
+        )
+        unreviewedCategories.forEach { category ->
+            assertFalse(
+                "Category $category must require manual review",
+                TvAutomationEngine.isCleanupCandidate(
+                    packageName = "com.vendor.video",
+                    factCategory = category
+                )
+            )
+            assertFalse(
+                "Profile category $category must require manual review",
+                TvAutomationEngine.isCleanupCandidate(
+                    packageName = "com.vendor.video",
+                    profileCategory = category
+                )
+            )
+        }
     }
 
     @Test
