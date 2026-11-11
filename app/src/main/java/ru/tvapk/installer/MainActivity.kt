@@ -7063,7 +7063,19 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                         }) { Text("Проверить и переключить") }
                                     },
                                     dismissButton = {
-                                        TextButton(onClick = { pendingLauncherHandover = false }) { Text("Отмена") }
+                                        TextButton(onClick = {
+                                            pendingLauncherHandover = false
+                                            if (pendingMaintenanceHomeHandover) {
+                                                val identity = maintenanceDeviceIdentityForLauncher
+                                                val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
+                                                if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                    maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                }
+                                                automationReport = automationReport +
+                                                    "\\n\\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\\n" + outcome
+                                                pendingMaintenanceHomeHandover = false
+                                            }
+                                        }) { Text("Отмена") }
                                     }
                                 )
                             }
