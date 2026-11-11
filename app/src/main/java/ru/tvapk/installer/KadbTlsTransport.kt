@@ -46,10 +46,8 @@ internal object KadbTlsTransport {
         pairingCode: String,
         deviceName: String
     ) {
-        validateEndpoint(host, pairingPort)
-        require(PAIRING_CODE.matches(pairingCode)) {
-            "Код сопряжения должен содержать ровно 6 цифр"
-        }
+        validateKadbEndpoint(host, pairingPort)
+        validateKadbPairingCode(pairingCode)
         configureIdentity(context)
         Kadb.pair(
             host = host.trim(),
@@ -68,7 +66,7 @@ internal object KadbTlsTransport {
         host: String,
         connectPort: Int
     ): Dadb {
-        validateEndpoint(host, connectPort)
+        validateKadbEndpoint(host, connectPort)
         configureIdentity(context)
         val connected = Kadb.tryConnection(host.trim(), connectPort)
             ?: throw IOException("TLS ADB handshake failed for $host:$connectPort")
@@ -90,12 +88,17 @@ internal object KadbTlsTransport {
         }
     }
 
-    private fun validateEndpoint(host: String, port: Int) {
-        require(host.isNotBlank()) { "Не указан адрес телевизора" }
-        require(port in 1..65535) { "Порт ADB должен быть в диапазоне 1–65535" }
-    }
-
     private const val DEFAULT_DEVICE_NAME = "TV APK Installer"
     private const val MAX_DEVICE_NAME_LENGTH = 64
-    private val PAIRING_CODE = Regex("^[0-9]{6}$")
+}
+
+internal fun validateKadbEndpoint(host: String, port: Int) {
+    require(host.isNotBlank()) { "Не указан адрес телевизора" }
+    require(port in 1..65535) { "Порт ADB должен быть в диапазоне 1–65535" }
+}
+
+internal fun validateKadbPairingCode(pairingCode: String) {
+    require(Regex("^[0-9]{6}$").matches(pairingCode)) {
+        "Код сопряжения должен содержать ровно 6 цифр"
+    }
 }
