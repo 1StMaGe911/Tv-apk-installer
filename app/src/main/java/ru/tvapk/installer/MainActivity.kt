@@ -3465,16 +3465,10 @@ private fun uninstallUserApp(adb: Dadb, packageName: String, context: Context): 
 }
 
 private fun readAllPackages(adb: Dadb): List<String> =
-    readOnlyShellText(adb, "pm list packages").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .distinct().sorted().toList()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages"), allowEmpty = false).toList()
 
 private fun readUserPackages(adb: Dadb): List<String> =
-    readOnlyShellText(adb, "pm list packages -3").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .distinct().sorted().toList()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -3"), allowEmpty = true).toList()
 private fun changePackageState(adb: Dadb, packageName: String, enabled: Boolean): String {
     require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     return shellText(adb, if (enabled) "pm enable --user 0 $packageName" else "pm disable-user --user 0 $packageName")
@@ -3772,16 +3766,10 @@ private fun setAutoStartReceiverEnabled(adb: Dadb, component: String, enabled: B
 }
 
 private fun readDisabledUserPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -3 -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -3 -d"), allowEmpty = true)
 
 private fun readDisabledPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -d"), allowEmpty = true)
 
 /**
  * Executes a package state change and verifies the resulting state against Package Manager.
