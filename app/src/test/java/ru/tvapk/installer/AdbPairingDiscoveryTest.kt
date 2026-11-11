@@ -78,6 +78,17 @@ class AdbPairingDiscoveryTest {
     }
 
     @Test
+    fun tlsTransportRequiresExactPairedTvAddressAndConnectPort() {
+        assertTrue(shouldUseTlsAdbTransport("192.168.1.40", 37123, "192.168.1.40", 37123))
+        assertTrue(shouldUseTlsAdbTransport("2001:0db8:0:0:0:0:0:40", 37123, "2001:db8::40", 37123))
+        assertTrue(!shouldUseTlsAdbTransport("192.168.1.40", 37123, "192.168.1.41", 37123))
+        assertTrue(!shouldUseTlsAdbTransport("192.168.1.40", 37123, "192.168.1.40", 37124))
+        assertTrue(!shouldUseTlsAdbTransport(null, 37123, "192.168.1.40", 37123))
+        assertTrue(!shouldUseTlsAdbTransport("192.168.1.40", 0, "192.168.1.40", 37123))
+        assertTrue(!shouldUseTlsAdbTransport("tv.example.invalid", 37123, "tv.example.invalid", 37123))
+    }
+
+    @Test
     fun sameNumericIpAddressAcceptsEquivalentIpv4Addresses() {
         assertTrue(isSameNumericIpAddress("192.168.1.40", "192.168.1.40"))
         assertTrue(!isSameNumericIpAddress("192.168.1.40", "192.168.1.41"))
