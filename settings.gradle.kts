@@ -30,7 +30,7 @@ val modules = listOf(
     "testing:fixtures", "testing:fake-adbd", "e2e",
     "android:platform", "android:work", "ui:design",
     "feature:connect", "feature:setup", "feature:manage", "feature:launcher",
-    "feature:modules", "feature:backup", "benchmark", "tv:curtain"
+    "feature:modules", "feature:backup", "tv:curtain"
 )
 val parentModules = listOf("core", "adb", "testing", "android", "ui", "feature", "tv")
 parentModules.forEach { path ->
