@@ -5115,7 +5115,13 @@ fun TvInstallerApp() {
                         showSettings = false
                         activeSection = "clean"
                     } else if (installLauncherAfterMaintenance) {
-                        maintenanceReadyToInstallLauncher = true
+                        if (historySaved) {
+                            maintenanceReadyToInstallLauncher = true
+                        } else {
+                            installLauncherAfterMaintenance = false
+                            maintenanceReadyToInstallLauncher = false
+                            status = "Launcher не установлен: запись диагностики не удалось сохранить в истории обслуживания. Проверь историю и повтори запуск."
+                        }
                     }
                 }
                 report
