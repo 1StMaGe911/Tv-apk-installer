@@ -42,7 +42,9 @@ internal object TvAutomationEngine {
      */
     internal fun parsePackageListOutput(output: String, allowEmpty: Boolean): Set<String> {
         require(output.length <= 1_000_000) { "Список пакетов превышает допустимый размер" }
-        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+        // Android's framework package is the valid single-segment name "android".
+        // All other package IDs must retain the normal multi-segment validation.
+        val packagePattern = Regex("(?:android|[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)")
         val packages = sortedSetOf<String>()
         val lines = output.lineSequence().toList()
         require(lines.size <= 10_000) { "Слишком много строк в списке пакетов" }
