@@ -77,7 +77,7 @@ class AndroidKeystoreAdbPrivateKeyStoreTest {
         val store = newStore(preferences)
         store.writePrivateKeyPemAtomic("private-key".toByteArray(StandardCharsets.UTF_8))
         val encrypted = preferences.values.getValue("encrypted_private_key")
-        preferences.values["encrypted_private_key"] = encrypted.dropLast(2) + "AA"
+        preferences.values["encrypted_private_key"] = (if (encrypted.first() == 'A') "B" else "A") + encrypted.drop(1)
 
         assertThrows(IllegalStateException::class.java) {
             store.readPrivateKeyPem()
