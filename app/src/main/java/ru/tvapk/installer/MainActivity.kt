@@ -831,7 +831,8 @@ internal data class MaintenanceRunHistoryEntry(
     val warnings: List<String>,
     val warningsBefore: List<String> = emptyList(),
     val cleanupOutcome: String = "Пакетные изменения не выполнялись",
-    val changedPackages: List<String> = emptyList()
+    val changedPackages: List<String> = emptyList(),
+    val launcherInstallOutcome: String = "Не запускалась"
 )
 
 internal fun MaintenanceRunHistoryEntry.withCleanupResult(
@@ -841,6 +842,9 @@ internal fun MaintenanceRunHistoryEntry.withCleanupResult(
     cleanupOutcome = outcome,
     changedPackages = changedPackages.distinct()
 )
+
+internal fun MaintenanceRunHistoryEntry.withLauncherInstallResult(outcome: String): MaintenanceRunHistoryEntry =
+    copy(launcherInstallOutcome = outcome)
 
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
     val raw = prefs(context).getString("maintenance_run_history", null) ?: "[]"
@@ -862,7 +866,8 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
             warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() },
             warningsBefore = (0 until (item.optJSONArray("warningsBefore") ?: JSONArray()).length()).map { (item.optJSONArray("warningsBefore") ?: JSONArray()).optString(it) }.filter { it.isNotBlank() },
             cleanupOutcome = item.optString("cleanupOutcome", "Пакетные изменения не выполнялись"),
-            changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) }
+            changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) },
+            launcherInstallOutcome = item.optString("launcherInstallOutcome", "Не запускалась")
         )
     }.sortedByDescending { it.createdAt }.take(20)
 } catch (_: Exception) { emptyList() }
@@ -886,9 +891,45 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("warnings", JSONArray(item.warnings))
             .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
-            .put("changedPackages", JSONArray(item.changedPackages)))
+            .put("changedPackages", JSONArray(item.changedPackages))
+            .put("launcherInstallOutcome", item.launcherInstallOutcome))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+    }
+} catch (_: Exception) { false }
+
+
+private fun updateLatestMaintenanceLauncherHistory(
+    context: Context,
+    deviceIdentity: String,
+    outcome: String
+): Boolean = try {
+    val existingRaw = prefs(context).getString("maintenance_run_history", null)
+    val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) {
+        false
+    } else {
+        val existing = loadMaintenanceRunHistory(context).toMutableList()
+        val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
+        if (index < 0) false else {
+            existing[index] = existing[index].withLauncherInstallResult(outcome)
+            val array = JSONArray()
+            existing.sortedByDescending { it.createdAt }.take(20).forEach { item ->
+                array.put(JSONObject()
+                    .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
+                    .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
+                    .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+                    .put("storageAvailableBytesBefore", item.storageAvailableBytesBefore)
+                    .put("storageAvailableBytesAfter", item.storageAvailableBytesAfter)
+                    .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
+                    .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
+                    .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
+                    .put("warnings", JSONArray(item.warnings)).put("warningsBefore", JSONArray(item.warningsBefore))
+                    .put("cleanupOutcome", item.cleanupOutcome).put("changedPackages", JSONArray(item.changedPackages))
+                    .put("launcherInstallOutcome", item.launcherInstallOutcome))
+            }
+            prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+        }
     }
 } catch (_: Exception) { false }
 
@@ -941,7 +982,8 @@ private fun updateLatestMaintenanceCleanupHistory(
             .put("warnings", JSONArray(item.warnings))
             .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
-            .put("changedPackages", JSONArray(item.changedPackages)))
+            .put("changedPackages", JSONArray(item.changedPackages))
+            .put("launcherInstallOutcome", item.launcherInstallOutcome))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
     }
@@ -4516,6 +4558,8 @@ fun TvInstallerApp() {
     var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
     var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
     var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
+    var maintenanceDeviceIdentityForLauncher by remember { mutableStateOf<String?>(null) }
+    var pendingLauncherInstallHistoryUpdate by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -4755,7 +4799,8 @@ fun TvInstallerApp() {
                             .put("warnings", JSONArray(entry.warnings))
                             .put("warningsBefore", JSONArray(entry.warningsBefore))
                             .put("cleanupOutcome", entry.cleanupOutcome)
-                            .put("changedPackages", JSONArray(entry.changedPackages)))
+                            .put("changedPackages", JSONArray(entry.changedPackages))
+                            .put("launcherInstallOutcome", entry.launcherInstallOutcome))
                     }
                 }
                 val document = JSONObject().put("format", "tv-apk-installer-maintenance-history")
@@ -5040,6 +5085,7 @@ fun TvInstallerApp() {
                     disabledOnDevice = disabled
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
+                    maintenanceDeviceIdentityForLauncher = deviceIdentityForHistory
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
@@ -5771,10 +5817,26 @@ fun TvInstallerApp() {
                     }
 
                 }
-            }, {
+            }, { result ->
                 // A failed rollback may have preserved recovery APKs. Refresh the
                 // recovery inventory immediately so the user can export or restore them.
                 recoveryApks = listRecoveryApks(context)
+                if (pendingLauncherInstallHistoryUpdate) {
+                    val identity = maintenanceDeviceIdentityForLauncher
+                    if (identity != null) {
+                        val outcome = if (result.startsWith("Ошибка:")) {
+                            "Ошибка установки/проверки: ${result.removePrefix("Ошибка:").trim()}"
+                        } else {
+                            "Успешно установлены и проверены Launcher и Curtain"
+                        }
+                        if (updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                            maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                        } else {
+                            status = "$result\\n⚠ Не удалось записать результат установки в историю обслуживания."
+                        }
+                    }
+                    pendingLauncherInstallHistoryUpdate = false
+                }
             })
         }
     }
@@ -5783,6 +5845,7 @@ fun TvInstallerApp() {
         if (installLauncherAfterMaintenance && maintenanceReadyToInstallLauncher && !busy) {
             installLauncherAfterMaintenance = false
             maintenanceReadyToInstallLauncher = false
+            pendingLauncherInstallHistoryUpdate = maintenanceDeviceIdentityForLauncher != null
             installCleanYourTvModules()
         }
     }
@@ -9264,6 +9327,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
+                                            Text("Clean Your TV Launcher / Curtain: ${entry.launcherInstallOutcome}", color = TextMain, fontSize = 10.sp)
                                             if (entry.changedPackages.isNotEmpty()) Text("Изменено: ${entry.changedPackages.joinToString()}", color = TextMuted, fontSize = 10.sp)
 
                                             if (entry.warningsBefore.isNotEmpty()) Text("До обслуживания: ${entry.warningsBefore.joinToString(" · ")}", color = Color(0xFFFFD98A), fontSize = 10.sp)
