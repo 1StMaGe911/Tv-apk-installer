@@ -81,6 +81,7 @@ jobs:
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
+          aapt dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"
           unzip -l "$APK" | grep -F "assets/cleanyourtv-modules/cleanyourtv-launcher.apk"
           unzip -l "$APK" | grep -F "assets/cleanyourtv-modules/cleanyourtv-curtain.apk"
 
