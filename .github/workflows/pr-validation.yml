@@ -84,8 +84,16 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"
-          unzip -l "$APK" | grep -F "assets/cleanyourtv-modules/cleanyourtv-launcher.apk"
-          unzip -l "$APK" | grep -F "assets/cleanyourtv-modules/cleanyourtv-curtain.apk"
+          for module in cleanyourtv-launcher.apk cleanyourtv-curtain.apk; do
+            entry="assets/cleanyourtv-modules/$module"
+            unzip -Z1 "$APK" | grep -Fx "$entry"
+            unzip -p "$APK" "$entry" > "$RUNNER_TEMP/$module"
+            test -s "$RUNNER_TEMP/$module"
+          done
+          echo "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e  $RUNNER_TEMP/cleanyourtv-launcher.apk" | sha256sum --check
+          echo "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e  $RUNNER_TEMP/cleanyourtv-curtain.apk" | sha256sum --check
+          test "$(stat -c%s "$RUNNER_TEMP/cleanyourtv-launcher.apk")" = "540541"
+          test "$(stat -c%s "$RUNNER_TEMP/cleanyourtv-curtain.apk")" = "65955"
 
       - name: Загрузить APK для ручной проверки на телевизоре
         uses: actions/upload-artifact@v4
