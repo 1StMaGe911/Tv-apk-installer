@@ -6640,8 +6640,37 @@ fun TvInstallerApp() {
                                         settings.edit()
                                             .putString("adb_tls_paired_host", host)
                                             .putInt("adb_tls_pairing_port", p)
+                                            .putInt("adb_tls_connect_port", 0)
                                             .apply()
-                                        "Беспроводное ADB-сопряжение успешно завершено для $host. Теперь найди порт подключения и подключись."
+
+                                        // Pairing and TLS connection use separate DNS-SD services.
+                                        // Try to discover the connect endpoint immediately after pairing.
+                                        val tlsEndpoints = discoverAdbDevices(context)
+                                            .filter { it.isTlsConnect && it.ip.equals(host, ignoreCase = true) }
+                                        when (tlsEndpoints.size) {
+                                            1 -> {
+                                                val endpoint = tlsEndpoints.single()
+                                                settings.edit()
+                                                    .putInt("adb_tls_connect_port", endpoint.port)
+                                                    .putString("ip", endpoint.ip)
+                                                    .putString("port", endpoint.port.toString())
+                                                    .apply()
+                                                activity.runOnUiThread {
+                                                    ip = endpoint.ip
+                                                    port = endpoint.port.toString()
+                                                    discoveredDevices = emptyList()
+                                                }
+                                                "Сопряжение успешно завершено. Найден TLS-порт подключения " + endpoint.port + "; нажми «Подключиться»."
+                                            }
+                                            0 -> {
+                                                activity.runOnUiThread { discoveredDevices = emptyList() }
+                                                "Сопряжение успешно завершено. TLS-порт пока не найден. Нажми «Найти телевизоры в локальной сети» и выбери устройство с пометкой TLS."
+                                            }
+                                            else -> {
+                                                activity.runOnUiThread { discoveredDevices = tlsEndpoints }
+                                                "Сопряжение успешно завершено. Найдено несколько TLS-портов; выбери нужный в списке устройств."
+                                            }
+                                        }
                                     }, onFinished = { result ->
                                         if (!result.startsWith("Ошибка")) pairingCode = ""
                                     })
