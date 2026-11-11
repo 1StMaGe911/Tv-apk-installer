@@ -1,0 +1,3 @@
+[submodule "vendor/cleanyourtv-app"]
+	path = vendor/cleanyourtv-app
+	url = https://github.com/udhaykumarbala/cleanyourtv-app.git
