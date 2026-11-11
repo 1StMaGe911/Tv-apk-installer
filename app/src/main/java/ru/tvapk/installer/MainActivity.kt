@@ -4567,6 +4567,7 @@ fun TvInstallerApp() {
     var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
     var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
     var maintenanceDeviceIdentityForLauncher by remember { mutableStateOf<String?>(null) }
+    var maintenanceHistorySavedForCurrentRun by remember { mutableStateOf(false) }
     var pendingLauncherInstallHistoryUpdate by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
@@ -4906,6 +4907,7 @@ fun TvInstallerApp() {
         val adbPort = port.toIntOrNull()
         val requestedPort = adbPort?.takeIf { it in 1..65535 } ?: 5555
         val progressTracker = MaintenanceProgressTracker()
+        maintenanceHistorySavedForCurrentRun = false
         maintenanceProgress = progressTracker.advance(MaintenanceStage.CONNECTING)
         runTask({
             // First probe the remembered endpoint. If it is stale or the TV changed
@@ -5100,6 +5102,7 @@ fun TvInstallerApp() {
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
                     maintenanceDeviceIdentityForLauncher = deviceIdentityForHistory
+                    maintenanceHistorySavedForCurrentRun = historySaved
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
@@ -9181,12 +9184,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             val cleanupVerified =
                                                 TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
                                             if (installLauncherAfterMaintenance) {
-                                                if (cleanupVerified) {
+                                                if (cleanupVerified && maintenanceHistorySavedForCurrentRun) {
                                                     maintenanceReadyToInstallLauncher = true
                                                 } else {
                                                     installLauncherAfterMaintenance = false
                                                     maintenanceReadyToInstallLauncher = false
-                                                    status = "$result\nLauncher не установлен: этап очистки не завершился успешно."
+                                                    status = if (!maintenanceHistorySavedForCurrentRun && cleanupVerified) {
+                                                        "$result\nLauncher не установлен: исходная диагностика не сохранена в истории обслуживания."
+                                                    } else {
+                                                        "$result\nLauncher не установлен: этап очистки не завершился успешно."
+                                                    }
                                                 }
                                             }
                                         })
