@@ -9181,7 +9181,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 )
                                                 activity.runOnUiThread {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
+                                                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                     if (confirmedDisabled.isNotEmpty()) {
                                                         val userDisabledNow = confirmedDisabled.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = confirmedDisabled.filter { it !in userPackages }.toSet()
