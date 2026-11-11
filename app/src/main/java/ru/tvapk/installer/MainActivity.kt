@@ -2704,9 +2704,14 @@ private fun readTvDiagnostics(adb: Dadb): String {
 
 private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSnapshot =
     retryTvReadOnly {
-        val output = shellText(adb, "df -k /data")
+        // -P prevents wrapped df rows on narrow Android shells. Fall back to
+        // the plain toybox form when this build does not support POSIX output mode.
+        val output = shellText(adb, "df -kP /data 2>/dev/null || df -k /data")
         TvAutomationEngine.parseDataStorageSnapshot(output)
-            ?: throw Exception("Не удалось надёжно прочитать размер и свободное место раздела /data")
+            ?: throw Exception(
+                "Ответ df не распознан для /data: " +
+                    output.replace(Regex("""[\\r\\n]+"""), " ").take(400)
+            )
     }
 
 private fun trimTvApplicationCaches(adb: Dadb): String {
