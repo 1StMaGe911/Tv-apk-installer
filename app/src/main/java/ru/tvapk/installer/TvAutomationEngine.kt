@@ -36,6 +36,28 @@ internal object CleanupJournalValidator {
 }
 
 internal object TvAutomationEngine {
+    /**
+     * Parses Package Manager output without silently turning command errors into an empty snapshot.
+     * Empty output is valid only for queries that are allowed to have no matches (for example -d or -3).
+     */
+    internal fun parsePackageListOutput(output: String, allowEmpty: Boolean): Set<String> {
+        require(output.length <= 1_000_000) { "Список пакетов превышает допустимый размер" }
+        val packagePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
+        val packages = sortedSetOf<String>()
+        val lines = output.lineSequence().toList()
+        require(lines.size <= 10_000) { "Слишком много строк в списке пакетов" }
+        lines.forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isEmpty()) return@forEach
+            require(line.startsWith("package:")) { "Неожиданный ответ Package Manager: \${line.take(160)}" }
+            val packageName = line.removePrefix("package:").trim()
+            require(packagePattern.matches(packageName)) { "Некорректное имя пакета в ответе Package Manager" }
+            packages += packageName
+        }
+        require(allowEmpty || packages.isNotEmpty()) { "Package Manager вернул пустой список установленных пакетов" }
+        return packages
+    }
+
 internal fun isProtectedSystemPackage(packageName: String): Boolean {
     // Core Android / TV middleware: upstream Clean Your TV recovery rules prohibit
     // disabling these because a TV can lose setup, networking, package management or boot.
