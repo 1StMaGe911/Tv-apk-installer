@@ -138,6 +138,24 @@ internal fun isSameNumericIpAddress(first: String, second: String): Boolean {
     return canonicalFirst == canonicalAddress(second)
 }
 
+
+/**
+ * Select TLS only for the exact numeric TV address and TLS-connect port that
+ * were saved after successful Wireless Debugging pairing. Every other endpoint
+ * deliberately remains on the legacy ADB path.
+ */
+internal fun shouldUseTlsAdbTransport(
+    pairedHost: String?,
+    pairedConnectPort: Int,
+    selectedHost: String,
+    selectedPort: Int
+): Boolean {
+    if (pairedHost.isNullOrBlank() || pairedConnectPort !in 1..65535 ||
+        selectedPort !in 1..65535 || pairedConnectPort != selectedPort
+    ) return false
+    return isSameNumericIpAddress(pairedHost, selectedHost)
+}
+
 internal fun matchingAdbPairingEndpoints(
     host: String,
     endpoints: List<AdbPairingEndpoint>
