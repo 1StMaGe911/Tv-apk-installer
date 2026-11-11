@@ -26,10 +26,10 @@ jobs:
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
 
-      - name: Определить версию приложения
+      - name: Определить версию TV APK Installer
         id: version
         run: |
-          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' vendor/cleanyourtv-app/app/build.gradle.kts)
+          VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Установить Java
@@ -45,7 +45,7 @@ jobs:
           cache-disabled: false
 
       - name: Проверить логику автоматизации
-        run: gradle :app:testFullDebugUnitTest --no-daemon
+        run: gradle :app:testDebugUnitTest --no-daemon
 
       - name: Подготовить ключ подписи
         env:
@@ -53,7 +53,7 @@ jobs:
         run: |
           echo "$KEY_BASE64" | base64 --decode > signing.jks
 
-      - name: Собрать APK с повторными попытками
+      - name: Собрать TV APK Installer
         env:
           SIGNING_STORE_FILE: ${{ github.workspace }}/signing.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
@@ -61,23 +61,12 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           GRADLE_OPTS: "-Dorg.gradle.internal.http.connectionTimeout=60000 -Dorg.gradle.internal.http.socketTimeout=120000"
         run: |
-          for attempt in 1 2 3 4; do
-            echo "Попытка сборки $attempt из 4"
-            if gradle :app:assembleFullDebug --no-daemon; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 4 ]; then
-              echo "Ошибка сборки. Повтор через 20 секунд..."
-              sleep 20
-            fi
-          done
-          echo "Все попытки сборки завершились ошибкой"
-          exit 1
+          gradle :app:assembleDebug --no-daemon
 
       - name: Вычислить SHA-256 APK
         id: apk
         run: |
-          APK="vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
           SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
@@ -86,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TV-APK-Installer-debug
-          path: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -99,9 +88,9 @@ jobs:
           body: |
             Автоматическая сборка TV APK Installer v${{ steps.version.outputs.name }}.
             Установочный APK прикреплён к этому релизу.
-            
+
             SHA-256: ${{ steps.apk.outputs.sha256 }}
-          files: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
+          files: app/build/outputs/apk/debug/app-debug.apk
           overwrite_files: true
           make_latest: true
 
@@ -111,7 +100,7 @@ jobs:
           RELEASE_TAG: v${{ steps.version.outputs.name }}
         run: |
           set -euo pipefail
-          LOCAL_APK="vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk"
+          LOCAL_APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$LOCAL_APK"
 
           curl --fail --silent --show-error \
@@ -121,14 +110,14 @@ jobs:
             -o release.json
 
           jq -e --arg tag "$RELEASE_TAG" \
-            '.tag_name == $tag and any(.assets[]; .name == "app-full-debug.apk" and .size > 0)' \
+            '.tag_name == $tag and any(.assets[]; .name == "app-debug.apk" and .size > 0)' \
             release.json >/dev/null
 
-          APK_URL=$(jq -r '.assets[] | select(.name == "app-full-debug.apk") | .browser_download_url' release.json)
+          APK_URL=$(jq -r '.assets[] | select(.name == "app-debug.apk") | .browser_download_url' release.json)
           curl --fail --location --silent --show-error "$APK_URL" -o published.apk
 
           LOCAL_SHA=$(sha256sum "$LOCAL_APK" | cut -d' ' -f1)
           PUBLISHED_SHA=$(sha256sum published.apk | cut -d' ' -f1)
           test "$LOCAL_SHA" = "$PUBLISHED_SHA"
-          echo "Release $RELEASE_TAG contains the exact APK produced by this workflow."
+          echo "Release $RELEASE_TAG contains the exact TV APK Installer APK."
           echo "SHA-256: $LOCAL_SHA"
