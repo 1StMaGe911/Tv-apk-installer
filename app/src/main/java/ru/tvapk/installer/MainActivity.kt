@@ -7057,7 +7057,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
                                                         maintenanceRunHistory = loadMaintenanceRunHistory(context)
                                                     } else if (identity != null) {
-                                                        status = "$result\\n⚠ Не удалось записать результат переключения Home в историю обслуживания."
+                                                        status = "$result\n⚠ Не удалось записать результат переключения Home в историю обслуживания."
                                                     }
                                                     automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
                                                     pendingMaintenanceHomeHandover = false
