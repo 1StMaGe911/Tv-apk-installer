@@ -6671,7 +6671,11 @@ fun TvInstallerApp() {
                                                 "Сопряжение успешно завершено. TLS-порт пока не найден. Нажми «Найти телевизоры в локальной сети» и выбери устройство с пометкой TLS."
                                             }
                                             else -> {
-                                                activity.runOnUiThread { discoveredDevices = tlsEndpoints }
+                                                activity.runOnUiThread {
+                                                    discoveredDevices = tlsEndpoints.map {
+                                                        TvDevice(it.name, it.host, it.port, isTlsConnect = true)
+                                                    }
+                                                }
                                                 "Сопряжение успешно завершено. Найдено несколько TLS-портов; выбери нужный в списке устройств."
                                             }
                                         }
