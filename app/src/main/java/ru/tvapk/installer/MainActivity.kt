@@ -7036,6 +7036,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
                                             if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
                                                 maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                            } else {
+                                                status = "Переключение Home отменено, но результат не удалось записать в историю обслуживания."
                                             }
                                             automationReport = automationReport +
                                                 "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
@@ -7054,7 +7056,11 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 if (maintenanceHandover) {
                                                     val identity = maintenanceDeviceIdentityForLauncher
                                                     val outcome = "Ошибка переключения Home: не указан корректный адрес ADB"
-                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    } else {
+                                                        status = "Не удалось записать ошибку переключения Home в историю обслуживания."
+                                                    }
                                                     automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
                                                     pendingMaintenanceHomeHandover = false
                                                 }
@@ -7084,6 +7090,8 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
                                                 if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                } else {
+                                                    status = "Переключение Home отменено, но результат не удалось записать в историю обслуживания."
                                                 }
                                                 automationReport = automationReport +
                                                     "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
