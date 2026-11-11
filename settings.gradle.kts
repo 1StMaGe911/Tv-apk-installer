@@ -23,6 +23,11 @@ dependencyResolutionManagement {
 rootProject.name = "TV APK Installer"
 
 val cyt = file("vendor/cleanyourtv-app")
+
+// This is the installable TV APK Installer app in the repository root.
+// Do not include or map the upstream Clean Your TV :app module here.
+include(":app")
+
 val modules = listOf(
     "core:model", "core:spec", "core:ops", "core:probe", "core:planner",
     "core:engine", "core:trust", "core:registry", "core:backup", "core:flows",
@@ -41,6 +46,3 @@ modules.forEach { path ->
     include(":$path")
     project(":$path").projectDir = cyt.resolve(path.replace(':', '/'))
 }
-
-// Keep :app mapped to this repository's TV APK Installer application.
-// The upstream Clean Your TV :app is deliberately not included as the installable app.
