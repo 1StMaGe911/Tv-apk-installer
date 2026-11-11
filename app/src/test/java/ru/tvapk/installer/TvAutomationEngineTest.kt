@@ -637,6 +637,26 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun parsesDataStorageRowsWithLongFilesystemNamesAndWindowsLineEndings() {
+        val result = TvAutomationEngine.parseDataStorageSnapshot(
+            "Filesystem 1K-blocks Used Available Use% Mounted on\\r\\n" +
+                "/dev/block/mapper/vendor_dynamic_partition 16777216 15728640 1048576 94% /data\\r\\n"
+        )
+        assertEquals(16777216L * 1024L, result?.totalBytes)
+        assertEquals(1048576L * 1024L, result?.availableBytes)
+        assertEquals(94, result?.usedPercent)
+    }
+
+    @Test
+    fun parsesDataStorageRowWhenUsePercentColumnIsAbsent() {
+        val result = TvAutomationEngine.parseDataStorageSnapshot(
+            "/dev/block/dm-1 1000 750 250 /data"
+        )
+        assertEquals(75, result?.usedPercent)
+        assertEquals(250L * 1024L, result?.availableBytes)
+    }
+
+    @Test
     fun rejectsMalformedOrUnsafeDataStorageSnapshots() {
         assertNull(TvAutomationEngine.parseDataStorageSnapshot("not mounted"))
         assertNull(TvAutomationEngine.parseDataStorageSnapshot("/dev/block/dm-1 0 0 0 0% /data"))
