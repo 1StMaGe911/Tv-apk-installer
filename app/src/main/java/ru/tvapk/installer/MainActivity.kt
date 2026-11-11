@@ -1054,10 +1054,7 @@ private fun connectWithRetry(
             connect = {
                 val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
                 val pairedConnectPort = prefs(context).getInt("adb_tls_connect_port", 0)
-                if (pairedHost != null &&
-                    isSameNumericIpAddress(pairedHost, host.trim()) &&
-                    pairedConnectPort == port
-                ) {
+                if (shouldUseTlsAdbTransport(pairedHost, pairedConnectPort, host, port)) {
                     // The selected endpoint is the TLS-connect port advertised separately
                     // from the pairing port. Keep legacy ADB for devices not yet paired.
                     KadbTlsTransport.connect(context, host, port)
