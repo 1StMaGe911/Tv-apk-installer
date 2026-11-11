@@ -39,16 +39,16 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDir("vendor/cleanyourtv-app/app/src/main/kotlin")
-            res.srcDir("vendor/cleanyourtv-app/app/src/main/res")
-            assets.srcDir("vendor/cleanyourtv-app/app/src/main/assets")
+            java.srcDir("../vendor/cleanyourtv-app/app/src/main/kotlin")
+            res.srcDir("../vendor/cleanyourtv-app/app/src/main/res")
+            assets.srcDir("../vendor/cleanyourtv-app/app/src/main/assets")
         }
         getByName("full") {
-            java.srcDir("vendor/cleanyourtv-app/app/src/full/kotlin")
-            res.srcDir("vendor/cleanyourtv-app/app/src/full/res")
+            java.srcDir("../vendor/cleanyourtv-app/app/src/full/kotlin")
+            res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
         }
         getByName("debug") {
-            manifest.srcFile("vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
+            manifest.srcFile("../vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
         }
     }
 
