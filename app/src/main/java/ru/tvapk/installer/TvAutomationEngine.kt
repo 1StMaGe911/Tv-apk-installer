@@ -36,7 +36,7 @@ internal object CleanupJournalValidator {
 }
 
 internal object PackageListParser {
-    private val packageNamePattern = Regex("[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+")
+    private val packageNamePattern = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
 
     /** An empty Package Manager result is valid: it means no packages matched the query. */
     internal fun parse(raw: String): Set<String> =
