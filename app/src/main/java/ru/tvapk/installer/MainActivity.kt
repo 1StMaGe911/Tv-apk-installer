@@ -3147,6 +3147,45 @@ private data class RecoveryApkEntry(
     val sha256: String
 )
 
+internal fun preserveRecoveryApks(
+    sourceDir: File,
+    recoveryDir: File,
+    backupFiles: List<File>
+): Boolean {
+    if (backupFiles.isEmpty() || recoveryDir.exists()) return false
+    val sourceRoot = runCatching { sourceDir.canonicalFile }.getOrNull() ?: return false
+    val fingerprints = backupFiles.map { source ->
+        val canonical = runCatching { source.canonicalFile }.getOrNull() ?: return false
+        if (canonical.parentFile != sourceRoot || !canonical.isFile ||
+            canonical.extension.equals("apk", true).not() ||
+            canonical.length() !in 1..(64L * 1024L * 1024L)
+        ) return false
+        val digest = runCatching {
+            MessageDigest.getInstance("SHA-256").digest(canonical.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        }.getOrNull() ?: return false
+        Triple(canonical.name, canonical.length(), digest)
+    }
+    val moved = sourceDir.renameTo(recoveryDir)
+    if (!moved) {
+        val copied = runCatching {
+            sourceDir.copyRecursively(recoveryDir, overwrite = false)
+            true
+        }.getOrDefault(false)
+        if (!copied) return false
+    }
+    val targetRoot = runCatching { recoveryDir.canonicalFile }.getOrNull() ?: return false
+    return fingerprints.all { (name, expectedSize, expectedDigest) ->
+        val target = File(targetRoot, name)
+        target.parentFile == targetRoot && target.isFile &&
+            target.length() == expectedSize &&
+            runCatching {
+                MessageDigest.getInstance("SHA-256").digest(target.readBytes())
+                    .joinToString("") { "%02x".format(it) }
+            }.getOrNull()?.equals(expectedDigest, true) == true
+    }
+}
+
 private const val CLEAN_YOUR_TV_RECOVERY_SIGNER =
     "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
 
@@ -5656,13 +5695,15 @@ fun TvInstallerApp() {
                             var recoveryNote = ""
                             if (rollbackErrors.isNotEmpty()) {
                                 val recoveryDir = File(context.filesDir, "cleanyourtv-recovery-${System.currentTimeMillis()}")
-                                val preserved = rollbackDir.renameTo(recoveryDir) ||
-                                    runCatching { rollbackDir.copyRecursively(recoveryDir, overwrite = false); true }.getOrDefault(false)
+                                val backupFiles = previousStates.mapNotNull { it.backupApk }
+                                val preserved = preserveRecoveryApks(rollbackDir, recoveryDir, backupFiles)
                                 if (preserved) {
-                                    recoveryNote = " Резервные APK сохранены в ${recoveryDir.absolutePath} для ручного восстановления."
+                                    recoveryNote = " Резервные APK сохранены и проверены по размеру и SHA-256 в ${recoveryDir.absolutePath} для ручного восстановления."
+                                } else if (backupFiles.isEmpty()) {
+                                    recoveryNote = " Исходных APK для восстановления не было; повторить неудачное удаление нового пакета можно вручную."
                                 } else {
                                     keepRollbackFiles = true
-                                    recoveryNote = " Не удалось перенести резервные APK в постоянную папку; они оставлены в ${rollbackDir.absolutePath}."
+                                    recoveryNote = " Не удалось подтвердить сохранность резервных APK по размеру и SHA-256. Исходные файлы оставлены в ${rollbackDir.absolutePath}; проверь их перед восстановлением."
                                 }
                             }
                             throw Exception(
