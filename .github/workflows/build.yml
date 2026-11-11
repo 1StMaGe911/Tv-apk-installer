@@ -31,7 +31,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
 
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -115,6 +115,19 @@ jobs:
           echo "Все попытки сборки завершились ошибкой"
           exit 1
 
+      - name: Проверить production package ID релизного APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer'"
+          if "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"; then
+            echo "Preview package ID must never be published as a production release."
+            exit 1
+          fi
+
       - name: Вычислить SHA-256 APK
         id: apk
         run: |
@@ -122,6 +135,29 @@ jobs:
           test -s "$APK"
           SHA256=$(sha256sum "$APK" | cut -d' ' -f1)
           echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Подготовить описание изменений релиза
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.name }}
+          APK_SHA256: ${{ steps.apk.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          awk -v version="$RELEASE_VERSION" '
+            $0 ~ "^## " version "([[:space:]]|$)" { found=1; print; next }
+            found && /^## / { exit }
+            found { print }
+          ' README.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "Не найден раздел изменений для версии $RELEASE_VERSION в README.md"
+            exit 1
+          fi
+          {
+            cat release-notes.md
+            echo
+            echo "Установочный APK прикреплён к этому релизу."
+            echo
+            echo "SHA-256: $APK_SHA256"
+          } > release-body.md
 
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
@@ -137,11 +173,7 @@ jobs:
           tag_name: v${{ steps.version.outputs.name }}
           name: TV APK Installer v${{ steps.version.outputs.name }}
           target_commitish: main
-          body: |
-            Автоматическая сборка TV APK Installer v${{ steps.version.outputs.name }}.
-            Установочный APK прикреплён к этому релизу.
-            
-            SHA-256: ${{ steps.apk.outputs.sha256 }}
+          body_path: release-body.md
           files: app/build/outputs/apk/debug/app-debug.apk
           overwrite_files: true
           make_latest: true

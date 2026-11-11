@@ -33,8 +33,15 @@ android {
 
     buildTypes {
         getByName("debug") {
-            // CI PR validation uses the standard debug key; release builds opt in via secrets.
-            if (System.getenv("SIGNING_STORE_FILE") != null) {
+            // Keep CI/test builds separate from the installed production app. Each GitHub
+            // runner has its own debug signing key, so reusing the production applicationId
+            // would cause INSTALL_FAILED_UPDATE_INCOMPATIBLE on upgrade.
+            // PR validation has no persistent signing key, so use a separate package
+            // to allow side-by-side installation without conflicting with production.
+            // The release workflow supplies SIGNING_STORE_FILE and must keep the stable ID.
+            if (System.getenv("SIGNING_STORE_FILE") == null) {
+                applicationIdSuffix = ".preview"
+            } else {
                 signingConfig = signingConfigs.getByName("release")
             }
         }

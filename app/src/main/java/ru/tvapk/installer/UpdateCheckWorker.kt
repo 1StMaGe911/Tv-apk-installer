@@ -93,11 +93,12 @@ class UpdateCheckWorker(
             val latestTag = UpdateCheckReleasePolicy.normalizeTag(json.optString("tag_name"))
                 ?: throw IllegalStateException("GitHub returned an invalid release version")
             val installedVersion = appVersionName()
+            val releaseNotes = UpdateReleaseNotesPolicy.forNotification(json.optString("body"))
 
             val preferences = applicationContext.getSharedPreferences("tv_installer", Context.MODE_PRIVATE)
             val alreadyNotified = preferences.getString("last_notified_update_version", null)
             if (UpdateCheckNotificationPolicy.shouldNotify(latestTag, installedVersion, alreadyNotified) &&
-                showUpdateNotification(latestTag)
+                showUpdateNotification(latestTag, releaseNotes)
             ) {
                 preferences.edit().putString("last_notified_update_version", latestTag).apply()
             }
@@ -113,7 +114,7 @@ class UpdateCheckWorker(
         applicationContext.packageManager
             .getPackageInfo(applicationContext.packageName, 0).versionName ?: "0.0.0"
 
-    private fun showUpdateNotification(version: String): Boolean {
+    private fun showUpdateNotification(version: String, releaseNotes: String): Boolean {
         if (!NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()) return false
         if (Build.VERSION.SDK_INT >= 33 &&
             applicationContext.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
@@ -146,15 +147,16 @@ class UpdateCheckWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val notificationText = if (releaseNotes.isBlank()) {
+            "Вышла версия $version. Открой приложение, чтобы скачать обновление."
+        } else {
+            "Вышла версия $version. Что нового: $releaseNotes"
+        }
         val notification = NotificationCompat.Builder(applicationContext, UPDATE_CHANNEL_ID)
             .setSmallIcon(applicationContext.applicationInfo.icon)
             .setContentTitle("Доступно обновление TV APK Installer")
-            .setContentText("Вышла версия $version. Открой приложение, чтобы скачать обновление.")
-            .setStyle(
-                NotificationCompat.BigTextStyle().bigText(
-                    "Вышла версия $version. Открой TV APK Installer и проверь обновления."
-                )
-            )
+            .setContentText(notificationText.take(180))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationText.take(1200)))
             .setContentIntent(openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

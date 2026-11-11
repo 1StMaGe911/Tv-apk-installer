@@ -231,12 +231,27 @@ class TvAutomationEngineTest {
     }
 
     @Test
-    fun cleanupCandidateClassifierDoesNotTreatUnreviewedCategoryAsAutomaticCandidate() {
-        assertFalse(TvAutomationEngine.isCleanupCandidate(
-            packageName = "com.vendor.video",
-            factCategory = "streaming",
-            profileCategory = "brand"
-        ))
+    fun cleanupCandidateClassifierDoesNotTreatUnreviewedCategoriesAsAutomaticCandidates() {
+        val unreviewedCategories = setOf(
+            "streaming", "brand", "other", "screensaver",
+            "updates", "accessibility", "casting", "voice", "home"
+        )
+        unreviewedCategories.forEach { category ->
+            assertFalse(
+                "Category $category must require manual review",
+                TvAutomationEngine.isCleanupCandidate(
+                    packageName = "com.vendor.video",
+                    factCategory = category
+                )
+            )
+            assertFalse(
+                "Profile category $category must require manual review",
+                TvAutomationEngine.isCleanupCandidate(
+                    packageName = "com.vendor.video",
+                    profileCategory = category
+                )
+            )
+        }
     }
 
     @Test
@@ -1093,4 +1108,60 @@ class TvAutomationEngineTest {
         assertEquals(corePackages, result.rejectedPackages)
     }
 
+
+    @Test
+    fun packageListParserAcceptsEmptyOptionalSnapshots() {
+        assertTrue(TvAutomationEngine.parsePackageListOutput("", allowEmpty = true).isEmpty())
+        assertTrue(TvAutomationEngine.parsePackageListOutput("\n  \n", allowEmpty = true).isEmpty())
+    }
+
+    @Test
+    fun packageListParserAcceptsAndroidFrameworkPackage() {
+        assertEquals(
+            setOf("android", "com.android.settings"),
+            TvAutomationEngine.parsePackageListOutput(
+                "package:android\npackage:com.android.settings\n",
+                allowEmpty = false
+            )
+        )
+    }
+
+    @Test
+    fun packageListParserRequiresInstalledSnapshotToBeNonEmpty() {
+        assertTrue(runCatching {
+            TvAutomationEngine.parsePackageListOutput("", allowEmpty = false)
+        }.isFailure)
+    }
+
+    @Test
+    fun packageListParserNormalizesAndDeduplicatesValidPackageRows() {
+        assertEquals(
+            setOf("com.example.tv", "org.example.player"),
+            TvAutomationEngine.parsePackageListOutput(
+                "package:com.example.tv\n\n package:org.example.player \npackage:com.example.tv\n",
+                allowEmpty = false
+            )
+        )
+    }
+
+    @Test
+    fun packageListParserRejectsCommandErrorsInsteadOfReturningAnEmptySnapshot() {
+        assertTrue(runCatching {
+            TvAutomationEngine.parsePackageListOutput("Error: unknown option -d", allowEmpty = true)
+        }.isFailure)
+        assertTrue(runCatching {
+            TvAutomationEngine.parsePackageListOutput("package:not a package", allowEmpty = true)
+        }.isFailure)
+    }
+
+    @Test
+    fun packageListParserRejectsOversizedAndExcessiveOutput() {
+        assertTrue(runCatching {
+            TvAutomationEngine.parsePackageListOutput("x".repeat(1_000_001), allowEmpty = true)
+        }.isFailure)
+        val tooManyLines = (1..10_001).joinToString("\n") { " " }
+        assertTrue(runCatching {
+            TvAutomationEngine.parsePackageListOutput(tooManyLines, allowEmpty = true)
+        }.isFailure)
+    }
 }

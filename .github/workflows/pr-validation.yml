@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -57,8 +57,43 @@ jobs:
             -cp "$RUNNER_TEMP/spake2-classes" \
             com.flyfish233.crypto.spake2.Spake2JniHostTest
 
+      - name: Загрузить и проверить модули Clean Your TV
+        run: |
+          set -euo pipefail
+          DIR="app/src/main/assets/cleanyourtv-modules"
+          mkdir -p "$DIR"
+          curl --fail --location --silent --show-error \
+            "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/v0.4.8/android/platform/src/main/assets/bundled/cleanyourtv-launcher.apk" \
+            -o "$DIR/cleanyourtv-launcher.apk"
+          curl --fail --location --silent --show-error \
+            "https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/v0.4.8/android/platform/src/main/assets/bundled/cleanyourtv-curtain.apk" \
+            -o "$DIR/cleanyourtv-curtain.apk"
+          echo "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e  $DIR/cleanyourtv-launcher.apk" | sha256sum --check
+          echo "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e  $DIR/cleanyourtv-curtain.apk" | sha256sum --check
+          test "$(stat -c%s "$DIR/cleanyourtv-launcher.apk")" = "540541"
+          test "$(stat -c%s "$DIR/cleanyourtv-curtain.apk")" = "65955"
+
       - name: Выполнить модульные тесты и собрать APK
         run: gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+
+      - name: Проверить наличие APK-модулей внутри собранного приложения
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"
+          for module in cleanyourtv-launcher.apk cleanyourtv-curtain.apk; do
+            entry="assets/cleanyourtv-modules/$module"
+            unzip -Z1 "$APK" | grep -Fx "$entry"
+            unzip -p "$APK" "$entry" > "$RUNNER_TEMP/$module"
+            test -s "$RUNNER_TEMP/$module"
+          done
+          echo "9fcc21c0eb81548c2432b3bf89c1d9c6b6ad17dcf7f7fc2e8d90d7ccbea7d60e  $RUNNER_TEMP/cleanyourtv-launcher.apk" | sha256sum --check
+          echo "eb21e112c97121a3ed7f4db1c7fbf2169bc172a14bb3f8ca781079de4651662e  $RUNNER_TEMP/cleanyourtv-curtain.apk" | sha256sum --check
+          test "$(stat -c%s "$RUNNER_TEMP/cleanyourtv-launcher.apk")" = "540541"
+          test "$(stat -c%s "$RUNNER_TEMP/cleanyourtv-curtain.apk")" = "65955"
 
       - name: Загрузить APK для ручной проверки на телевизоре
         uses: actions/upload-artifact@v4

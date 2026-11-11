@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import dadb.AdbKeyPair
 import dadb.Dadb
 import dadb.InstallResult
@@ -88,7 +89,8 @@ private val TextMuted = Color(0xFFBDB4A3)
 data class TvDevice(
     val name: String,
     val ip: String,
-    val port: Int
+    val port: Int,
+    val isTlsConnect: Boolean = false
 )
 
 // Ищет только устройства, которые сами объявили ADB в локальной сети.
@@ -132,7 +134,12 @@ private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<
                     val port = serviceInfo.port
                     if (!stopped.get() && host != null && port in 1..65535) {
                         val key = "$host:$port"
-                        found[key] = TvDevice(serviceInfo.serviceName.ifBlank { "Android TV" }, host, port)
+                        found[key] = TvDevice(
+                            serviceInfo.serviceName.ifBlank { "Android TV" },
+                            host,
+                            port,
+                            isTlsConnect = serviceInfo.serviceType == "_adb-tls-connect._tcp."
+                        )
                     }
                     resolving.set(false)
                     resolveNext()
@@ -1044,7 +1051,17 @@ private fun connectWithRetry(
         AdbConnectionDiagnostics.retryConnection(
             maxAttempts = 3,
             retryDelayMillis = 1500L,
-            connect = { Dadb.create(host, port, getAdbKey(context)) },
+            connect = {
+                val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
+                val pairedConnectPort = prefs(context).getInt("adb_tls_connect_port", 0)
+                if (shouldUseTlsAdbTransport(pairedHost, pairedConnectPort, host, port)) {
+                    // The selected endpoint is the TLS-connect port advertised separately
+                    // from the pairing port. Keep legacy ADB for devices not yet paired.
+                    KadbTlsTransport.connect(context, host, port)
+                } else {
+                    Dadb.create(host, port, getAdbKey(context))
+                }
+            },
             isRetryable = { error ->
                 AdbConnectionDiagnostics.classify(host, port, errorText(error)).retryable
             }
@@ -1066,7 +1083,8 @@ private fun loadDevices(context: Context): List<TvDevice> {
             TvDevice(
                 item.getString("name"),
                 item.getString("ip"),
-                item.getInt("port")
+                item.getInt("port"),
+                item.optBoolean("tlsConnect", false)
             )
         }
     } catch (_: Exception) {
@@ -1082,6 +1100,7 @@ private fun saveDevices(context: Context, devices: List<TvDevice>) {
                 .put("name", it.name)
                 .put("ip", it.ip)
                 .put("port", it.port)
+                .put("tlsConnect", it.isTlsConnect)
         )
     }
     prefs(context).edit().putString("devices", array.toString()).apply()
@@ -3446,16 +3465,10 @@ private fun uninstallUserApp(adb: Dadb, packageName: String, context: Context): 
 }
 
 private fun readAllPackages(adb: Dadb): List<String> =
-    readOnlyShellText(adb, "pm list packages").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .distinct().sorted().toList()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages"), allowEmpty = false).toList()
 
 private fun readUserPackages(adb: Dadb): List<String> =
-    readOnlyShellText(adb, "pm list packages -3").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .distinct().sorted().toList()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -3"), allowEmpty = true).toList()
 private fun changePackageState(adb: Dadb, packageName: String, enabled: Boolean): String {
     require(packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) { "Некорректное имя пакета" }
     return shellText(adb, if (enabled) "pm enable --user 0 $packageName" else "pm disable-user --user 0 $packageName")
@@ -3753,16 +3766,10 @@ private fun setAutoStartReceiverEnabled(adb: Dadb, component: String, enabled: B
 }
 
 private fun readDisabledUserPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -3 -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -3 -d"), allowEmpty = true)
 
 private fun readDisabledPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    TvAutomationEngine.parsePackageListOutput(shellText(adb, "pm list packages -d"), allowEmpty = true)
 
 /**
  * Executes a package state change and verifies the resulting state against Package Manager.
@@ -4445,6 +4452,9 @@ fun TvInstallerApp() {
     }
     var tvName by remember { mutableStateOf("") }
     var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var pairingEndpoints by remember { mutableStateOf(emptyList<AdbPairingEndpoint>()) }
+    var pairingPort by remember { mutableStateOf(settings.getInt("adb_tls_pairing_port", 0).takeIf { it in 1..65535 }?.toString() ?: "") }
+    var pairingCode by remember { mutableStateOf("") }
 
     var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -5909,7 +5919,8 @@ fun TvInstallerApp() {
         val device = TvDevice(
             tvName.ifBlank { host },
             host,
-            p
+            p,
+            isTlsConnect = settings.getInt("adb_tls_connect_port", 0) == p
         )
 
         devices.removeAll {
@@ -6534,14 +6545,131 @@ fun TvInstallerApp() {
                                             tvName = device.name
                                             ip = device.ip
                                             port = device.port.toString()
+                                            settings.edit().putInt(
+                                                "adb_tls_connect_port",
+                                                if (device.isTlsConnect) device.port else 0
+                                            ).apply()
                                             discoveredDevices = emptyList()
                                             status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("${device.name} — ${device.ip}:${device.port}")
+                                        Text(
+                                            "${device.name} — ${device.ip}:${device.port}" +
+                                                if (device.isTlsConnect) " · TLS" else " · ADB"
+                                        )
                                     }
                                 }
+                            }
+                            OutlinedButton(enabled = !busy, onClick = {
+                                pairingEndpoints = emptyList()
+                                val host = ip.trim()
+                                if (host.isBlank()) {
+                                    status = "Сначала укажи или выбери IP телевизора."
+                                } else {
+                                    runTask(action = {
+                                        val found = discoverAdbPairingEndpoints(context)
+                                        val matching = matchingAdbPairingEndpoints(host, found)
+                                        activity.runOnUiThread { pairingEndpoints = matching }
+                                        when (matching.size) {
+                                            0 -> "Порт сопряжения не найден для $host. Включи «Беспроводную отладку» на ТВ и убедись, что телефон и телевизор в одной сети."
+                                            1 -> "Найден порт сопряжения: " + matching.single().port + ". Введи код с экрана телевизора."
+                                            else -> "Найдено несколько портов сопряжения для $host. Выбери нужный."
+                                        }
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Поиск порта сопряжения..." else "Найти порт беспроводного сопряжения")
+                            }
+                            if (pairingEndpoints.isNotEmpty()) {
+                                Text("ПОРТЫ СОПРЯЖЕНИЯ", color = GoldLight, style = MaterialTheme.typography.labelLarge)
+                                pairingEndpoints.forEach { endpoint ->
+                                    OutlinedButton(
+                                        enabled = !busy,
+                                        onClick = {
+                                            pairingPort = endpoint.port.toString()
+                                            settings.edit().putInt("adb_tls_pairing_port", endpoint.port).apply()
+                                            status = "Выбран порт сопряжения " + endpoint.port + " для " + endpoint.host + "."
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(endpoint.name + " — " + endpoint.host + ":" + endpoint.port)
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = pairingPort,
+                                onValueChange = { pairingPort = it.filter(Char::isDigit).take(5) },
+                                label = { Text("Порт сопряжения (Wireless Debugging)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = pairingCode,
+                                onValueChange = { pairingCode = it.filter(Char::isDigit).take(6) },
+                                label = { Text("Шестизначный код с экрана телевизора") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedButton(enabled = !busy, onClick = {
+                                val host = ip.trim()
+                                val p = pairingPort.toIntOrNull()
+                                val code = pairingCode
+                                if (host.isBlank() || p == null || p !in 1..65535 || !code.matches(Regex("^[0-9]{6}$"))) {
+                                    status = "Укажи IP, порт сопряжения и шестизначный код с экрана ТВ."
+                                } else {
+                                    runTask(action = {
+                                        runBlocking {
+                                            KadbTlsTransport.pair(context, host, p, code, tvName)
+                                        }
+                                        settings.edit()
+                                            .putString("adb_tls_paired_host", host)
+                                            .putInt("adb_tls_pairing_port", p)
+                                            .putInt("adb_tls_connect_port", 0)
+                                            .apply()
+
+                                        // Pairing and TLS connection use separate DNS-SD services.
+                                        // Try to discover the connect endpoint immediately after pairing.
+                                        val tlsEndpoints = matchingAdbPairingEndpoints(
+                                            host,
+                                            discoverAdbDevices(context)
+                                                .filter { it.isTlsConnect }
+                                                .map { AdbPairingEndpoint(it.name, it.ip, it.port) }
+                                        )
+                                        when (tlsEndpoints.size) {
+                                            1 -> {
+                                                val endpoint = tlsEndpoints.single()
+                                                settings.edit()
+                                                    .putInt("adb_tls_connect_port", endpoint.port)
+                                                    .putString("ip", endpoint.host)
+                                                    .putString("port", endpoint.port.toString())
+                                                    .apply()
+                                                activity.runOnUiThread {
+                                                    ip = endpoint.host
+                                                    port = endpoint.port.toString()
+                                                    discoveredDevices = emptyList()
+                                                }
+                                                "Сопряжение успешно завершено. Найден TLS-порт подключения " + endpoint.port + "; нажми «Подключиться»."
+                                            }
+                                            0 -> {
+                                                activity.runOnUiThread { discoveredDevices = emptyList() }
+                                                "Сопряжение успешно завершено. TLS-порт пока не найден. Нажми «Найти телевизоры в локальной сети» и выбери устройство с пометкой TLS."
+                                            }
+                                            else -> {
+                                                activity.runOnUiThread {
+                                                    discoveredDevices = tlsEndpoints.map {
+                                                        TvDevice(it.name, it.host, it.port, isTlsConnect = true)
+                                                    }
+                                                }
+                                                "Сопряжение успешно завершено. Найдено несколько TLS-портов; выбери нужный в списке устройств."
+                                            }
+                                        }
+                                    }, onFinished = { result ->
+                                        if (!result.startsWith("Ошибка")) pairingCode = ""
+                                    })
+                                }
+                            }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (busy) "Сопряжение..." else "Сопрячь телевизор по TLS")
                             }
                             Button(enabled = !busy, onClick = {
                                 val host = ip.trim()
@@ -6550,8 +6678,16 @@ fun TvInstallerApp() {
                                     status = "Проверь IP и порт"
                                 } else {
                                     settings.edit().putString("ip", host).putString("port", p.toString()).apply()
+                                    val useTls = shouldUseTlsAdbTransport(
+                                        prefs(context).getString("adb_tls_paired_host", null),
+                                        prefs(context).getInt("adb_tls_connect_port", 0),
+                                        host,
+                                        p
+                                    )
                                     runTask(action = {
-                                        connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
+                                        connectWithRetry(context, host, p) {
+                                            (if (useTls) "TLS ADB подключён: " else "ADB подключён: ") + "$host:$p"
+                                        }
                                     }, onFinished = { result ->
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
@@ -7488,9 +7624,19 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     tvName = device.name
                                     ip = device.ip
                                     port = device.port.toString()
-                                    status = "Выбран ${device.name}"
+                                    val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
+                                    val restoreTlsPort = device.isTlsConnect &&
+                                        isSameNumericIpAddress(pairedHost.orEmpty(), device.ip)
+                                    settings.edit()
+                                        .putInt("adb_tls_connect_port", if (restoreTlsPort) device.port else 0)
+                                        .putString("ip", device.ip)
+                                        .putString("port", device.port.toString())
+                                        .apply()
+                                    status = "Выбран ${device.name}" +
+                                        if (restoreTlsPort) " (TLS ADB)" else " (обычный ADB)"
                                 }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("${device.name} • ${device.ip}:${device.port}")
+                                    Text("${device.name} • ${device.ip}:${device.port}" +
+                                        if (device.isTlsConnect) " · TLS" else "")
                                 }
                             }
                         }
