@@ -5830,7 +5830,7 @@ fun TvInstallerApp() {
                             "Успешно установлены и проверены Launcher и Curtain"
                         }
                         automationReport = automationReport +
-                            "\\n\\nРЕЗУЛЬТАТ УСТАНОВКИ CLEAN YOUR TV LAUNCHER / CURTAIN\\n" + outcome
+                            "\n\nРЕЗУЛЬТАТ УСТАНОВКИ CLEAN YOUR TV LAUNCHER / CURTAIN\n" + outcome
                         if (updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
                             maintenanceRunHistory = loadMaintenanceRunHistory(context)
                         } else {
