@@ -30,3 +30,10 @@ jobs:
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Выполнить модульные тесты и компиляцию приложения
         run: gradle check :app:assembleFullDebug --no-daemon
+      - name: Сохранить собранный APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-APK-Installer-0.9.137-debug
+          path: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
+          if-no-files-found: error
+          retention-days: 14
