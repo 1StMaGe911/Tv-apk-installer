@@ -5849,6 +5849,9 @@ fun TvInstallerApp() {
                         if (!installFailed) {
                             pendingMaintenanceHomeHandover = true
                             pendingLauncherHandover = true
+                            // The confirmation dialog is hosted in the modules section.
+                            // Navigate there so the one-button flow cannot leave the prompt hidden.
+                            activeSection = "modules"
                         }
                     }
                     pendingLauncherInstallHistoryUpdate = false
