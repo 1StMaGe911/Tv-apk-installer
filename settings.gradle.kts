@@ -30,7 +30,7 @@ val modules = listOf(
     "testing:fixtures", "testing:fake-adbd", "e2e",
     "android:platform", "android:work", "ui:design",
     "feature:connect", "feature:setup", "feature:manage", "feature:launcher",
-    "feature:modules", "feature:backup", "app", "benchmark", "tv:curtain"
+    "feature:modules", "feature:backup", "benchmark", "tv:curtain"
 )
 val parentModules = listOf("core", "adb", "testing", "android", "ui", "feature", "tv")
 parentModules.forEach { path ->
@@ -41,3 +41,6 @@ modules.forEach { path ->
     include(":$path")
     project(":$path").projectDir = cyt.resolve(path.replace(':', '/'))
 }
+
+// Keep :app mapped to this repository's TV APK Installer application.
+// The upstream Clean Your TV :app is deliberately not included as the installable app.
