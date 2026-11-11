@@ -1033,7 +1033,7 @@ class TvAutomationEngineTest {
         assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
             "Ошибка: устройство не отвечает"
         ))
-        val verifiedCleanup = "Отключено: 2 из 2. Ошибок: 0\\nИтоговая проверка на ТВ: 2 из 2"
+        val verifiedCleanup = "Отключено: 2 из 2. Ошибок: 0\nИтоговая проверка на ТВ: 2 из 2"
         assertTrue(TvAutomationEngine.combinedLauncherFlowAllowsInstall(true, verifiedCleanup))
         assertFalse(TvAutomationEngine.combinedLauncherFlowAllowsInstall(false, verifiedCleanup))
         assertFalse(TvAutomationEngine.combinedLauncherFlowAllowsInstall(true, "Ошибка: очистка не выполнена"))
