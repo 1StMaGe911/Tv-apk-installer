@@ -1436,7 +1436,12 @@ private fun installApkAndVerify(context: Context, adb: Dadb, apkFile: File, tran
 
 private fun shellText(adb: Dadb, command: String): String {
     val response = adb.shell(command)
-    if (response.exitCode != 0) throw Exception(response.output.ifBlank { "Команда завершилась с кодом ${response.exitCode}" })
+    if (response.exitCode != 0) {
+        val safeCommand = command.replace(Regex("\\s+"), " ").trim().take(180)
+        val output = response.output.trim().take(400)
+        val details = if (output.isBlank()) "" else "\nОтвет ТВ: $output"
+        throw Exception("ADB-команда завершилась с кодом ${response.exitCode}: $safeCommand$details")
+    }
     return response.output.trim()
 }
 
