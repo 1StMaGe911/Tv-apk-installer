@@ -9184,7 +9184,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             val cleanupVerified =
                                                 TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
                                             if (installLauncherAfterMaintenance) {
-                                                if (cleanupVerified && maintenanceHistorySavedForCurrentRun) {
+                                                if (TvAutomationEngine.combinedLauncherFlowAllowsInstall(maintenanceHistorySavedForCurrentRun, result)) {
                                                     maintenanceReadyToInstallLauncher = true
                                                 } else {
                                                     installLauncherAfterMaintenance = false
