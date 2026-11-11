@@ -6,6 +6,7 @@ root = Path(__file__).resolve().parents[1]
 upstream = root / "vendor" / "cleanyourtv-app"
 app_gradle = upstream / "app" / "build.gradle.kts"
 convention = upstream / "build-logic" / "convention" / "src" / "main" / "kotlin" / "AndroidConventionPlugins.kt"
+jvm_convention = upstream / "build-logic" / "convention" / "src" / "main" / "kotlin" / "JvmConventionPlugin.kt"
 
 def replace_once(path: Path, old: str, new: str) -> None:
     data = path.read_text(encoding="utf-8")
@@ -20,6 +21,7 @@ replace_once(app_gradle, "versionCode = 30", "versionCode = 188")
 replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.137"')
 replace_once(convention, 'applicationId = "tv.cleanyour.app"', 'applicationId = "ru.tvapk.installer"')
 replace_once(convention, 'systemProperty(repoRootProperty, rootDir.absolutePath)', 'systemProperty(repoRootProperty, rootDir.resolve("vendor/cleanyourtv-app").absolutePath)')
+replace_once(jvm_convention, 'systemProperty(repoRootProperty, rootDir.absolutePath)', 'systemProperty(repoRootProperty, rootDir.resolve("vendor/cleanyourtv-app").absolutePath)')
 replace_once(convention, 'rootProject.file("benchmark/app-benchmark/AndroidManifest.xml")', 'rootProject.file("vendor/cleanyourtv-app/benchmark/app-benchmark/AndroidManifest.xml")')
 
 spec_gradle = upstream / "core" / "spec" / "build.gradle.kts"
