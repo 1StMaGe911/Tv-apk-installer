@@ -47,6 +47,12 @@ android {
 }
 
 dependencies {
+    // Keep the legacy TV APK Installer activity compilable while it remains an internal fallback.
+    implementation("dev.mobile:dadb:2.0.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    implementation("androidx.core:core:1.15.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(project(":feature:connect"))
     implementation(project(":feature:setup"))
     implementation(project(":feature:manage"))
