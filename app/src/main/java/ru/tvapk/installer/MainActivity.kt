@@ -5049,7 +5049,12 @@ fun TvInstallerApp() {
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
                     appendLine(MaintenanceReportStatus.title(historySaved))
-                    if (!historySaved) appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
+                    if (!historySaved) {
+                        appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
+                        if (installLauncherAfterMaintenance) {
+                            appendLine("Launcher не установлен: запись диагностики не удалось сохранить в истории обслуживания. Проверь историю и повтори запуск.")
+                        }
+                    }
                     appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
                     appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
                     appendLine()
@@ -5120,7 +5125,7 @@ fun TvInstallerApp() {
                         } else {
                             installLauncherAfterMaintenance = false
                             maintenanceReadyToInstallLauncher = false
-                            status = "Launcher не установлен: запись диагностики не удалось сохранить в истории обслуживания. Проверь историю и повтори запуск."
+                            // The returned report already contains the history failure and install-block reason.
                         }
                     }
                 }
