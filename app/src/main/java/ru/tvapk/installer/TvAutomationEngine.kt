@@ -340,6 +340,12 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         return disabled == planned
     }
 
+    /** The combined flow also requires the initial diagnostic history to be durable. */
+    internal fun combinedLauncherFlowAllowsInstall(
+        diagnosticHistorySaved: Boolean,
+        cleanupResult: String
+    ): Boolean = diagnosticHistorySaved && cleanupResultAllowsLauncherInstall(cleanupResult)
+
     internal data class Plan(
         val detectedCount: Int,
         val approvedCount: Int,
