@@ -54,7 +54,7 @@
 
         <!-- Previous installer UI retained as an internal fallback during the port. -->
         <activity
-            android:name=".MainActivity"
+            android:name="ru.tvapk.installer.MainActivity"
             android:exported="false" />
 
         <service
