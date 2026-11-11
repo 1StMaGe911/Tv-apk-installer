@@ -534,7 +534,7 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
     internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
         // Parse from the right: some Android builds use long filesystem names or
         // slightly different headers. The mount point and numeric columns remain stable.
-        val rows = output.lineSequence().map { it.trim().split(Regex("""\\s+""")) }
+        val rows = output.lineSequence().map { it.trim().split(Regex("""\s+""")) }
             .filter { it.lastOrNull() == "/data" }.toList()
         // Multiple /data rows are ambiguous; never guess which mount is authoritative.
         if (rows.size != 1) return null
