@@ -35,6 +35,14 @@ trust_gradle = upstream / "core" / "trust" / "build.gradle.kts"
 replace_once(spec_gradle, 'rootProject.layout.projectDirectory.dir("third_party/cleanyourtv")', 'rootProject.layout.projectDirectory.dir("vendor/cleanyourtv-app/third_party/cleanyourtv")')
 replace_once(trust_gradle, 'rootProject.layout.projectDirectory.file("android/platform/src/main/assets/bundled/$asset")', 'rootProject.layout.projectDirectory.file("vendor/cleanyourtv-app/android/platform/src/main/assets/bundled/$asset")')
 
+# Preserve the legacy installer dependencies and explicitly authorize them in the upstream graph policy.
+module_rules = upstream / "build-logic" / "convention" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "buildlogic" / "ModuleRules.kt"
+replace_once(
+    module_rules,
+    '":app" to androidCommon,',
+    '":app" to androidCommon + "dev.mobile:dadb" + "org.bouncycastle:bcprov-jdk18on",',
+)
+
 # Sign the debug variant with the existing TV APK Installer key when CI supplies it.
 source = convention.read_text(encoding="utf-8")
 insert = '''                getByName("debug") {
