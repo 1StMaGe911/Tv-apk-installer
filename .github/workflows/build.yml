@@ -115,6 +115,17 @@ jobs:
           echo "Все попытки сборки завершились ошибкой"
           exit 1
 
+      - name: Проверить production package ID релизного APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          aapt dump badging "$APK" | grep -F "package: name='ru.tvapk.installer'"
+          if aapt dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"; then
+            echo "Preview package ID must never be published as a production release."
+            exit 1
+          fi
+
       - name: Вычислить SHA-256 APK
         id: apk
         run: |
