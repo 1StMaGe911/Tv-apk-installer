@@ -5621,6 +5621,48 @@ fun TvInstallerApp() {
                                 require(backup.isFile && backup.length() in 1..(64L * 1024L * 1024L)) {
                                     "Резервная копия ${module.packageName} неполная или слишком большая."
                                 }
+                                // Validate the exact file retained for rollback before any
+                                // module is changed; a separate signature read from the TV
+                                // does not prove that this pulled backup is intact.
+                                @Suppress("DEPRECATION")
+                                val backupFlags = if (Build.VERSION.SDK_INT >= 28) {
+                                    PackageManager.GET_SIGNING_CERTIFICATES
+                                } else {
+                                    PackageManager.GET_SIGNATURES
+                                }
+                                val backupInfo = context.packageManager.getPackageArchiveInfo(
+                                    backup.absolutePath,
+                                    backupFlags
+                                ) ?: throw Exception(
+                                    "Резервная копия ${module.packageName} не распознана как APK. Установка отменена."
+                                )
+                                require(backupInfo.packageName == module.packageName) {
+                                    "В резервной копии ожидался пакет ${module.packageName}, получен ${backupInfo.packageName}. Установка отменена."
+                                }
+                                @Suppress("DEPRECATION")
+                                val backupSignatures = if (Build.VERSION.SDK_INT >= 28) {
+                                    backupInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                                } else {
+                                    backupInfo.signatures?.toList().orEmpty()
+                                }
+                                require(backupSignatures.size == 1) {
+                                    "Не удалось однозначно проверить сертификат резервной копии ${module.packageName}. Установка отменена."
+                                }
+                                val backupSigner = MessageDigest.getInstance("SHA-256")
+                                    .digest(backupSignatures.single().toByteArray())
+                                    .joinToString("") { "%02x".format(it) }
+                                require(backupSigner.equals(currentSigner, true)) {
+                                    "Подпись резервной копии ${module.packageName} не совпадает с установленной на ТВ. Установка отменена."
+                                }
+                                @Suppress("DEPRECATION")
+                                val backupVersionCode = if (Build.VERSION.SDK_INT >= 28) {
+                                    backupInfo.longVersionCode
+                                } else {
+                                    backupInfo.versionCode.toLong()
+                                }
+                                require(backupVersionCode == currentCode) {
+                                    "Версия резервной копии ${module.packageName} не совпадает с установленной на ТВ. Установка отменена."
+                                }
                                 PreviousModuleState(module, backup, currentCode, currentSigner)
                             }
                         }
