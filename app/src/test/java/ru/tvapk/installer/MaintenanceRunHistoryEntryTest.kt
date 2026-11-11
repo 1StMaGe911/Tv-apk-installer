@@ -29,6 +29,30 @@ class MaintenanceRunHistoryEntryTest {
     }
 
     @Test
+    fun maintenanceHomeHandoverOutcomeRequiresConfirmedHomeComponent() {
+        assertEquals(
+            "Clean Your TV Launcher назначен главным экраном; результат подтверждён телевизором",
+            maintenanceHomeHandoverHistoryOutcome("Clean Your TV Launcher назначен главным экраном. Штатный пакет сохранён.")
+        )
+        assertEquals(
+            "Clean Your TV Launcher назначен главным экраном; результат подтверждён телевизором",
+            maintenanceHomeHandoverHistoryOutcome("Clean Your TV Launcher уже назначен домашним экраном.")
+        )
+    }
+
+    @Test
+    fun maintenanceHomeHandoverOutcomeDoesNotTreatErrorsOrUnknownResultsAsSuccess() {
+        assertEquals(
+            "Ошибка переключения Home: отказ в назначении",
+            maintenanceHomeHandoverHistoryOutcome("Ошибка: отказ в назначении")
+        )
+        assertEquals(
+            "Переключение Home не подтверждено: ответ не распознан",
+            maintenanceHomeHandoverHistoryOutcome("ответ не распознан")
+        )
+    }
+
+    @Test
     fun launcherInstallResultUpdatesOnlyInstallationOutcome() {
         val original = entry()
         val updated = original.withLauncherInstallResult("Успешно установлены и проверены Launcher и Curtain")
