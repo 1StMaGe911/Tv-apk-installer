@@ -639,8 +639,8 @@ class TvAutomationEngineTest {
     @Test
     fun parsesDataStorageRowsWithLongFilesystemNamesAndWindowsLineEndings() {
         val result = TvAutomationEngine.parseDataStorageSnapshot(
-            "Filesystem 1K-blocks Used Available Use% Mounted on\\r\\n" +
-                "/dev/block/mapper/vendor_dynamic_partition 16777216 15728640 1048576 94% /data\\r\\n"
+            "Filesystem 1K-blocks Used Available Use% Mounted on\r\n" +
+                "/dev/block/mapper/vendor_dynamic_partition 16777216 15728640 1048576 94% /data\r\n"
         )
         assertEquals(16777216L * 1024L, result?.totalBytes)
         assertEquals(1048576L * 1024L, result?.availableBytes)
