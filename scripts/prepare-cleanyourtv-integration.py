@@ -65,27 +65,27 @@ manage_screens = upstream / "feature" / "manage" / "src" / "main" / "kotlin" / "
 replace_once(
     app_root,
     "import tv.cleanyour.feature.setup.SetupFlow",
-    "import tv.cleanyour.feature.setup.SetupFlow\\nimport ru.tvapk.installer.TvInstallerApp",
+    "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.TvInstallerApp",
 )
 replace_once(
     app_root,
     "    @Serializable data object AppSettings : Dest",
-    "    @Serializable data object AppSettings : Dest\\n    @Serializable data object LegacyInstaller : Dest",
+    "    @Serializable data object AppSettings : Dest\n    @Serializable data object LegacyInstaller : Dest",
 )
 replace_once(
     app_root,
     '        "appsettings" -> Dest.AppSettings',
-    '        "appsettings" -> Dest.AppSettings\\n        "legacyinstaller" -> Dest.LegacyInstaller',
+    '        "appsettings" -> Dest.AppSettings\n        "legacyinstaller" -> Dest.LegacyInstaller',
 )
 replace_once(
     app_root,
     "                entry<Dest.Setup> { key ->",
-    "                entry<Dest.LegacyInstaller> { TvInstallerApp() }\\n                entry<Dest.Setup> { key ->",
+    "                entry<Dest.LegacyInstaller> { TvInstallerApp() }\n                entry<Dest.Setup> { key ->",
 )
 replace_once(
     app_root,
     "                    ManageScreen(state, m::dispatch)",
-    "                    ManageScreen(state, m::dispatch, onLegacyInstaller = { go(\\"legacyinstaller\\") })",
+    "                    ManageScreen(state, m::dispatch, onLegacyInstaller = { go(\"legacyinstaller\") })",
 )
 replace_once(
     manage_screens,
@@ -95,7 +95,7 @@ replace_once(
 replace_once(
     manage_screens,
     "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })",
-    "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\\n                ListDivider()\\n                ListRow(\\"TV APK Installer — дополнительные инструменты\\", subtitle = \\"ADB, очистка, резервные копии и управление лаунчером\\", onClick = onLegacyInstaller)",
+    "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\n                ListDivider()\n                ListRow(\"TV APK Installer — дополнительные инструменты\", subtitle = \"ADB, очистка, резервные копии и управление лаунчером\", onClick = onLegacyInstaller)",
 )
 
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.137 (188).")
