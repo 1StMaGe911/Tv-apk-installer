@@ -19,6 +19,7 @@ def replace_once(path: Path, old: str, new: str) -> None:
 replace_once(app_gradle, "versionCode = 30", "versionCode = 188")
 replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.137"')
 replace_once(convention, 'applicationId = "tv.cleanyour.app"', 'applicationId = "ru.tvapk.installer"')
+replace_once(convention, 'rootProject.file("benchmark/app-benchmark/AndroidManifest.xml")', 'rootProject.file("vendor/cleanyourtv-app/benchmark/app-benchmark/AndroidManifest.xml")')
 
 # Sign the debug variant with the existing TV APK Installer key when CI supplies it.
 source = convention.read_text(encoding="utf-8")
