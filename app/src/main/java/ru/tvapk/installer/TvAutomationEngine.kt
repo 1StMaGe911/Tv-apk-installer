@@ -49,7 +49,7 @@ internal object TvAutomationEngine {
         lines.forEach { rawLine ->
             val line = rawLine.trim()
             if (line.isEmpty()) return@forEach
-            require(line.startsWith("package:")) { "Неожиданный ответ Package Manager: \${line.take(160)}" }
+            require(line.startsWith("package:")) { "Неожиданный ответ Package Manager" }
             val packageName = line.removePrefix("package:").trim()
             require(packagePattern.matches(packageName)) { "Некорректное имя пакета в ответе Package Manager" }
             packages += packageName
