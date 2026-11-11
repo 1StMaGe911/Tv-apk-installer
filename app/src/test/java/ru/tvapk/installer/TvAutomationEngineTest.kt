@@ -8,6 +8,20 @@ import org.junit.Test
 
 class TvAutomationEngineTest {
     @Test
+    fun packageListParserAcceptsEmptyDisabledPackageResult() {
+        assertTrue(PackageListParser.parse("").isEmpty())
+        assertTrue(PackageListParser.parse("  \\n\\t  ").isEmpty())
+    }
+
+    @Test
+    fun packageListParserKeepsOnlyValidDistinctPackageNames() {
+        assertEquals(
+            setOf("com.example.one", "org.example.two"),
+            PackageListParser.parse("package:com.example.one\\npackage:org.example.two\\npackage:com.example.one\\nnot-a-package")
+        )
+    }
+
+    @Test
     fun exactModelProfileIsRejectedWhenKnownManufacturerConflicts() {
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("Sony Corporation", "BRAVIA")))
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("TCL", "FFALCON")))
