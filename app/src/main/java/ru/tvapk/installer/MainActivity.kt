@@ -5525,7 +5525,8 @@ fun TvInstallerApp() {
                     data class PreviousModuleState(
                         val module: VerifiedCleanModule,
                         val backupApk: File?,
-                        val versionCode: Long?
+                        val versionCode: Long?,
+                        val signerSha256: String?
                     )
 
                     // Сохраняем прежние APK до установки. Для этих модулей ожидается один APK
@@ -5543,7 +5544,7 @@ fun TvInstallerApp() {
                                 .distinct()
                                 .toList()
                             if (remotePaths.isEmpty()) {
-                                PreviousModuleState(module, null, null)
+                                PreviousModuleState(module, null, null, null)
                             } else {
                                 require(remotePaths.size == 1) {
                                     "У ${module.packageName} найдено несколько APK/split-файлов. " +
@@ -5560,6 +5561,7 @@ fun TvInstallerApp() {
                                             "Чтобы не выполнить откат версии, установка остановлена."
                                     )
                                 }
+                                val currentSigner = remoteInstalledApkSignerSha256(context, adb, module.packageName)
                                 val backup = File(rollbackDir, "${module.packageName.substringAfterLast('.')}.apk")
                                 when (val pulled = adb.pull(backup, remotePaths.single())) {
                                     is dadb.SyncResult.Success -> Unit
@@ -5570,7 +5572,7 @@ fun TvInstallerApp() {
                                 require(backup.isFile && backup.length() in 1..(64L * 1024L * 1024L)) {
                                     "Резервная копия ${module.packageName} неполная или слишком большая."
                                 }
-                                PreviousModuleState(module, backup, currentCode)
+                                PreviousModuleState(module, backup, currentCode, currentSigner)
                             }
                         }
 
@@ -5642,8 +5644,8 @@ fun TvInstallerApp() {
                                             "После отката ожидался versionCode ${previous.versionCode}, получен $restoredCode."
                                         }
                                         val restoredSigner = remoteInstalledApkSignerSha256(context, adb, previous.module.packageName)
-                                        require(restoredSigner.equals(previous.module.signerSha256, true)) {
-                                            "После отката подпись ${previous.module.packageName} не совпала с закреплённым сертификатом."
+                                        require(previous.signerSha256 != null && restoredSigner.equals(previous.signerSha256, true)) {
+                                            "После отката подпись ${previous.module.packageName} не совпала с сертификатом исходной версии."
                                         }
                                         ensurePackageInstalledForMainUser(adb, previous.module.packageName)
                                     }
