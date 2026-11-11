@@ -2710,7 +2710,7 @@ private fun readDataStorageSnapshot(adb: Dadb): TvAutomationEngine.DataStorageSn
         TvAutomationEngine.parseDataStorageSnapshot(output)
             ?: throw Exception(
                 "Ответ df не распознан для /data: " +
-                    output.replace(Regex("""[\\r\\n]+"""), " ").take(400)
+                    output.replace(Regex("""[\r\n]+"""), " ").take(400)
             )
     }
 
