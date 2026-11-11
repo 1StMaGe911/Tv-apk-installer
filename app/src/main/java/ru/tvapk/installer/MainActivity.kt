@@ -3184,9 +3184,14 @@ internal fun preserveRecoveryApks(
                     .joinToString("") { "%02x".format(it) }
             }.getOrNull()?.equals(expectedDigest, true) == true
     }
-    if (!verified && moved) {
-        // Do not strand an unverified moved directory outside the caller's retained rollback path.
-        recoveryDir.renameTo(sourceDir)
+    if (!verified) {
+        if (moved) {
+            // Do not strand an unverified moved directory outside the caller's retained rollback path.
+            recoveryDir.renameTo(sourceDir)
+        } else {
+            // A failed copy is disposable because the verified source directory remains intact.
+            recoveryDir.deleteRecursively()
+        }
     }
     return verified
 }
