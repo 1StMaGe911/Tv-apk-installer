@@ -28,13 +28,14 @@ replace_once(trust_gradle, 'rootProject.layout.projectDirectory.file("android/pl
 
 # Sign the debug variant with the existing TV APK Installer key when CI supplies it.
 source = convention.read_text(encoding="utf-8")
-marker = '                getByName("release") {'
 insert = '''                getByName("debug") {
                     if (releaseConfig != null) signingConfig = releaseConfig
                 }
 '''
 if insert not in source:
-    if source.count(marker) != 1:
-        raise SystemExit("Could not safely locate Android app release build type")
-    convention.write_text(source.replace(marker, insert + marker), encoding="utf-8")
+    app_plugin = source.index("class AndroidAppConventionPlugin")
+    build_types = source.index("            buildTypes {", app_plugin)
+    insert_at = build_types + len("            buildTypes {\\n")
+    source = source[:insert_at] + insert + source[insert_at:]
+    convention.write_text(source, encoding="utf-8")
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.137 (188).")
