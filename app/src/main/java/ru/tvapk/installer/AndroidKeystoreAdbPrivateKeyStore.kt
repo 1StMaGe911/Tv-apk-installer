@@ -32,7 +32,7 @@ internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivate
         }
         return runCatching {
             val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(TAG_LENGTH_BITS, Base64.decode(iv, Base64.NO_WRAP)))
+            cipher.init(Cipher.DECRYPT_MODE, getExistingSecretKey(), GCMParameterSpec(TAG_LENGTH_BITS, Base64.decode(iv, Base64.NO_WRAP)))
             cipher.doFinal(Base64.decode(encoded, Base64.NO_WRAP))
         }.getOrElse { error ->
             throw IllegalStateException("Unable to decrypt the saved ADB identity", error)
@@ -59,6 +59,12 @@ internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivate
         check(preferences.edit().remove(ENCRYPTED_KEY).remove(INITIALIZATION_VECTOR).commit()) {
             "Unable to clear the saved ADB identity"
         }
+    }
+
+    private fun getExistingSecretKey(): SecretKey {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        return keyStore.getKey(KEY_ALIAS, null) as? SecretKey
+            ?: throw IllegalStateException("Android Keystore key for the saved ADB identity is missing")
     }
 
     private fun getOrCreateSecretKey(): SecretKey {
