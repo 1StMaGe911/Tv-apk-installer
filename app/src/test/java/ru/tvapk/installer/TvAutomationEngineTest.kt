@@ -1133,9 +1133,9 @@ class TvAutomationEngineTest {
         assertTrue(runCatching {
             TvAutomationEngine.parsePackageListOutput("x".repeat(1_000_001), allowEmpty = true)
         }.isFailure)
+        val tooManyLines = (1..10_001).joinToString("\n") { " " }
         assertTrue(runCatching {
-            TvAutomationEngine.parsePackageListOutput((1..10_001).joinToString("\n") { " "
-        }.isFailure), allowEmpty = true)
-        }
+            TvAutomationEngine.parsePackageListOutput(tooManyLines, allowEmpty = true)
+        }.isFailure)
     }
 }
