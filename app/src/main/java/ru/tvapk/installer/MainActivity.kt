@@ -5663,7 +5663,17 @@ fun TvInstallerApp() {
                     var keepRollbackFiles = false
                     try {
                         val previousStates = modules.map { module ->
-                            val pathResult = readOnlyShellText(adb, "pm path ${module.packageName}")
+                            // `pm path` exits with code 1 when a package is not installed.
+                            // Check Package Manager's package list first; an empty filtered
+                            // result is a normal first-install state, not an ADB failure.
+                            val matchingInstalledPackages = PackageListParser.parse(
+                                shellText(adb, "pm list packages ${module.packageName}")
+                            )
+                            val pathResult = if (module.packageName in matchingInstalledPackages) {
+                                readOnlyShellText(adb, "pm path ${module.packageName}")
+                            } else {
+                                ""
+                            }
                             val remotePaths = pathResult.lineSequence()
                                 .map { it.removePrefix("package:").trim() }
                                 .filter { it.startsWith("/") && !it.contains("..") }
