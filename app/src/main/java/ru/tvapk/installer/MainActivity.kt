@@ -7072,7 +7072,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                                                 }
                                                 automationReport = automationReport +
-                                                    "\\n\\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\\n" + outcome
+                                                    "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
                                                 pendingMaintenanceHomeHandover = false
                                             }
                                         }) { Text("Отмена") }
