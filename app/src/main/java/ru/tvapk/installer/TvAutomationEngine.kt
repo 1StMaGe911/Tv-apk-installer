@@ -530,19 +530,32 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         return maxOf(200L * 1024L * 1024L, apkBytes * 2L)
     }
 
-    /** Parses machine-readable df -k /data output conservatively. */
+    /** Parses df output for /data, tolerating Android/toybox column and spacing variants. */
     internal fun parseDataStorageSnapshot(output: String): DataStorageSnapshot? {
-        // Multiple /data rows make the source ambiguous; fail closed instead of
-        // silently selecting whichever mount happens to appear first.
-        val matches = Regex("""(?m)^\S+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%\s+/data\s*$""")
-            .findAll(output).toList()
-        if (matches.size != 1) return null
-        val match = matches.single()
-        val totalKb = match.groupValues[1].toLongOrNull() ?: return null
-        val usedKb = match.groupValues[2].toLongOrNull() ?: return null
-        val availableKb = match.groupValues[3].toLongOrNull() ?: return null
-        val usedPercent = match.groupValues[4].toIntOrNull() ?: return null
-        if (totalKb <= 0 || totalKb > Long.MAX_VALUE / 1024L || usedKb < 0 || availableKb < 0 || usedPercent !in 0..100) return null
+        // Parse from the right: some Android builds use long filesystem names or
+        // slightly different headers. The mount point and numeric columns remain stable.
+        val rows = output.lineSequence().map { it.trim().split(Regex("""\s+""")) }
+            .filter { it.lastOrNull() == "/data" }.toList()
+        // Multiple /data rows are ambiguous; never guess which mount is authoritative.
+        if (rows.size != 1) return null
+        val columns = rows.single()
+        if (columns.size < 5) return null
+
+        val hasPercent = columns.getOrNull(columns.size - 2)?.endsWith("%") == true
+        val totalIndex = columns.size - if (hasPercent) 5 else 4
+        val totalKb = columns.getOrNull(totalIndex)?.toLongOrNull() ?: return null
+        val usedKb = columns.getOrNull(totalIndex + 1)?.toLongOrNull() ?: return null
+        val availableKb = columns.getOrNull(totalIndex + 2)?.toLongOrNull() ?: return null
+        val usedPercent = if (hasPercent) {
+            columns[columns.size - 2].removeSuffix("%").toIntOrNull() ?: return null
+        } else {
+            if (totalKb <= 0L) return null
+            ((usedKb.toDouble() / totalKb.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+        }
+
+        if (totalKb <= 0 || totalKb > Long.MAX_VALUE / 1024L ||
+            usedKb < 0 || availableKb < 0 || usedPercent !in 0..100
+        ) return null
         if (usedKb > totalKb || availableKb > totalKb || usedKb > totalKb - availableKb) return null
         return DataStorageSnapshot(totalKb * 1024L, usedKb * 1024L, availableKb * 1024L, usedPercent)
     }
