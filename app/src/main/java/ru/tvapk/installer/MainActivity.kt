@@ -3277,7 +3277,7 @@ private fun restoreRecoveryApk(
     require(installedCode == entry.versionCode) {
         "После восстановления ожидался versionCode " + entry.versionCode + ", получен " + installedCode
     }
-    val installedSigner = installedSignerSha256(context, entry.packageName)
+    val installedSigner = remoteInstalledApkSignerSha256(context, adb, entry.packageName)
     require(installedSigner.equals(expected, true)) {
         "Подпись установленного пакета после восстановления не совпадает с доверенным сертификатом"
     }
