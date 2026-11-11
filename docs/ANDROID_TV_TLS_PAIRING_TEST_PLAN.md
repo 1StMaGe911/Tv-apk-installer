@@ -69,3 +69,15 @@ Before raising `targetSdk` to 37 or higher:
 - Evaluate the Android 17 NSD system picker (`DiscoveryRequest.FLAG_SHOW_PICKER`) for user-selected discovery where it can replace broad network scanning.
 
 Do not add or request `ACCESS_LOCAL_NETWORK` while targeting API 36 or lower; Android's current guidance says those targets retain implicit local-network access through `INTERNET`. Re-check the platform guidance when the target SDK is upgraded.
+## Dadb transport-parity smoke tests
+
+The TLS adapter implements Dadb's two transport primitives: `open(destination)` and `supportsFeature(feature)`. Dadb supplies shell, sync, push/pull, install, uninstall, and related operations on top of those primitives. Validate representative operations over TLS before treating the transport as interchangeable with legacy ADB:
+
+1. **Read-only shell:** run a harmless `getprop ro.product.model` query and compare the result with legacy ADB.
+2. **Feature negotiation:** verify `supportsFeature("cmd")` and the app's selected install path behave consistently with the device's legacy ADB result.
+3. **Sync stream:** push a small temporary text file to an app-owned test path under `/data/local/tmp`, pull it back, and compare its SHA-256. Remove only that test file after verification.
+4. **APK install path:** on a spare/resettable TV, install or update a harmless test APK, verify package name/version/signature, then uninstall that test package. Do not use a production app for this test.
+5. **Backup path:** create and export a read-only TV backup, then verify the archive can be opened locally. Do not run cleanup or package-disable actions as part of transport validation.
+6. **Disconnect handling:** turn Wireless debugging off during a read-only operation. The app must surface a connection error, close the failed stream, and must not report a successful operation.
+
+Run the same smoke tests through legacy ADB as a baseline. Record each result separately; a successful TLS shell probe alone does not prove sync or APK installation parity.
