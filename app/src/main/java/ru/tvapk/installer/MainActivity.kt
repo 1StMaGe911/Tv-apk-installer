@@ -846,6 +846,14 @@ internal fun MaintenanceRunHistoryEntry.withCleanupResult(
 internal fun MaintenanceRunHistoryEntry.withLauncherInstallResult(outcome: String): MaintenanceRunHistoryEntry =
     copy(launcherInstallOutcome = outcome)
 
+internal fun maintenanceHomeHandoverHistoryOutcome(result: String): String = when {
+    result.startsWith("Clean Your TV Launcher назначен главным экраном") ||
+        result.startsWith("Clean Your TV Launcher уже назначен домашним экраном") ->
+        "Clean Your TV Launcher назначен главным экраном; результат подтверждён телевизором"
+    result.startsWith("Ошибка:") -> "Ошибка переключения Home: ${result.removePrefix("Ошибка:").trim()}"
+    else -> "Переключение Home не подтверждено: $result"
+}
+
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
     val raw = prefs(context).getString("maintenance_run_history", null) ?: "[]"
     val array = JSONArray(raw)
@@ -4621,6 +4629,7 @@ fun TvInstallerApp() {
     var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
     var pendingModuleRemoval by remember { mutableStateOf(false) }
     var pendingLauncherHandover by remember { mutableStateOf(false) }
+    var pendingMaintenanceHomeHandover by remember { mutableStateOf(false) }
     var hasLauncherHandover by remember { mutableStateOf(settings.getString("launcher_handover_stock_package", null) != null) }
     var launcherColumns by remember { mutableStateOf(settings.getInt("launcher_columns", 6)) }
     var launcherRowsBelowDock by remember { mutableStateOf(settings.getInt("launcher_rows_below_dock", 1)) }
@@ -5824,10 +5833,11 @@ fun TvInstallerApp() {
                 if (pendingLauncherInstallHistoryUpdate) {
                     val identity = maintenanceDeviceIdentityForLauncher
                     if (identity != null) {
-                        val outcome = if (result.startsWith("Ошибка:")) {
+                        val installFailed = result.startsWith("Ошибка:")
+                        val outcome = if (installFailed) {
                             "Ошибка установки/проверки: ${result.removePrefix("Ошибка:").trim()}"
                         } else {
-                            "Успешно установлены и проверены Launcher и Curtain"
+                            "Launcher и Curtain установлены и проверены; переключение Home ожидает подтверждения"
                         }
                         automationReport = automationReport +
                             "\n\nРЕЗУЛЬТАТ УСТАНОВКИ CLEAN YOUR TV LAUNCHER / CURTAIN\n" + outcome
@@ -5835,6 +5845,10 @@ fun TvInstallerApp() {
                             maintenanceRunHistory = loadMaintenanceRunHistory(context)
                         } else {
                             status = "$result\n⚠ Не удалось записать результат установки в историю обслуживания."
+                        }
+                        if (!installFailed) {
+                            pendingMaintenanceHomeHandover = true
+                            pendingLauncherHandover = true
                         }
                     }
                     pendingLauncherInstallHistoryUpdate = false
@@ -7001,18 +7015,50 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             }
                             if (pendingLauncherHandover) {
                                 AlertDialog(
-                                    onDismissRequest = { pendingLauncherHandover = false },
+                                    onDismissRequest = {
+                                        pendingLauncherHandover = false
+                                        if (pendingMaintenanceHomeHandover) {
+                                            val identity = maintenanceDeviceIdentityForLauncher
+                                            val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
+                                            if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                            }
+                                            automationReport = automationReport +
+                                                "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                            pendingMaintenanceHomeHandover = false
+                                        }
+                                    },
                                     title = { Text("Переключить главный экран?") },
                                     text = { Text("Сначала приложение проверит запуск Clean Your TV Launcher. Затем сохранит компонент штатного Home, отключит только распознанный пакет штатного Launcher и проверит, что Android действительно назначил новый экран. При ошибке будет предпринята попытка автоматического отката. Продолжить?") },
                                     confirmButton = {
                                         TextButton(enabled = !busy, onClick = {
                                             pendingLauncherHandover = false
+                                            val maintenanceHandover = pendingMaintenanceHomeHandover
                                             val host = ip.trim(); val p = port.toIntOrNull()
-                                            if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
-                                            else runTask({ connectWithRetry(context, host, p) { adb ->
+                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                status = "Укажи IP и порт ADB"
+                                                if (maintenanceHandover) {
+                                                    val identity = maintenanceDeviceIdentityForLauncher
+                                                    val outcome = "Ошибка переключения Home: не указан корректный адрес ADB"
+                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                                    pendingMaintenanceHomeHandover = false
+                                                }
+                                            } else runTask({ connectWithRetry(context, host, p) { adb ->
                                                 handOverToCleanYourTvLauncher(context, adb)
                                             } }, { result ->
                                                 hasLauncherHandover = settings.getString("launcher_handover_stock_package", null) != null
+                                                if (maintenanceHandover) {
+                                                    val identity = maintenanceDeviceIdentityForLauncher
+                                                    val outcome = maintenanceHomeHandoverHistoryOutcome(result)
+                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    } else if (identity != null) {
+                                                        status = "$result\\n⚠ Не удалось записать результат переключения Home в историю обслуживания."
+                                                    }
+                                                    automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                                    pendingMaintenanceHomeHandover = false
+                                                }
                                             })
                                         }) { Text("Проверить и переключить") }
                                     },
