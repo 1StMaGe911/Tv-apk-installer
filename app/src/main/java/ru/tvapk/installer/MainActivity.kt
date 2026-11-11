@@ -831,7 +831,8 @@ internal data class MaintenanceRunHistoryEntry(
     val warnings: List<String>,
     val warningsBefore: List<String> = emptyList(),
     val cleanupOutcome: String = "Пакетные изменения не выполнялись",
-    val changedPackages: List<String> = emptyList()
+    val changedPackages: List<String> = emptyList(),
+    val launcherInstallOutcome: String = "Не запускалась"
 )
 
 internal fun MaintenanceRunHistoryEntry.withCleanupResult(
@@ -841,6 +842,17 @@ internal fun MaintenanceRunHistoryEntry.withCleanupResult(
     cleanupOutcome = outcome,
     changedPackages = changedPackages.distinct()
 )
+
+internal fun MaintenanceRunHistoryEntry.withLauncherInstallResult(outcome: String): MaintenanceRunHistoryEntry =
+    copy(launcherInstallOutcome = outcome)
+
+internal fun maintenanceHomeHandoverHistoryOutcome(result: String): String = when {
+    result.startsWith("Clean Your TV Launcher назначен главным экраном") ||
+        result.startsWith("Clean Your TV Launcher уже назначен домашним экраном") ->
+        "Clean Your TV Launcher назначен главным экраном; результат подтверждён телевизором"
+    result.startsWith("Ошибка:") -> "Ошибка переключения Home: ${result.removePrefix("Ошибка:").trim()}"
+    else -> "Переключение Home не подтверждено: $result"
+}
 
 private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHistoryEntry> = try {
     val raw = prefs(context).getString("maintenance_run_history", null) ?: "[]"
@@ -862,7 +874,8 @@ private fun loadMaintenanceRunHistory(context: Context): List<MaintenanceRunHist
             warnings = (0 until warningArray.length()).map { warningArray.optString(it) }.filter { it.isNotBlank() },
             warningsBefore = (0 until (item.optJSONArray("warningsBefore") ?: JSONArray()).length()).map { (item.optJSONArray("warningsBefore") ?: JSONArray()).optString(it) }.filter { it.isNotBlank() },
             cleanupOutcome = item.optString("cleanupOutcome", "Пакетные изменения не выполнялись"),
-            changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) }
+            changedPackages = (0 until (item.optJSONArray("changedPackages") ?: JSONArray()).length()).map { (item.optJSONArray("changedPackages") ?: JSONArray()).optString(it) },
+            launcherInstallOutcome = item.optString("launcherInstallOutcome", "Не запускалась")
         )
     }.sortedByDescending { it.createdAt }.take(20)
 } catch (_: Exception) { emptyList() }
@@ -886,9 +899,45 @@ private fun appendMaintenanceRunHistory(context: Context, entry: MaintenanceRunH
             .put("warnings", JSONArray(item.warnings))
             .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
-            .put("changedPackages", JSONArray(item.changedPackages)))
+            .put("changedPackages", JSONArray(item.changedPackages))
+            .put("launcherInstallOutcome", item.launcherInstallOutcome))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+    }
+} catch (_: Exception) { false }
+
+
+private fun updateLatestMaintenanceLauncherHistory(
+    context: Context,
+    deviceIdentity: String,
+    outcome: String
+): Boolean = try {
+    val existingRaw = prefs(context).getString("maintenance_run_history", null)
+    val existingIsValid = existingRaw == null || runCatching { JSONArray(existingRaw) }.isSuccess
+    if (!MaintenanceHistoryWritePolicy.canAppend(existingRaw != null, existingIsValid)) {
+        false
+    } else {
+        val existing = loadMaintenanceRunHistory(context).toMutableList()
+        val index = existing.indexOfFirst { it.deviceIdentity == deviceIdentity }
+        if (index < 0) false else {
+            existing[index] = existing[index].withLauncherInstallResult(outcome)
+            val array = JSONArray()
+            existing.sortedByDescending { it.createdAt }.take(20).forEach { item ->
+                array.put(JSONObject()
+                    .put("createdAt", item.createdAt).put("deviceIdentity", item.deviceIdentity)
+                    .put("memoryBefore", item.memoryBefore).put("memoryAfter", item.memoryAfter)
+                    .put("storageBefore", item.storageBefore).put("storageAfter", item.storageAfter)
+                    .put("storageAvailableBytesBefore", item.storageAvailableBytesBefore)
+                    .put("storageAvailableBytesAfter", item.storageAvailableBytesAfter)
+                    .put("cacheTrimAttempted", item.cacheTrimAttempted).put("cacheTrimOutcome", item.cacheTrimOutcome)
+                    .put("detectedCandidates", item.detectedCandidates).put("approvedCandidates", item.approvedCandidates)
+                    .put("reviewCandidates", item.reviewCandidates).put("blockedCandidates", item.blockedCandidates)
+                    .put("warnings", JSONArray(item.warnings)).put("warningsBefore", JSONArray(item.warningsBefore))
+                    .put("cleanupOutcome", item.cleanupOutcome).put("changedPackages", JSONArray(item.changedPackages))
+                    .put("launcherInstallOutcome", item.launcherInstallOutcome))
+            }
+            prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
+        }
     }
 } catch (_: Exception) { false }
 
@@ -941,7 +990,8 @@ private fun updateLatestMaintenanceCleanupHistory(
             .put("warnings", JSONArray(item.warnings))
             .put("warningsBefore", JSONArray(item.warningsBefore))
             .put("cleanupOutcome", item.cleanupOutcome)
-            .put("changedPackages", JSONArray(item.changedPackages)))
+            .put("changedPackages", JSONArray(item.changedPackages))
+            .put("launcherInstallOutcome", item.launcherInstallOutcome))
     }
     prefs(context).edit().putString("maintenance_run_history", array.toString()).commit()
     }
@@ -3147,6 +3197,55 @@ private data class RecoveryApkEntry(
     val sha256: String
 )
 
+internal fun preserveRecoveryApks(
+    sourceDir: File,
+    recoveryDir: File,
+    backupFiles: List<File>
+): Boolean {
+    if (backupFiles.isEmpty() || recoveryDir.exists()) return false
+    val sourceRoot = runCatching { sourceDir.canonicalFile }.getOrNull() ?: return false
+    val fingerprints = backupFiles.map { source ->
+        val canonical = runCatching { source.canonicalFile }.getOrNull() ?: return false
+        if (canonical.parentFile != sourceRoot || !canonical.isFile ||
+            canonical.extension.equals("apk", true).not() ||
+            canonical.length() !in 1..(64L * 1024L * 1024L)
+        ) return false
+        val digest = runCatching {
+            MessageDigest.getInstance("SHA-256").digest(canonical.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        }.getOrNull() ?: return false
+        Triple(canonical.name, canonical.length(), digest)
+    }
+    val moved = sourceDir.renameTo(recoveryDir)
+    if (!moved) {
+        val copied = runCatching {
+            sourceDir.copyRecursively(recoveryDir, overwrite = false)
+            true
+        }.getOrDefault(false)
+        if (!copied) return false
+    }
+    val targetRoot = runCatching { recoveryDir.canonicalFile }.getOrNull()
+    val verified = targetRoot != null && fingerprints.all { (name, expectedSize, expectedDigest) ->
+        val target = File(targetRoot, name)
+        target.parentFile == targetRoot && target.isFile &&
+            target.length() == expectedSize &&
+            runCatching {
+                MessageDigest.getInstance("SHA-256").digest(target.readBytes())
+                    .joinToString("") { "%02x".format(it) }
+            }.getOrNull()?.equals(expectedDigest, true) == true
+    }
+    if (!verified) {
+        if (moved) {
+            // Do not strand an unverified moved directory outside the caller's retained rollback path.
+            recoveryDir.renameTo(sourceDir)
+        } else {
+            // A failed copy is disposable because the verified source directory remains intact.
+            recoveryDir.deleteRecursively()
+        }
+    }
+    return verified
+}
+
 private const val CLEAN_YOUR_TV_RECOVERY_SIGNER =
     "576418154bec6505bfc709ccaa6ae85b6e09d98eb89f4a25147ca1b4b0505132"
 
@@ -3228,7 +3327,7 @@ private fun restoreRecoveryApk(
     require(installedCode == entry.versionCode) {
         "После восстановления ожидался versionCode " + entry.versionCode + ", получен " + installedCode
     }
-    val installedSigner = installedSignerSha256(context, entry.packageName)
+    val installedSigner = remoteInstalledApkSignerSha256(context, adb, entry.packageName)
     require(installedSigner.equals(expected, true)) {
         "Подпись установленного пакета после восстановления не совпадает с доверенным сертификатом"
     }
@@ -4445,6 +4544,7 @@ fun TvInstallerApp() {
     }
     var tvName by remember { mutableStateOf("") }
     var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var pendingMaintenanceAfterDeviceSelection by remember { mutableStateOf(false) }
 
     var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -4466,6 +4566,9 @@ fun TvInstallerApp() {
     var pendingCombinedCacheTrim by remember { mutableStateOf(false) }
     var installLauncherAfterMaintenance by remember { mutableStateOf(false) }
     var maintenanceReadyToInstallLauncher by remember { mutableStateOf(false) }
+    var maintenanceDeviceIdentityForLauncher by remember { mutableStateOf<String?>(null) }
+    var maintenanceHistorySavedForCurrentRun by remember { mutableStateOf(false) }
+    var pendingLauncherInstallHistoryUpdate by remember { mutableStateOf(false) }
     var userPackages by remember { mutableStateOf(listOf<String>()) }
     var allPackages by remember { mutableStateOf(listOf<String>()) }
     var disabledOnDevice by remember { mutableStateOf(emptySet<String>()) }
@@ -4527,6 +4630,7 @@ fun TvInstallerApp() {
     var pendingUndoBackupDelete by remember { mutableStateOf<File?>(null) }
     var pendingModuleRemoval by remember { mutableStateOf(false) }
     var pendingLauncherHandover by remember { mutableStateOf(false) }
+    var pendingMaintenanceHomeHandover by remember { mutableStateOf(false) }
     var hasLauncherHandover by remember { mutableStateOf(settings.getString("launcher_handover_stock_package", null) != null) }
     var launcherColumns by remember { mutableStateOf(settings.getInt("launcher_columns", 6)) }
     var launcherRowsBelowDock by remember { mutableStateOf(settings.getInt("launcher_rows_below_dock", 1)) }
@@ -4705,7 +4809,8 @@ fun TvInstallerApp() {
                             .put("warnings", JSONArray(entry.warnings))
                             .put("warningsBefore", JSONArray(entry.warningsBefore))
                             .put("cleanupOutcome", entry.cleanupOutcome)
-                            .put("changedPackages", JSONArray(entry.changedPackages)))
+                            .put("changedPackages", JSONArray(entry.changedPackages))
+                            .put("launcherInstallOutcome", entry.launcherInstallOutcome))
                     }
                 }
                 val document = JSONObject().put("format", "tv-apk-installer-maintenance-history")
@@ -4802,6 +4907,7 @@ fun TvInstallerApp() {
         val adbPort = port.toIntOrNull()
         val requestedPort = adbPort?.takeIf { it in 1..65535 } ?: 5555
         val progressTracker = MaintenanceProgressTracker()
+        maintenanceHistorySavedForCurrentRun = false
         maintenanceProgress = progressTracker.advance(MaintenanceStage.CONNECTING)
         runTask({
             // First probe the remembered endpoint. If it is stale or the TV changed
@@ -4814,20 +4920,28 @@ fun TvInstallerApp() {
                 }.getOrElse {
                     val found = discoverAdbDevices(context)
                     TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
-                        activity.runOnUiThread { discoveredDevices = found }
+                        activity.runOnUiThread {
+                            discoveredDevices = found
+                            pendingMaintenanceAfterDeviceSelection = found.size > 1
+                            if (found.size > 1) activeSection = "wifi"
+                        }
                         throw Exception(
                             if (found.isEmpty()) "Сохранённый адрес ТВ недоступен, а автопоиск не нашёл устройство. Включи ADB по сети."
-                            else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                            else "Найдено несколько ТВ. Выбери нужное устройство по IP — обслуживание продолжится автоматически."
                         )
                     }
                 }
             } else {
                 val found = discoverAdbDevices(context)
                 TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
-                    activity.runOnUiThread { discoveredDevices = found }
+                    activity.runOnUiThread {
+                        discoveredDevices = found
+                        pendingMaintenanceAfterDeviceSelection = found.size > 1
+                        if (found.size > 1) activeSection = "wifi"
+                    }
                     throw Exception(
                         if (found.isEmpty()) "Автопоиск не нашёл Android TV. Включи ADB по сети."
-                        else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                        else "Найдено несколько ТВ. Выбери нужное устройство по IP — обслуживание продолжится автоматически."
                     )
                 }
             }
@@ -4937,7 +5051,12 @@ fun TvInstallerApp() {
                 val historySaved = appendMaintenanceRunHistory(context, historyEntry)
                 val report = buildString {
                     appendLine(MaintenanceReportStatus.title(historySaved))
-                    if (!historySaved) appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
+                    if (!historySaved) {
+                        appendLine("⚠ Не удалось сохранить запись в истории обслуживания.")
+                        if (installLauncherAfterMaintenance) {
+                            appendLine("Launcher не установлен: запись диагностики не удалось сохранить в истории обслуживания. Проверь историю и повтори запуск.")
+                        }
+                    }
                     appendLine("Модель/профиль: ${profile?.id ?: "точный профиль не найден"}")
                     appendLine("Установлено пакетов: ${installed.size}; пользовательских: ${users.size}")
                     appendLine()
@@ -4982,6 +5101,8 @@ fun TvInstallerApp() {
                     disabledOnDevice = disabled
                     selectedCleanupPackages = if (disableSupported) plan.safeToDisable else emptySet()
                     automationReport = report
+                    maintenanceDeviceIdentityForLauncher = deviceIdentityForHistory
+                    maintenanceHistorySavedForCurrentRun = historySaved
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
                     maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
@@ -5002,13 +5123,19 @@ fun TvInstallerApp() {
                         showSettings = false
                         activeSection = "clean"
                     } else if (installLauncherAfterMaintenance) {
-                        maintenanceReadyToInstallLauncher = true
+                        if (historySaved) {
+                            maintenanceReadyToInstallLauncher = true
+                        } else {
+                            installLauncherAfterMaintenance = false
+                            maintenanceReadyToInstallLauncher = false
+                            // The returned report already contains the history failure and install-block reason.
+                        }
                     }
                 }
                 report
             }
         }, onFinished = { result ->
-            if (result.startsWith("Ошибка:")) {
+            if (result.startsWith("Ошибка:") && !pendingMaintenanceAfterDeviceSelection) {
                 installLauncherAfterMaintenance = false
                 maintenanceReadyToInstallLauncher = false
             }
@@ -5516,7 +5643,8 @@ fun TvInstallerApp() {
                     data class PreviousModuleState(
                         val module: VerifiedCleanModule,
                         val backupApk: File?,
-                        val versionCode: Long?
+                        val versionCode: Long?,
+                        val signerSha256: String?
                     )
 
                     // Сохраняем прежние APK до установки. Для этих модулей ожидается один APK
@@ -5534,7 +5662,7 @@ fun TvInstallerApp() {
                                 .distinct()
                                 .toList()
                             if (remotePaths.isEmpty()) {
-                                PreviousModuleState(module, null, null)
+                                PreviousModuleState(module, null, null, null)
                             } else {
                                 require(remotePaths.size == 1) {
                                     "У ${module.packageName} найдено несколько APK/split-файлов. " +
@@ -5551,6 +5679,7 @@ fun TvInstallerApp() {
                                             "Чтобы не выполнить откат версии, установка остановлена."
                                     )
                                 }
+                                val currentSigner = remoteInstalledApkSignerSha256(context, adb, module.packageName)
                                 val backup = File(rollbackDir, "${module.packageName.substringAfterLast('.')}.apk")
                                 when (val pulled = adb.pull(backup, remotePaths.single())) {
                                     is dadb.SyncResult.Success -> Unit
@@ -5561,7 +5690,49 @@ fun TvInstallerApp() {
                                 require(backup.isFile && backup.length() in 1..(64L * 1024L * 1024L)) {
                                     "Резервная копия ${module.packageName} неполная или слишком большая."
                                 }
-                                PreviousModuleState(module, backup, currentCode)
+                                // Validate the exact file retained for rollback before any
+                                // module is changed; a separate signature read from the TV
+                                // does not prove that this pulled backup is intact.
+                                @Suppress("DEPRECATION")
+                                val backupFlags = if (Build.VERSION.SDK_INT >= 28) {
+                                    PackageManager.GET_SIGNING_CERTIFICATES
+                                } else {
+                                    PackageManager.GET_SIGNATURES
+                                }
+                                val backupInfo = context.packageManager.getPackageArchiveInfo(
+                                    backup.absolutePath,
+                                    backupFlags
+                                ) ?: throw Exception(
+                                    "Резервная копия ${module.packageName} не распознана как APK. Установка отменена."
+                                )
+                                require(backupInfo.packageName == module.packageName) {
+                                    "В резервной копии ожидался пакет ${module.packageName}, получен ${backupInfo.packageName}. Установка отменена."
+                                }
+                                @Suppress("DEPRECATION")
+                                val backupSignatures = if (Build.VERSION.SDK_INT >= 28) {
+                                    backupInfo.signingInfo?.apkContentsSigners?.toList().orEmpty()
+                                } else {
+                                    backupInfo.signatures?.toList().orEmpty()
+                                }
+                                require(backupSignatures.size == 1) {
+                                    "Не удалось однозначно проверить сертификат резервной копии ${module.packageName}. Установка отменена."
+                                }
+                                val backupSigner = MessageDigest.getInstance("SHA-256")
+                                    .digest(backupSignatures.single().toByteArray())
+                                    .joinToString("") { "%02x".format(it) }
+                                require(backupSigner.equals(currentSigner, true)) {
+                                    "Подпись резервной копии ${module.packageName} не совпадает с установленной на ТВ. Установка отменена."
+                                }
+                                @Suppress("DEPRECATION")
+                                val backupVersionCode = if (Build.VERSION.SDK_INT >= 28) {
+                                    backupInfo.longVersionCode
+                                } else {
+                                    backupInfo.versionCode.toLong()
+                                }
+                                require(backupVersionCode == currentCode) {
+                                    "Версия резервной копии ${module.packageName} не совпадает с установленной на ТВ. Установка отменена."
+                                }
+                                PreviousModuleState(module, backup, currentCode, currentSigner)
                             }
                         }
 
@@ -5633,8 +5804,8 @@ fun TvInstallerApp() {
                                             "После отката ожидался versionCode ${previous.versionCode}, получен $restoredCode."
                                         }
                                         val restoredSigner = remoteInstalledApkSignerSha256(context, adb, previous.module.packageName)
-                                        require(restoredSigner.equals(previous.module.signerSha256, true)) {
-                                            "После отката подпись ${previous.module.packageName} не совпала с закреплённым сертификатом."
+                                        require(previous.signerSha256 != null && restoredSigner.equals(previous.signerSha256, true)) {
+                                            "После отката подпись ${previous.module.packageName} не совпала с сертификатом исходной версии."
                                         }
                                         ensurePackageInstalledForMainUser(adb, previous.module.packageName)
                                     }
@@ -5645,13 +5816,16 @@ fun TvInstallerApp() {
                             var recoveryNote = ""
                             if (rollbackErrors.isNotEmpty()) {
                                 val recoveryDir = File(context.filesDir, "cleanyourtv-recovery-${System.currentTimeMillis()}")
-                                val preserved = rollbackDir.renameTo(recoveryDir) ||
-                                    runCatching { rollbackDir.copyRecursively(recoveryDir, overwrite = false); true }.getOrDefault(false)
+                                val backupFiles = previousStates.mapNotNull { it.backupApk }
+                                val preserved = preserveRecoveryApks(rollbackDir, recoveryDir, backupFiles)
                                 if (preserved) {
-                                    recoveryNote = " Резервные APK сохранены в ${recoveryDir.absolutePath} для ручного восстановления."
+                                    recoveryNote = " Резервные APK сохранены и проверены по размеру и SHA-256 в ${recoveryDir.absolutePath} для ручного восстановления."
+                                } else if (backupFiles.isEmpty()) {
+                                    recoveryNote = " Исходных APK для восстановления не было; повторить неудачное удаление нового пакета можно вручную."
                                 } else {
-                                    keepRollbackFiles = true
-                                    recoveryNote = " Не удалось перенести резервные APK в постоянную папку; они оставлены в ${rollbackDir.absolutePath}."
+                                    keepRollbackFiles = rollbackDir.exists()
+                                    val retainedDir = if (rollbackDir.exists()) rollbackDir else recoveryDir
+                                    recoveryNote = " Не удалось подтвердить сохранность резервных APK по размеру и SHA-256. Папка с оставшимися файлами: ${retainedDir.absolutePath}; проверь их перед восстановлением."
                                 }
                             }
                             throw Exception(
@@ -5666,6 +5840,36 @@ fun TvInstallerApp() {
                     }
 
                 }
+            }, { result ->
+                // A failed rollback may have preserved recovery APKs. Refresh the
+                // recovery inventory immediately so the user can export or restore them.
+                recoveryApks = listRecoveryApks(context)
+                if (pendingLauncherInstallHistoryUpdate) {
+                    val identity = maintenanceDeviceIdentityForLauncher
+                    if (identity != null) {
+                        val installFailed = result.startsWith("Ошибка:")
+                        val outcome = if (installFailed) {
+                            "Ошибка установки/проверки: ${result.removePrefix("Ошибка:").trim()}"
+                        } else {
+                            "Launcher и Curtain установлены и проверены; переключение Home ожидает подтверждения"
+                        }
+                        automationReport = automationReport +
+                            "\n\nРЕЗУЛЬТАТ УСТАНОВКИ CLEAN YOUR TV LAUNCHER / CURTAIN\n" + outcome
+                        if (updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                            maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                        } else {
+                            status = "$result\n⚠ Не удалось записать результат установки в историю обслуживания."
+                        }
+                        if (!installFailed) {
+                            pendingMaintenanceHomeHandover = true
+                            pendingLauncherHandover = true
+                            // The confirmation dialog is hosted in the modules section.
+                            // Navigate there so the one-button flow cannot leave the prompt hidden.
+                            activeSection = "modules"
+                        }
+                    }
+                    pendingLauncherInstallHistoryUpdate = false
+                }
             })
         }
     }
@@ -5674,6 +5878,7 @@ fun TvInstallerApp() {
         if (installLauncherAfterMaintenance && maintenanceReadyToInstallLauncher && !busy) {
             installLauncherAfterMaintenance = false
             maintenanceReadyToInstallLauncher = false
+            pendingLauncherInstallHistoryUpdate = maintenanceDeviceIdentityForLauncher != null
             installCleanYourTvModules()
         }
     }
@@ -6535,7 +6740,14 @@ fun TvInstallerApp() {
                                             ip = device.ip
                                             port = device.port.toString()
                                             discoveredDevices = emptyList()
-                                            status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
+                                            if (pendingMaintenanceAfterDeviceSelection) {
+                                                pendingMaintenanceAfterDeviceSelection = false
+                                                activeSection = null
+                                                status = "Выбрано ${device.name} (${device.ip}:${device.port}). Продолжаю обслуживание…"
+                                                runAutomaticTvMaintenance()
+                                            } else {
+                                                status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
+                                            }
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
@@ -6820,23 +7032,75 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             }
                             if (pendingLauncherHandover) {
                                 AlertDialog(
-                                    onDismissRequest = { pendingLauncherHandover = false },
+                                    onDismissRequest = {
+                                        pendingLauncherHandover = false
+                                        if (pendingMaintenanceHomeHandover) {
+                                            val identity = maintenanceDeviceIdentityForLauncher
+                                            val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
+                                            if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                            } else {
+                                                status = "Переключение Home отменено, но результат не удалось записать в историю обслуживания."
+                                            }
+                                            automationReport = automationReport +
+                                                "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                            pendingMaintenanceHomeHandover = false
+                                        }
+                                    },
                                     title = { Text("Переключить главный экран?") },
                                     text = { Text("Сначала приложение проверит запуск Clean Your TV Launcher. Затем сохранит компонент штатного Home, отключит только распознанный пакет штатного Launcher и проверит, что Android действительно назначил новый экран. При ошибке будет предпринята попытка автоматического отката. Продолжить?") },
                                     confirmButton = {
                                         TextButton(enabled = !busy, onClick = {
                                             pendingLauncherHandover = false
+                                            val maintenanceHandover = pendingMaintenanceHomeHandover
                                             val host = ip.trim(); val p = port.toIntOrNull()
-                                            if (host.isBlank() || p == null || p !in 1..65535) status = "Укажи IP и порт ADB"
-                                            else runTask({ connectWithRetry(context, host, p) { adb ->
+                                            if (host.isBlank() || p == null || p !in 1..65535) {
+                                                status = "Укажи IP и порт ADB"
+                                                if (maintenanceHandover) {
+                                                    val identity = maintenanceDeviceIdentityForLauncher
+                                                    val outcome = "Ошибка переключения Home: не указан корректный адрес ADB"
+                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    } else {
+                                                        status = "Не удалось записать ошибку переключения Home в историю обслуживания."
+                                                    }
+                                                    automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                                    pendingMaintenanceHomeHandover = false
+                                                }
+                                            } else runTask({ connectWithRetry(context, host, p) { adb ->
                                                 handOverToCleanYourTvLauncher(context, adb)
                                             } }, { result ->
                                                 hasLauncherHandover = settings.getString("launcher_handover_stock_package", null) != null
+                                                if (maintenanceHandover) {
+                                                    val identity = maintenanceDeviceIdentityForLauncher
+                                                    val outcome = maintenanceHomeHandoverHistoryOutcome(result)
+                                                    if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                        maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                    } else if (identity != null) {
+                                                        status = "$result\n⚠ Не удалось записать результат переключения Home в историю обслуживания."
+                                                    }
+                                                    automationReport = automationReport + "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                                    pendingMaintenanceHomeHandover = false
+                                                }
                                             })
                                         }) { Text("Проверить и переключить") }
                                     },
                                     dismissButton = {
-                                        TextButton(onClick = { pendingLauncherHandover = false }) { Text("Отмена") }
+                                        TextButton(onClick = {
+                                            pendingLauncherHandover = false
+                                            if (pendingMaintenanceHomeHandover) {
+                                                val identity = maintenanceDeviceIdentityForLauncher
+                                                val outcome = "Launcher и Curtain установлены и проверены; переключение Home отменено пользователем"
+                                                if (identity != null && updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
+                                                    maintenanceRunHistory = loadMaintenanceRunHistory(context)
+                                                } else {
+                                                    status = "Переключение Home отменено, но результат не удалось записать в историю обслуживания."
+                                                }
+                                                automationReport = automationReport +
+                                                    "\n\nРЕЗУЛЬТАТ ПЕРЕКЛЮЧЕНИЯ HOME\n" + outcome
+                                                pendingMaintenanceHomeHandover = false
+                                            }
+                                        }) { Text("Отмена") }
                                     }
                                 )
                             }
@@ -8920,12 +9184,16 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             val cleanupVerified =
                                                 TvAutomationEngine.cleanupResultAllowsLauncherInstall(result)
                                             if (installLauncherAfterMaintenance) {
-                                                if (cleanupVerified) {
+                                                if (TvAutomationEngine.combinedLauncherFlowAllowsInstall(maintenanceHistorySavedForCurrentRun, result)) {
                                                     maintenanceReadyToInstallLauncher = true
                                                 } else {
                                                     installLauncherAfterMaintenance = false
                                                     maintenanceReadyToInstallLauncher = false
-                                                    status = "$result\nLauncher не установлен: этап очистки не завершился успешно."
+                                                    status = if (!maintenanceHistorySavedForCurrentRun && cleanupVerified) {
+                                                        "$result\nLauncher не установлен: исходная диагностика не сохранена в истории обслуживания."
+                                                    } else {
+                                                        "$result\nLauncher не установлен: этап очистки не завершился успешно."
+                                                    }
                                                 }
                                             }
                                         })
@@ -9148,6 +9416,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
                                             Text("Пакетные операции: ${entry.cleanupOutcome}", color = TextMain, fontSize = 10.sp)
+                                            Text("Clean Your TV Launcher / Curtain: ${entry.launcherInstallOutcome}", color = TextMain, fontSize = 10.sp)
                                             if (entry.changedPackages.isNotEmpty()) Text("Изменено: ${entry.changedPackages.joinToString()}", color = TextMuted, fontSize = 10.sp)
 
                                             if (entry.warningsBefore.isNotEmpty()) Text("До обслуживания: ${entry.warningsBefore.joinToString(" · ")}", color = Color(0xFFFFD98A), fontSize = 10.sp)

@@ -327,7 +327,11 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
 
     /** Only a verified successful cleanup result may advance the combined Launcher flow. */
     internal fun cleanupResultAllowsLauncherInstall(result: String): Boolean {
-        if (result.startsWith("Очистка кэша выполнена:")) return true
+        if (result.startsWith("Очистка кэша выполнена:")) {
+            return result.contains("Повторная оценка ресурсов:") &&
+                !result.contains("не удалось сохранить", ignoreCase = true) &&
+                !result.contains("не записаны", ignoreCase = true)
+        }
         val match = Regex(
             """Отключено:\s*(\d+)\s+из\s+(\d+)\.\s*Ошибок:\s*0(?:\s|$)"""
         ).find(result) ?: return false
@@ -335,6 +339,12 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         val planned = match.groupValues[2].toIntOrNull() ?: return false
         return disabled == planned
     }
+
+    /** The combined flow also requires the initial diagnostic history to be durable. */
+    internal fun combinedLauncherFlowAllowsInstall(
+        diagnosticHistorySaved: Boolean,
+        cleanupResult: String
+    ): Boolean = diagnosticHistorySaved && cleanupResultAllowsLauncherInstall(cleanupResult)
 
     internal data class Plan(
         val detectedCount: Int,
