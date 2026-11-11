@@ -16,9 +16,11 @@ android {
         versionName = "0.9.137"
     }
 
+    val releaseSigningStore = System.getenv("SIGNING_STORE_FILE")?.let { file(it) }
+
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("SIGNING_STORE_FILE") ?: "signing.jks")
+            storeFile = releaseSigningStore ?: file("signing.jks")
             storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
             keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: "tvapk"
             keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
@@ -27,7 +29,11 @@ android {
 
     buildTypes {
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
+            // PR builds without secrets use the standard debug key.
+            // Main/release builds use the existing production key when supplied.
+            if (releaseSigningStore?.isFile == true) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
