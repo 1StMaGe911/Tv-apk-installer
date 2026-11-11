@@ -7624,9 +7624,19 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     tvName = device.name
                                     ip = device.ip
                                     port = device.port.toString()
-                                    status = "Выбран ${device.name}"
+                                    val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
+                                    val restoreTlsPort = device.isTlsConnect &&
+                                        isSameNumericIpAddress(pairedHost.orEmpty(), device.ip)
+                                    settings.edit()
+                                        .putInt("adb_tls_connect_port", if (restoreTlsPort) device.port else 0)
+                                        .putString("ip", device.ip)
+                                        .putString("port", device.port.toString())
+                                        .apply()
+                                    status = "Выбран ${device.name}" +
+                                        if (restoreTlsPort) " (TLS ADB)" else " (обычный ADB)"
                                 }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("${device.name} • ${device.ip}:${device.port}")
+                                    Text("${device.name} • ${device.ip}:${device.port}" +
+                                        if (device.isTlsConnect) " · TLS" else "")
                                 }
                             }
                         }
