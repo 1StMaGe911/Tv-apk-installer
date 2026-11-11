@@ -1010,7 +1010,13 @@ class TvAutomationEngineTest {
             "Отключено: 0 из 0. Ошибок: 0\nИтоговая проверка на ТВ: 0 из 0"
         ))
         assertTrue(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
-            "Очистка кэша выполнена: удалено 12 МБ"
+            "Очистка кэша выполнена: удалено 12 МБ\nПовторная оценка ресурсов: состояние нормальное"
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Очистка кэша выполнена: удалено 12 МБ\nПовторная диагностика недоступна; показатели после очистки не записаны."
+        ))
+        assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
+            "Очистка кэша выполнена: удалено 12 МБ\nПовторная оценка ресурсов: состояние нормальное\n⚠ Не удалось сохранить результат в истории обслуживания."
         ))
         assertFalse(TvAutomationEngine.cleanupResultAllowsLauncherInstall(
             "Отключено: 3 из 4. Ошибок: 0\nИтоговая проверка на ТВ: 3 из 4"
