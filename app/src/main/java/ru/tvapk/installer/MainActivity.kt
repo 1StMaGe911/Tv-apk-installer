@@ -3852,16 +3852,14 @@ private fun setAutoStartReceiverEnabled(adb: Dadb, component: String, enabled: B
 }
 
 private fun readDisabledUserPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -3 -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    retryTvReadOnly {
+        PackageListParser.parse(shellText(adb, "pm list packages -3 -d"))
+    }
 
 private fun readDisabledPackages(adb: Dadb): Set<String> =
-    readOnlyShellText(adb, "pm list packages -d").lineSequence()
-        .map { it.removePrefix("package:").trim() }
-        .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .toSet()
+    retryTvReadOnly {
+        PackageListParser.parse(shellText(adb, "pm list packages -d"))
+    }
 
 /**
  * Executes a package state change and verifies the resulting state against Package Manager.
