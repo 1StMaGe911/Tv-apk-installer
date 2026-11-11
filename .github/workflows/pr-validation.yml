@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   test:
+    name: Модульные тесты
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -28,8 +29,35 @@ jobs:
           cache-disabled: false
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
-      - name: Выполнить модульные тесты и компиляцию приложения
-        run: gradle check :app:assembleFullDebug --no-daemon
+      - name: Выполнить модульные тесты
+        run: gradle check --no-daemon
+
+  build:
+    name: Сборка и публикация APK
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Установить Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: false
+      - name: Настроить исходники Clean Your TV
+        run: python3 scripts/prepare-cleanyourtv-integration.py
+      - name: Собрать APK
+        run: gradle :app:assembleFullDebug --no-daemon
+      - name: Проверить APK
+        run: test -s vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
       - name: Сохранить собранный APK
         uses: actions/upload-artifact@v4
         with:
