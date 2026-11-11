@@ -1055,7 +1055,7 @@ private fun connectWithRetry(
                 val pairedHost = prefs(context).getString("adb_tls_paired_host", null)
                 val pairedConnectPort = prefs(context).getInt("adb_tls_connect_port", 0)
                 if (pairedHost != null &&
-                    pairedHost.equals(host.trim(), ignoreCase = true) &&
+                    isSameNumericIpAddress(pairedHost, host.trim()) &&
                     pairedConnectPort == port
                 ) {
                     // The selected endpoint is the TLS-connect port advertised separately
