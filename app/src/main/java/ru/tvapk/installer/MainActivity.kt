@@ -5677,6 +5677,10 @@ fun TvInstallerApp() {
                     }
 
                 }
+            }, {
+                // A failed rollback may have preserved recovery APKs. Refresh the
+                // recovery inventory immediately so the user can export or restore them.
+                recoveryApks = listRecoveryApks(context)
             })
         }
     }
