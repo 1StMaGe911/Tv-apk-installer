@@ -6690,8 +6690,16 @@ fun TvInstallerApp() {
                                     status = "Проверь IP и порт"
                                 } else {
                                     settings.edit().putString("ip", host).putString("port", p.toString()).apply()
+                                    val useTls = shouldUseTlsAdbTransport(
+                                        prefs(context).getString("adb_tls_paired_host", null),
+                                        prefs(context).getInt("adb_tls_connect_port", 0),
+                                        host,
+                                        p
+                                    )
                                     runTask(action = {
-                                        connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
+                                        connectWithRetry(context, host, p) {
+                                            (if (useTls) "TLS ADB подключён: " else "ADB подключён: ") + "$host:$p"
+                                        }
                                     }, onFinished = { result ->
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
