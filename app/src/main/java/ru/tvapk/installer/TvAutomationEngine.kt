@@ -535,10 +535,16 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         // Parse from the right: some Android builds use long filesystem names or
         // slightly different headers. The mount point and numeric columns remain stable.
         val rows = output.lineSequence().map { it.trim().split(Regex("""\s+""")) }
-            .filter { it.lastOrNull() == "/data" }.toList()
-        // Multiple /data rows are ambiguous; never guess which mount is authoritative.
-        if (rows.size != 1) return null
-        val columns = rows.single()
+            .filter { columns ->
+                val mountPoint = columns.lastOrNull().orEmpty()
+                mountPoint == "/data" || mountPoint.startsWith("/data/")
+            }.toList()
+        // Prefer the exact /data mount. Some Android builds report the queried
+        // path as a bind mount such as /data/user/0; accept it only when unique.
+        val exactRows = rows.filter { it.lastOrNull() == "/data" }
+        val selectedRows = if (exactRows.isNotEmpty()) exactRows else rows
+        if (selectedRows.size != 1) return null
+        val columns = selectedRows.single()
         if (columns.size < 5) return null
 
         val hasPercent = columns.getOrNull(columns.size - 2)?.endsWith("%") == true
@@ -596,7 +602,7 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
             ((memoryAvailable.toDouble() / memoryTotal.toDouble()) * 100.0).toInt().coerceIn(0, 100)
         } else null
 
-        val dataUsedPercent = Regex("""(?m)^.*\s(\d{1,3})%\s+/data\s*$""")
+        val dataUsedPercent = Regex("""(?m)^.*\s(\d{1,3})%\s+/data(?:/\S+)?\s*$""")
             .find(diagnostics)?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?.takeIf { it in 0..100 }
 

@@ -648,6 +648,28 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun parsesDataStorageRowMountedAtDataUserZero() {
+        val result = TvAutomationEngine.parseDataStorageSnapshot(
+            "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+                "/dev/block/dm-27 21523300 435696 20940148 3% /data/user/0"
+        )
+        assertEquals(21523300L * 1024L, result?.totalBytes)
+        assertEquals(435696L * 1024L, result?.usedBytes)
+        assertEquals(20940148L * 1024L, result?.availableBytes)
+        assertEquals(3, result?.usedPercent)
+    }
+
+    @Test
+    fun prefersExactDataMountWhenUserBindMountIsAlsoPresent() {
+        val result = TvAutomationEngine.parseDataStorageSnapshot(
+            "/dev/block/dm-1 1000 700 300 70% /data\n" +
+                "/dev/block/dm-2 2000 1500 500 75% /data/user/0"
+        )
+        assertEquals(1000L * 1024L, result?.totalBytes)
+        assertEquals(70, result?.usedPercent)
+    }
+
+    @Test
     fun parsesDataStorageRowWhenUsePercentColumnIsAbsent() {
         val result = TvAutomationEngine.parseDataStorageSnapshot(
             "/dev/block/dm-1 1000 750 250 /data"
@@ -746,7 +768,7 @@ class TvAutomationEngineTest {
 
             ХРАНИЛИЩЕ /DATA
             Filesystem      Size  Used Avail Use% Mounted on
-            /dev/block/dm-1  16G   15G  1G   94% /data
+            /dev/block/dm-1  16G   15G  1G   94% /data/user/0
 
             ВРЕМЯ РАБОТЫ
             2592000 секунд
