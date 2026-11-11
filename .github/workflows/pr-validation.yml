@@ -33,7 +33,7 @@ jobs:
         run: gradle check --no-daemon
 
   build:
-    name: Сборка и публикация APK
+    name: Сборка именно TV APK Installer
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -54,14 +54,14 @@ jobs:
           cache-disabled: false
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
-      - name: Собрать APK
-        run: gradle :app:assembleFullDebug --no-daemon
+      - name: Собрать TV APK Installer
+        run: gradle :app:assembleDebug --no-daemon
       - name: Проверить APK
-        run: test -s vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
-      - name: Сохранить собранный APK
+        run: test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
           name: TV-APK-Installer-0.9.137-debug
-          path: vendor/cleanyourtv-app/app/build/outputs/apk/full/debug/app-full-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
