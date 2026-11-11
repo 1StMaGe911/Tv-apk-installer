@@ -4445,6 +4445,7 @@ fun TvInstallerApp() {
     }
     var tvName by remember { mutableStateOf("") }
     var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var pendingMaintenanceAfterDeviceSelection by remember { mutableStateOf(false) }
 
     var status by remember { mutableStateOf("Не подключено") }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -4814,20 +4815,28 @@ fun TvInstallerApp() {
                 }.getOrElse {
                     val found = discoverAdbDevices(context)
                     TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
-                        activity.runOnUiThread { discoveredDevices = found }
+                        activity.runOnUiThread {
+                            discoveredDevices = found
+                            pendingMaintenanceAfterDeviceSelection = found.size > 1
+                            if (found.size > 1) activeSection = "wifi"
+                        }
                         throw Exception(
                             if (found.isEmpty()) "Сохранённый адрес ТВ недоступен, а автопоиск не нашёл устройство. Включи ADB по сети."
-                            else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                            else "Найдено несколько ТВ. Выбери нужное устройство по IP — обслуживание продолжится автоматически."
                         )
                     }
                 }
             } else {
                 val found = discoverAdbDevices(context)
                 TvAutomationEngine.uniqueDiscoveredDevice(found) ?: run {
-                    activity.runOnUiThread { discoveredDevices = found }
+                    activity.runOnUiThread {
+                        discoveredDevices = found
+                        pendingMaintenanceAfterDeviceSelection = found.size > 1
+                        if (found.size > 1) activeSection = "wifi"
+                    }
                     throw Exception(
                         if (found.isEmpty()) "Автопоиск не нашёл Android TV. Включи ADB по сети."
-                        else "Найдено несколько ТВ. Выбери нужное устройство один раз в разделе подключения."
+                        else "Найдено несколько ТВ. Выбери нужное устройство по IP — обслуживание продолжится автоматически."
                     )
                 }
             }
@@ -5008,7 +5017,7 @@ fun TvInstallerApp() {
                 report
             }
         }, onFinished = { result ->
-            if (result.startsWith("Ошибка:")) {
+            if (result.startsWith("Ошибка:") && !pendingMaintenanceAfterDeviceSelection) {
                 installLauncherAfterMaintenance = false
                 maintenanceReadyToInstallLauncher = false
             }
@@ -6535,7 +6544,14 @@ fun TvInstallerApp() {
                                             ip = device.ip
                                             port = device.port.toString()
                                             discoveredDevices = emptyList()
-                                            status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
+                                            if (pendingMaintenanceAfterDeviceSelection) {
+                                                pendingMaintenanceAfterDeviceSelection = false
+                                                activeSection = null
+                                                status = "Выбрано ${device.name} (${device.ip}:${device.port}). Продолжаю обслуживание…"
+                                                runAutomaticTvMaintenance()
+                                            } else {
+                                                status = "Выбрано устройство ${device.name}. Нажми «Подключиться»."
+                                            }
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
