@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     // Use upstream's tested Android application convention (toolchain, Compose, signing and APK checks).
     id("cleanyourtv.android.app")
