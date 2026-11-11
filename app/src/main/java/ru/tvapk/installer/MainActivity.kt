@@ -5832,7 +5832,7 @@ fun TvInstallerApp() {
                         if (updateLatestMaintenanceLauncherHistory(context, identity, outcome)) {
                             maintenanceRunHistory = loadMaintenanceRunHistory(context)
                         } else {
-                            status = "$result\\n⚠ Не удалось записать результат установки в историю обслуживания."
+                            status = "$result\n⚠ Не удалось записать результат установки в историю обслуживания."
                         }
                     }
                     pendingLauncherInstallHistoryUpdate = false
