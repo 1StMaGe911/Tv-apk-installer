@@ -133,12 +133,16 @@ internal fun discoverAdbPairingEndpoints(
     )
 }
 
+internal fun isSameNumericIpAddress(first: String, second: String): Boolean {
+    val canonicalFirst = canonicalAddress(first) ?: return false
+    return canonicalFirst == canonicalAddress(second)
+}
+
 internal fun matchingAdbPairingEndpoints(
     host: String,
     endpoints: List<AdbPairingEndpoint>
 ): List<AdbPairingEndpoint> {
-    val expected = canonicalAddress(host) ?: return emptyList()
-    return endpoints.filter { canonicalAddress(it.host) == expected }
+    return endpoints.filter { isSameNumericIpAddress(host, it.host) }
         .distinctBy { it.port }
         .sortedBy { it.port }
 }
