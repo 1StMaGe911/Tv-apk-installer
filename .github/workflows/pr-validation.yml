@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
@@ -29,4 +29,4 @@ jobs:
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Выполнить модульные тесты и компиляцию приложения
-        run: gradle :app:testFullDebugUnitTest --no-daemon
+        run: gradle check :app:assembleFullDebug --no-daemon
