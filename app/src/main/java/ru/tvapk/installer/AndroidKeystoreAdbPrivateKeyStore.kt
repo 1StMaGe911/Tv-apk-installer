@@ -24,8 +24,12 @@ internal class AndroidKeystoreAdbPrivateKeyStore(context: Context) : KadbPrivate
 
     @Synchronized
     override fun readPrivateKeyPem(): ByteArray? {
-        val encoded = preferences.getString(ENCRYPTED_KEY, null) ?: return null
-        val iv = preferences.getString(INITIALIZATION_VECTOR, null) ?: return null
+        val encoded = preferences.getString(ENCRYPTED_KEY, null)
+        val iv = preferences.getString(INITIALIZATION_VECTOR, null)
+        if (encoded == null && iv == null) return null
+        check(encoded != null && iv != null) {
+            "Saved ADB identity is incomplete; refusing to generate a new identity"
+        }
         return runCatching {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(TAG_LENGTH_BITS, Base64.decode(iv, Base64.NO_WRAP)))
