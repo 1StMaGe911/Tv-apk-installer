@@ -22,6 +22,16 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun packageListParserCanDistinguishExactPackageFromSubstringMatches() {
+        val packages = PackageListParser.parse(
+            "package:com.gathin.tvhome\npackage:com.gathin.tvhome.beta"
+        )
+        assertTrue("com.gathin.tvhome" in packages)
+        assertTrue("com.gathin.tvhome.beta" in packages)
+        assertFalse("com.gathin.tvhome.extra" in packages)
+    }
+
+    @Test
     fun exactModelProfileIsRejectedWhenKnownManufacturerConflicts() {
         assertTrue(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("Sony Corporation", "BRAVIA")))
         assertFalse(TvAutomationEngine.isProfileBrandCompatible("Sony", listOf("TCL", "FFALCON")))
