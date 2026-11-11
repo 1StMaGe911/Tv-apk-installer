@@ -5123,7 +5123,7 @@ fun TvInstallerApp() {
                     maintenanceDeviceIdentityForLauncher = deviceIdentityForHistory
                     maintenanceHistorySavedForCurrentRun = historySaved
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                                                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
+                                                maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                     pendingCleanupAutoExecute = disableSupported &&
                         TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
