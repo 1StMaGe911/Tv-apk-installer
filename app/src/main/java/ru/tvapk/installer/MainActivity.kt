@@ -3174,8 +3174,8 @@ internal fun preserveRecoveryApks(
         }.getOrDefault(false)
         if (!copied) return false
     }
-    val targetRoot = runCatching { recoveryDir.canonicalFile }.getOrNull() ?: return false
-    return fingerprints.all { (name, expectedSize, expectedDigest) ->
+    val targetRoot = runCatching { recoveryDir.canonicalFile }.getOrNull()
+    val verified = targetRoot != null && fingerprints.all { (name, expectedSize, expectedDigest) ->
         val target = File(targetRoot, name)
         target.parentFile == targetRoot && target.isFile &&
             target.length() == expectedSize &&
@@ -3184,6 +3184,11 @@ internal fun preserveRecoveryApks(
                     .joinToString("") { "%02x".format(it) }
             }.getOrNull()?.equals(expectedDigest, true) == true
     }
+    if (!verified && moved) {
+        // Do not strand an unverified moved directory outside the caller's retained rollback path.
+        recoveryDir.renameTo(sourceDir)
+    }
+    return verified
 }
 
 private const val CLEAN_YOUR_TV_RECOVERY_SIGNER =
