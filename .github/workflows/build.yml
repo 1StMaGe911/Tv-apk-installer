@@ -120,8 +120,10 @@ jobs:
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          aapt dump badging "$APK" | grep -F "package: name='ru.tvapk.installer'"
-          if aapt dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"; then
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer'"
+          if "$AAPT" dump badging "$APK" | grep -F "package: name='ru.tvapk.installer.preview'"; then
             echo "Preview package ID must never be published as a production release."
             exit 1
           fi
