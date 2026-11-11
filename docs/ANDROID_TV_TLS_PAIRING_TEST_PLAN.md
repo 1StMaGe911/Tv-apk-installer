@@ -56,3 +56,16 @@ Expected: the app reuses its Android Keystore-backed ADB identity. It must not a
 ## Record results
 
 Record the TV manufacturer/model, Android version, app build commit, network type (IPv4/IPv6), and pass/fail for each section. Redact IP addresses, pairing codes, serial numbers, and other identifying details before sharing logs.
+
+## Android 17 local-network permission upgrade gate
+
+The current app targets Android 15 (API 35); compiling against API 37 does not by itself enable Android 17 local-network restrictions. Android 17 enforces the new local-network permission for apps that target API 37 or higher.
+
+Before raising `targetSdk` to 37 or higher:
+
+- Declare `android.permission.ACCESS_LOCAL_NETWORK` in the manifest.
+- Request the permission at runtime before broad mDNS/NSD discovery or direct ADB connections to local-network addresses.
+- Handle denial and later revocation without reporting a false connection success.
+- Evaluate the Android 17 NSD system picker (`DiscoveryRequest.FLAG_SHOW_PICKER`) for user-selected discovery where it can replace broad network scanning.
+
+Do not add or request `ACCESS_LOCAL_NETWORK` while targeting API 36 or lower; Android's current guidance says those targets retain implicit local-network access through `INTERNET`. Re-check the platform guidance when the target SDK is upgraded.
