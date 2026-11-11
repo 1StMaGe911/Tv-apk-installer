@@ -60,4 +60,27 @@ class AdbPairingDiscoveryTest {
         )
     }
 
+    @Test
+    fun sameNumericIpAddressAcceptsEquivalentIpv6Spellings() {
+        assertTrue(
+            isSameNumericIpAddress(
+                "2001:0db8:0:0:0:0:0:40",
+                "2001:db8::40"
+            )
+        )
+    }
+
+    @Test
+    fun sameNumericIpAddressRejectsHostnamesAndInvalidIpv6Zones() {
+        assertTrue(!isSameNumericIpAddress("tv.example.invalid", "tv.example.invalid"))
+        assertTrue(!isSameNumericIpAddress("fe80::40%wlan0%extra", "fe80::40%wlan0"))
+        assertTrue(!isSameNumericIpAddress("fe80::40%bad/zone", "fe80::40%bad/zone"))
+    }
+
+    @Test
+    fun sameNumericIpAddressAcceptsEquivalentIpv4Addresses() {
+        assertTrue(isSameNumericIpAddress("192.168.1.40", "192.168.1.40"))
+        assertTrue(!isSameNumericIpAddress("192.168.1.40", "192.168.1.41"))
+    }
+
 }
