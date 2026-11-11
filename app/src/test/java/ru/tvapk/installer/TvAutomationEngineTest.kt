@@ -1116,6 +1116,17 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun packageListParserAcceptsAndroidFrameworkPackage() {
+        assertEquals(
+            setOf("android", "com.android.settings"),
+            TvAutomationEngine.parsePackageListOutput(
+                "package:android\npackage:com.android.settings\n",
+                allowEmpty = false
+            )
+        )
+    }
+
+    @Test
     fun packageListParserRequiresInstalledSnapshotToBeNonEmpty() {
         assertTrue(runCatching {
             TvAutomationEngine.parsePackageListOutput("", allowEmpty = false)
