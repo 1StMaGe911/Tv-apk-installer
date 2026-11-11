@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Определить версию приложения
         id: version
