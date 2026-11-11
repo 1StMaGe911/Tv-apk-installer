@@ -1,41 +1,28 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
+    // Use upstream's tested Android application convention (toolchain, Compose, signing and APK checks).
+    id("cleanyourtv.android.app")
     id("cleanyourtv.serialization")
 }
 
 android {
-    namespace = "ru.tvapk.installer"
-    compileSdk = 35
-
     defaultConfig {
-        applicationId = "ru.tvapk.installer"
-        minSdk = 26
-        targetSdk = 35
         versionCode = 188
         versionName = "0.9.137"
     }
 
     flavorDimensions += "store"
     productFlavors {
-        create("full") { dimension = "store" }
+        create("full") {
+            dimension = "store"
+            isDefault = true
+        }
+        create("play") {
+            dimension = "store"
+        }
     }
 
-    val releaseSigningStore = System.getenv("SIGNING_STORE_FILE")?.let { file(it) }
-    signingConfigs {
-        create("release") {
-            storeFile = releaseSigningStore ?: file("signing.jks")
-            storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: "tvapk"
-            keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
-        }
-    }
-    buildTypes {
-        getByName("debug") {
-            if (releaseSigningStore?.isFile == true) signingConfig = signingConfigs.getByName("release")
-        }
-    }
+    testOptions { unitTests { isIncludeAndroidResources = true } }
+    lint { textReport = true }
 
     sourceSets {
         getByName("main") {
@@ -47,30 +34,17 @@ android {
             java.srcDir("../vendor/cleanyourtv-app/app/src/full/kotlin")
             res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
         }
+        getByName("play") {
+            java.srcDir("../vendor/cleanyourtv-app/app/src/play/kotlin")
+            res.srcDir("../vendor/cleanyourtv-app/app/src/play/res")
+        }
         getByName("debug") {
             manifest.srcFile("../vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
         }
     }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions { jvmTarget = "17" }
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
 }
 
 dependencies {
-    // Existing TV APK Installer tooling remains available in the same application.
-    implementation("dev.mobile:dadb:2.0.0")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
-    implementation("androidx.core:core:1.15.0")
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
-
-    // Clean Your TV application graph and complete feature set.
     implementation(project(":feature:connect"))
     implementation(project(":feature:setup"))
     implementation(project(":feature:manage"))
@@ -92,12 +66,7 @@ dependencies {
     implementation(project(":core:trust"))
     implementation(project(":core:registry"))
 
-    implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
@@ -106,7 +75,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.core)
     implementation(libs.kotlinx.coroutines.android)
 
-    debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(project(":testing:fixtures"))
     testImplementation(project(":testing:fake-adbd"))
     testImplementation(libs.robolectric)
@@ -114,4 +82,21 @@ dependencies {
     testImplementation(libs.junit4)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType("benchmark")) { variant ->
+        if (variant.productFlavors.contains("store" to "play")) variant.enable = false
+        variant.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = false
+    }
+}
+
+tasks.named("check") { dependsOn("lintPlayDebug") }
+tasks.withType<Test>().configureEach {
+    maxParallelForks = 1
+    maxHeapSize = "1280m"
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
