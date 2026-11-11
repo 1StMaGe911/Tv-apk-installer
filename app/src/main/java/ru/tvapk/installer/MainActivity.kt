@@ -5707,8 +5707,9 @@ fun TvInstallerApp() {
                                 } else if (backupFiles.isEmpty()) {
                                     recoveryNote = " Исходных APK для восстановления не было; повторить неудачное удаление нового пакета можно вручную."
                                 } else {
-                                    keepRollbackFiles = true
-                                    recoveryNote = " Не удалось подтвердить сохранность резервных APK по размеру и SHA-256. Исходные файлы оставлены в ${rollbackDir.absolutePath}; проверь их перед восстановлением."
+                                    keepRollbackFiles = rollbackDir.exists()
+                                    val retainedDir = if (rollbackDir.exists()) rollbackDir else recoveryDir
+                                    recoveryNote = " Не удалось подтвердить сохранность резервных APK по размеру и SHA-256. Папка с оставшимися файлами: ${retainedDir.absolutePath}; проверь их перед восстановлением."
                                 }
                             }
                             throw Exception(
