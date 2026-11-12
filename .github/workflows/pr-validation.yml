@@ -33,6 +33,8 @@ jobs:
           cache-disabled: false
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
+      - name: Добавить установку APK в Clean Your TV
+        run: python3 scripts/enable-apk-install.py
       - name: Выполнить модульные тесты
         run: gradle check --no-daemon
 
@@ -58,6 +60,8 @@ jobs:
           cache-disabled: false
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
+      - name: Добавить установку APK в Clean Your TV
+        run: python3 scripts/enable-apk-install.py
       - name: Собрать TV APK Installer
         run: gradle :app:assembleFullDebug --no-daemon
       - name: Проверить APK
