@@ -129,3 +129,5 @@ jobs:
           test "$LOCAL_SHA" = "$PUBLISHED_SHA"
           echo "Release $RELEASE_TAG contains the exact TV APK Installer APK."
           echo "SHA-256: $LOCAL_SHA"
+
+# CI trigger: validate Kotlin source registration and APK installer integration.
