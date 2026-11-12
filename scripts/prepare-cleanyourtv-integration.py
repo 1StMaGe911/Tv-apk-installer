@@ -17,8 +17,8 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
 
-replace_once(app_gradle, "versionCode = 30", "versionCode = 189")
-replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.138"')
+replace_once(app_gradle, "versionCode = 30", "versionCode = 190")
+replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.139"')
 store_source = upstream / "app" / "src" / "full" / "kotlin" / "tv" / "cleanyour" / "app" / "Store.kt"
 replace_once(store_source, "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/releases/latest", "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest")
 replace_once(store_source, "https://github.com/udhaykumarbala/cleanyourtv-app/releases.atom", "https://github.com/1StMaGe911/Tv-apk-installer/releases.atom")
@@ -160,4 +160,42 @@ replace_once(
     "        if (requestCode == AndroidCredentialGate.REQUEST_CONFIRM && (application as CytApplication).startupFailure == null) graph.credentialGate.onConfirmCredentialResult(resultCode == RESULT_OK)",
 )
 
-print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.138 (189).")
+# Render the proven installer UI before optional background setup. WorkManager can be
+# unavailable if a merged initializer is missing; that must not terminate the launcher.
+legacy_activity = root / "app" / "src" / "main" / "java" / "ru" / "tvapk" / "installer" / "MainActivity.kt"
+replace_once(
+    legacy_activity,
+    """        schedulePeriodicUpdateCheck(this)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        setContent {
+            TvInstallerApp()
+        }
+""",
+    """        // Draw the app first. Optional startup services must never prevent the UI from opening.
+        setContent {
+            TvInstallerApp()
+        }
+        try {
+            schedulePeriodicUpdateCheck(applicationContext)
+        } catch (failure: Exception) {
+            android.util.Log.e("TVAPKStartup", "Periodic update scheduling failed", failure)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            try {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            } catch (failure: Exception) {
+                android.util.Log.e("TVAPKStartup", "Notification permission request failed", failure)
+            }
+        }
+"""
+)
+print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
+
