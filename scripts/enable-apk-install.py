@@ -19,7 +19,7 @@ def replace_once(path: Path, old: str, new: str) -> None:
 app_root = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 manage_screens = upstream / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 
-replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen\\nimport ru.tvapk.installer.discoverAdbDevices")
+replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen\nimport ru.tvapk.installer.discoverAdbDevices")
 replace_once(app_root, "@Serializable data object LegacyInstaller : Dest", "@Serializable data object InstallApk : Dest")
 replace_once(app_root, '"legacyinstaller" -> Dest.LegacyInstaller', '"installapk" -> Dest.InstallApk')
 replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { ApkInstallerScreen(graph.tvs, graph.access, null, onBack = { go("back") }, discoverDevices = { withContext(Dispatchers.IO) { discoverAdbDevices(context) } }) }')
