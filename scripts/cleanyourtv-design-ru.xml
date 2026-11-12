@@ -337,4 +337,13 @@
     <string name="cyt_look_file_desc">Здесь находятся параметры внешнего вида, которые отправляются на телевизор. Полный файл также содержит список приложений на панели. Кнопка «Копировать» копирует весь файл.</string>
     <string name="cyt_look_not_here">В этом приложении нельзя настроить дополнительные ряды под панелью и скрытие приложений. Ряды можно настроить на телевизоре в параметрах лаунчера, но при следующей отправке настроек с телефона изменения будут заменены.</string>
     <string name="cyt_photo_after">Данные ещё не отправлены. Когда будете готовы, нажмите «Применить на телевизоре».</string>
+    <string name="cyt_tv_good_morning">Доброе утро</string>
+    <string name="cyt_tv_good_afternoon">Добрый день</string>
+    <string name="cyt_tv_good_evening">Добрый вечер</string>
+    <string name="cyt_tv_good_night">Доброй ночи</string>
+    <string name="cyt_tv_am">ДО ПОЛУДНЯ</string>
+    <string name="cyt_tv_pm">ПОСЛЕ ПОЛУДНЯ</string>
+    <string name="cyt_tv_inputs">Входы</string>
+    <string name="cyt_tv_wifi">Домашний Wi-Fi</string>
+    <string name="cyt_tv_settings">Настройки</string>
 </resources>
