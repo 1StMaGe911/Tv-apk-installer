@@ -26,6 +26,9 @@ replace_once(manage_screens,
     "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
     "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}) {")
 replace_once(manage_screens,
+    '                ListRow("TV APK Installer — дополнительные инструменты", subtitle = "ADB, очистка, резервные копии и управление лаунчером", onClick = onLegacyInstaller)',
+    '')
+replace_once(manage_screens,
     '        val others = state.cards.filter { it.id != tv?.id }',
     '        ListGroup(Modifier.padding(top = 12.dp)) {\n            ListRow("Установка APK", subtitle = "Установить выбранный APK по Wi-Fi или USB OTG", onClick = onInstallApk)\n        }\n        val others = state.cards.filter { it.id != tv?.id }')
 print("Clean Your TV: APK installation is now a standalone menu section.")
