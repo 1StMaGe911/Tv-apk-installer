@@ -89,11 +89,11 @@ private fun usbAdbKeyFile(context: Context): File {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ApkInstallerScreen(graph: AppGraph, tvIdValue: String, onBack: () -> Unit) {
+fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, tvIdValue: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val tvId = remember(tvIdValue) { TvId(tvIdValue) }
-    val tvs by graph.tvs.tvs.collectAsStateWithLifecycle()
+    val tvs by tvsRepository.tvs.collectAsStateWithLifecycle()
     val tv = tvs.firstOrNull { it.id == tvId }
 
     var mode by remember { mutableStateOf("wifi") }
@@ -125,7 +125,7 @@ fun ApkInstallerScreen(graph: AppGraph, tvIdValue: String, onBack: () -> Unit) {
                 val apk = prepareUserApk(context, picked)
                 prepared = apk
                 status = "Подключаемся к сохранённому телевизору…"
-                when (val access = graph.access.session(tvId)) {
+                when (val access = tvAccess.session(tvId)) {
                     is AccessResult.Ok -> {
                         status = "Устанавливаем ${apk.packageName} по Wi-Fi…"
                         when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
