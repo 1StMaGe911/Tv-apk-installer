@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Базовые строки приложения. Полная локализация экранов добавляется по модулям. -->
+    <string name="app_name">Очистка ТВ</string>
+    <string name="app_channel_setup_name">Настройка телевизора</string>
+    <string name="app_channel_setup_description">Показывает ход изменений на телевизоре и подсказывает, когда посмотреть на экран ТВ.</string>
+    <string name="app_restore_read_failed">Не удалось прочитать точку восстановления</string>
+
+    <!-- Экран приветствия -->
+    <string name="welcome_overline">Очистка ТВ</string>
+    <string name="welcome_title">Наведём порядок на телевизоре</string>
+    <string name="welcome_body">Отключите лишние элементы, сохраните нужные приложения и получите удобный главный экран. Всё можно будет вернуть обратно.</string>
+    <string name="welcome_looking">Ищем телевизоры в вашей сети Wi-Fi…</string>
+    <string name="welcome_start">Начать</string>
+    <string name="welcome_returning">Я уже настраивал телевизор</string>
+</resources>
