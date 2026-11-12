@@ -201,5 +201,11 @@ replace_once(
 import runpy
 runpy.run_path(str(root / "scripts" / "russian-localization.py"), run_name="__main__")
 
+# Supply the Russian resource overlay for the shared design system.
+import shutil
+design_ru = upstream / "ui" / "design" / "src" / "main" / "res" / "values-ru"
+design_ru.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(root / "scripts" / "cleanyourtv-design-ru.xml", design_ru / "strings.xml")
+
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
 
