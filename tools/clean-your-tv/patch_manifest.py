@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely move Android's launcher entry from WelcomeActivity to MainActivity."""
+"""Keep the original welcome screen as the launcher; do not bypass its setup flow."""
 import sys
 import xml.etree.ElementTree as ET
 
@@ -14,43 +14,22 @@ app = root.find("application")
 if app is None:
     raise SystemExit("Manifest has no <application> element")
 
-def activity_name(node):
-    return node.get(ANDROID + "name", "")
-
 activities = list(app.findall("activity")) + list(app.findall("activity-alias"))
-welcome = [n for n in activities if "WelcomeActivity" in activity_name(n)]
-main = [n for n in activities if activity_name(n).endswith("MainActivity")]
-
+welcome = [n for n in activities if "WelcomeActivity" in n.get(ANDROID + "name", "")]
 if not welcome:
-    raise SystemExit("WelcomeActivity was not found; refusing to change an unknown launcher")
-if not main:
-    raise SystemExit("MainActivity was not found; refusing to guess the target")
+    raise SystemExit("WelcomeActivity was not found; refusing to alter the launch flow")
 
-removed = 0
+has_launcher = False
 for node in welcome:
-    for filt in list(node.findall("intent-filter")):
+    for filt in node.findall("intent-filter"):
         actions = {x.get(ANDROID + "name") for x in filt.findall("action")}
         categories = {x.get(ANDROID + "name") for x in filt.findall("category")}
         if MAIN in actions and LAUNCHER in categories:
-            node.remove(filt)
-            removed += 1
+            has_launcher = True
 
-if removed == 0:
-    raise SystemExit("WelcomeActivity had no MAIN/LAUNCHER filter; refusing to produce an unverified build")
-
-target = main[0]
-has_launcher = False
-for filt in target.findall("intent-filter"):
-    actions = {x.get(ANDROID + "name") for x in filt.findall("action")}
-    categories = {x.get(ANDROID + "name") for x in filt.findall("category")}
-    if MAIN in actions and LAUNCHER in categories:
-        has_launcher = True
-        break
 if not has_launcher:
-    filt = ET.SubElement(target, "intent-filter")
-    ET.SubElement(filt, "action", {ANDROID + "name": MAIN})
-    ET.SubElement(filt, "category", {ANDROID + "name": LAUNCHER})
+    raise SystemExit("WelcomeActivity is not the original launcher; refusing to guess or rewrite launch flow")
 
 app.set(ANDROID + "label", "Clean Your TV")
 tree.write(path, encoding="utf-8", xml_declaration=True)
-print("Launcher moved from WelcomeActivity to MainActivity; label set to Clean Your TV.")
+print("Original WelcomeActivity launcher preserved; app label set to Clean Your TV.")
