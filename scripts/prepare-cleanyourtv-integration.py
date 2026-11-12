@@ -511,3 +511,147 @@ write_russian_strings(
     <string name="fetch_failure_try_again">Повторить</string>
 </resources>'''
 )
+
+
+write_russian_strings(
+    "app/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Очистка ТВ</string>
+    <string name="app_channel_setup_name">Настройка телевизора</string>
+    <string name="app_channel_setup_description">Показывает ход настройки телевизора с телефона и сообщает, когда нужно посмотреть на экран телевизора.</string>
+    <string name="app_restore_read_failed">Не удалось прочитать точку восстановления</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "ui/design/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cyt_back">Назад</string>
+    <string name="cyt_close">Закрыть</string>
+    <string name="cyt_help">Помощь</string>
+    <string name="cyt_step_counter">%1$d из %2$d</string>
+    <string name="cyt_step_counter_extra">%1$d из %2$d · %3$s</string>
+    <string name="cyt_status_connected">Подключено</string>
+    <string name="cyt_status_waiting">Ожидание</string>
+    <string name="cyt_status_working">Выполняется</string>
+    <string name="cyt_status_debugging_off">Отладка выключена</string>
+    <string name="cyt_status_offline">Не в сети</string>
+    <string name="cyt_pill_off">Выключено</string>
+    <string name="cyt_pill_kept">Оставлено</string>
+    <string name="cyt_action_keep">Оставить</string>
+    <string name="cyt_action_switch_off">Выключить</string>
+    <string name="cyt_why">Почему?</string>
+    <string name="cyt_close_group">Свернуть группу</string>
+    <plurals name="cyt_show_more">
+        <item quantity="one">Показать ещё %d</item>
+        <item quantity="few">Показать ещё %d</item>
+        <item quantity="many">Показать ещё %d</item>
+        <item quantity="other">Показать ещё %d</item>
+    </plurals>
+    <string name="cyt_group_count">%1$s · %2$d из %3$d</string>
+    <string name="cyt_count_of">%1$d из %2$d</string>
+    <string name="cyt_undo">Отменить</string>
+    <string name="cyt_obscured_hint">Другое приложение перекрывает экран, поэтому нажатие не сработало. Приостановите или закройте его и попробуйте снова.</string>
+    <string name="cyt_countdown_60">Осталась одна минута. Подтвердите действие или вернитесь назад.</string>
+    <string name="cyt_countdown_30">Осталось 30 секунд.</string>
+    <string name="cyt_countdown_10">Осталось 10 секунд.</string>
+    <string name="cyt_countdown_left">Осталось %1$s</string>
+    <plurals name="cyt_earlier_steps">
+        <item quantity="one">%d предыдущий шаг</item>
+        <item quantity="few">%d предыдущих шага</item>
+        <item quantity="many">%d предыдущих шагов</item>
+        <item quantity="other">%d предыдущего шага</item>
+    </plurals>
+    <string name="cyt_state_done">Готово</string>
+    <string name="cyt_state_doing">Выполняется</string>
+    <string name="cyt_state_upcoming">Следующий шаг</string>
+    <string name="cyt_state_skipped">Пропущено</string>
+    <string name="cyt_percent">%1$d%%</string>
+    <string name="cyt_live_from_tv">Текущие данные с телевизора</string>
+    <string name="cyt_copy_as_commands">Скопировать как команды</string>
+    <string name="cyt_mirror_allow_title">Разрешить отладку по USB?</string>
+    <string name="cyt_mirror_allow_body">Отпечаток RSA-ключа компьютера:</string>
+    <string name="cyt_mirror_allow_always">Всегда разрешать этому компьютеру</string>
+    <string name="cyt_mirror_cancel" tools:ignore="ButtonCase">ОТМЕНА</string>
+    <string name="cyt_mirror_ok">ОК</string>
+    <string name="cyt_mirror_card_title">Новая карточка от %1$s</string>
+    <string name="cyt_mirror_card_body">%1$s может показывать карточку на главном экране. Если оставить её скрытой, обычная плитка приложения не изменится.</string>
+    <string name="cyt_mirror_card_later">Это можно изменить позже: удерживайте ОК на пункте «Настройки».</string>
+    <string name="cyt_mirror_card_key">%1$s, ключ %2$s</string>
+    <string name="cyt_mirror_keep_hidden">Оставить скрытой</string>
+    <string name="cyt_mirror_show_card">Показать карточку</string>
+    <string name="cyt_dock_row_dock">Панель приложений</string>
+    <string name="cyt_dock_row_n">Ряд %1$d</string>
+    <string name="cyt_dock_item_dock_cd">%1$s, на панели приложений, место %2$d</string>
+    <string name="cyt_dock_item_row_cd">%1$s, в ряду %2$d, место %3$d</string>
+    <string name="cyt_dock_remove_cd">Убрать %1$s</string>
+    <string name="cyt_dock_add_dock_cd">Добавить %1$s на панель приложений</string>
+    <string name="cyt_dock_add_row_cd">Добавить %1$s в ряд %2$d</string>
+    <string name="cyt_dock_item_out_cd">%1$s, не на панели и не в её рядах</string>
+    <string name="cyt_dock_action_up">Переместить вверх</string>
+    <string name="cyt_dock_action_down">Переместить вниз</string>
+    <string name="cyt_dock_action_to_dock">Переместить на панель приложений</string>
+    <string name="cyt_dock_action_to_row">Переместить в ряд %1$d</string>
+    <string name="cyt_dock_action_remove">Убрать</string>
+    <string name="cyt_dock_add_row">Добавить ряд под панелью</string>
+    <string name="cyt_dock_remove_row">Удалить ряд</string>
+    <string name="cyt_dock_remove_row_cd">Удалить ряд %1$d</string>
+    <string name="cyt_dock_row_removed">Ряд %1$d удалён. Его приложения снова доступны в разделе «Другие приложения».</string>
+    <string name="cyt_dock_row_empty">Нажмите на приложение ниже, чтобы добавить его в этот ряд.</string>
+    <string name="cyt_dock_full">На панели помещается %1$d приложений. Уберите одно или добавьте ряд ниже.</string>
+    <string name="cyt_dock_row_full">Эти ряды заполнены. Уберите приложение или добавьте ещё один ряд.</string>
+    <string name="cyt_dock_all_full">Панель и два ряда под ней заполнены. Уберите приложение, чтобы добавить другое.</string>
+    <string name="cyt_dock_gaps">Пустые места на панели останутся пустыми и на телевизоре.</string>
+    <string name="cyt_dock_gaps_rows">В пустых местах рядов под панелью будут показаны названия остальных приложений.</string>
+    <string name="cyt_dock_others">Другие приложения на телевизоре</string>
+    <string name="cyt_look_title">Внешний вид</string>
+    <string name="cyt_look_columns_title">Приложений в ряду</string>
+    <string name="cyt_look_columns_help">Чем меньше приложений, тем крупнее плитки.</string>
+    <string name="cyt_look_columns_biggest">При значении 4 плитки будут максимально крупными.</string>
+    <string name="cyt_look_columns_end_big">Крупнее</string>
+    <string name="cyt_look_columns_end_many">Больше приложений</string>
+    <string name="cyt_look_picture_title">Изображение</string>
+    <string name="cyt_picture_diwali">Дивали</string>
+    <string name="cyt_picture_aurora">Северное сияние</string>
+    <string name="cyt_picture_mist">Туман</string>
+    <string name="cyt_picture_navy">Тёмно-синий</string>
+    <string name="cyt_picture_autumn_lake">Осеннее озеро</string>
+    <string name="cyt_picture_curtains">Шторы</string>
+    <string name="cyt_picture_mountains">Горы</string>
+    <string name="cyt_picture_lamp">Свет лампы</string>
+    <string name="cyt_picture_neon">Неон</string>
+    <string name="cyt_picture_cobalt">Кобальт</string>
+    <string name="cyt_look_picture_none">Без изображения</string>
+    <string name="cyt_look_picture_choose">Выбрать фотографию</string>
+    <string name="cyt_look_picture_new">Новое фото</string>
+    <string name="cyt_photo_title">Ваша фотография</string>
+    <string name="cyt_photo_body">Изменяйте масштаб и положение, чтобы выбрать изображение для телевизора. Не размещайте лица под часами и панелью приложений.</string>
+    <string name="cyt_photo_frame_cd">Так будет выглядеть фотография на телевизоре — поверх неё будут часы, кнопки и панель приложений.</string>
+    <string name="cyt_photo_dim">Затемнение для лучшей видимости часов и названий: {dim}%</string>
+    <string name="cyt_photo_dim_cd">Затемнение для лучшей видимости часов и названий</string>
+    <string name="cyt_photo_use">Использовать этот фрагмент</string>
+    <string name="cyt_photo_unreadable">Не удалось прочитать фотографию. Попробуйте выбрать другую.</string>
+    <string name="cyt_photo_too_big">Не удалось уменьшить фотографию до размера, подходящего для телевизора. Выберите другую.</string>
+    <string name="cyt_cancel">Отмена</string>
+    <string name="cyt_look_more_cd">Дополнительные параметры</string>
+    <string name="cyt_look_advanced_cd">Расширенные настройки</string>
+    <string name="cyt_look_back_look">Назад к внешнему виду</string>
+    <string name="cyt_look_back_more">Назад к дополнительным параметрам</string>
+    <string name="cyt_look_preview_drawing">Создаём предварительный просмотр...</string>
+    <string name="cyt_look_preview_bigger_cd">Увеличить предварительный просмотр</string>
+    <string name="cyt_look_preview_smaller_cd">Уменьшить предварительный просмотр</string>
+    <string name="cyt_look_style_title">Стиль</string>
+    <string name="cyt_look_style_classic">Классический</string>
+    <string name="cyt_look_style_classic_desc">Тёмная панель, крупное название и мягкое свечение.</string>
+    <string name="cyt_look_style_glass">Стекло</string>
+    <string name="cyt_look_style_glass_desc">Матовая полупрозрачная панель и подсветка цветом каждого приложения.</string>
+    <string name="cyt_look_style_spotlight">В центре внимания</string>
+    <string name="cyt_look_style_spotlight_desc">Большой баннер выбранного приложения, как на новых Smart TV.</string>
+    <string name="cyt_look_style_all_apps">Все приложения</string>
+    <string name="cyt_look_style_all_apps_desc">Все приложения в одной сетке без панели.</string>
+    <string name="cyt_look_style_calm">Спокойный</string>
+    <string name="cyt_look_style_calm_desc">Без свечения и крупных надписей. Только приложения и ваше изображение.</string>
+</resources>'''
+)
