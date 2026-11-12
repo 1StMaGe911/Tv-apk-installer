@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 188
-        versionName = "0.9.137"
+        versionCode = 189
+        versionName = "0.9.138"
     }
 
     flavorDimensions += "store"
