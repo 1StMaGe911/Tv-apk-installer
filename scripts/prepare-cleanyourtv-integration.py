@@ -205,7 +205,7 @@ print("Clean Your TV integration patched: applicationId ru.tvapk.installer, vers
 def write_russian_strings(relative: str, content: str) -> None:
     target = upstream / relative
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content.strip() + "\\n", encoding="utf-8")
+    target.write_text(content.strip() + "\n", encoding="utf-8")
 
 write_russian_strings(
     "feature/backup/src/main/res/values-ru/strings.xml",
@@ -258,5 +258,152 @@ write_russian_strings(
     <string name="restore_factory_done">Мастер первоначальной настройки включён. Теперь можно сбросить телевизор.</string>
     <string name="restore_export_saved">Копия точки восстановления сохранена.</string>
     <string name="restore_export_failed">Не удалось сохранить копию. Попробуйте выбрать другое место.</string>
+</resources>'''
+)
+
+
+write_russian_strings(
+    "feature/connect/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_back">Назад</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_ok">ОК</string>
+    <string name="welcome_overline" translatable="false">Очистка ТВ</string>
+    <string name="welcome_title">Приведём ваш телевизор в порядок</string>
+    <string name="welcome_body">Отключите лишнее, сохраните нужные приложения и получите спокойный главный экран. Это займёт около пяти минут. Все изменения можно отменить.</string>
+    <string name="welcome_hero_cd">Главный экран телевизора с рекламными рядами превращается в чистый экран с четырьмя приложениями внизу</string>
+    <string name="welcome_looking">Ищем телевизоры в вашей сети Wi-Fi...</string>
+    <string name="welcome_found_one">Найдено устройство: {name} ({room})</string>
+    <string name="welcome_found_one_noroom">Найдено устройство: {name}</string>
+    <string name="welcome_found_many">{count, plural, one {Найден # телевизор} few {Найдено # телевизора} many {Найдено # телевизоров} other {Найдено # телевизора}}</string>
+    <string name="welcome_none_yet">Телевизор пока не найден. Продолжайте, мы будем искать.</string>
+    <string name="welcome_start">Начать</string>
+    <string name="welcome_returning">Я уже настраивал телевизор</string>
+    <string name="picker_title">Какой телевизор?</string>
+    <string name="picker_body">Не уверены? На выбранном телевизоре скоро появится сообщение.</string>
+    <string name="picker_row">{name}, {room} · {platform}</string>
+    <string name="picker_row_noroom">{name} · {platform}</string>
+    <string name="picker_name_with_suffix">{name} ...{suffix}</string>
+    <string name="picker_platform_android_tv">Android TV {version}</string>
+    <string name="picker_platform_google_tv">Google TV {version}</string>
+    <string name="picker_platform_fire_tv">Fire TV</string>
+    <string name="picker_footer">Телефон и телевизор должны быть подключены к одной сети Wi-Fi.</string>
+    <string name="picker_primary">Выбрать {name}</string>
+    <string name="picker_tertiary">Ввести адрес телевизора</string>
+    <string name="door_title">Разрешите подключение телефона</string>
+    <string name="door_body">Возьмите пульт телевизора. Это займёт около минуты — самая сложная часть настройки.</string>
+    <string name="door_step_cd">Шаг {current} из {total}</string>
+    <string name="door_next">Далее</string>
+    <string name="door_menu_names_vary">Названия пунктов меню на вашем телевизоре могут немного отличаться.</string>
+    <string name="door_same_wifi">Телефон и телевизор должны быть в одной сети Wi-Fi.</string>
+    <string name="door_waiting">Ожидаем ответ телевизора...</string>
+    <string name="door_connecting">Подключаемся...</string>
+    <string name="door_still_waiting">Всё ещё ждём. Вы включили отладку по USB? На некоторых телевизорах нужно также включить сетевую отладку.</string>
+    <string name="door_still_waiting_show_me">Показать инструкцию</string>
+    <string name="door_change_model">Это не {model}? Изменить модель</string>
+    <string name="door_change_model_generic">Это другой телевизор? Изменить модель</string>
+    <string name="door_not_this_tv">Не этот телевизор? Ввести его адрес</string>
+    <string name="door_brand_prompt">Выберите марку</string>
+    <string name="door_brand_xiaomi">Xiaomi</string>
+    <string name="door_brand_tcl">TCL</string>
+    <string name="door_brand_sony">Sony</string>
+    <string name="door_brand_hisense">Hisense</string>
+    <string name="door_brand_philips">Philips</string>
+    <string name="door_brand_google">Google</string>
+    <string name="door_brand_amazon">Amazon</string>
+    <string name="door_brand_other">Другая</string>
+    <string name="door_tcl_menus_prompt">На каком языке меню телевизора?</string>
+    <string name="door_tcl_menus_global">Английский или другой привычный язык</string>
+    <string name="door_tcl_menus_chinese">Китайский</string>
+    <string name="door_connect_failed_title">Телевизор отвечает, но телефону не удалось подключиться</string>
+    <string name="door_connect_failed_body">Не удалось установить соединение ({kind}). Пока этот экран открыт, мы продолжим попытки.</string>
+    <string name="door_connect_failed_hint">Если ADB с компьютера работает, а приложение не может подключиться к телевизору, возможно, мешают настройки телефона: ограничение сети для приложения, VPN, частный DNS или мобильный интернет. Временно отключите их и попробуйте снова.</string>
+    <string name="door_connect_refused_title">На телевизоре выключена отладка</string>
+    <string name="door_connect_refused_body">Телевизор отклонил подключение ({kind}), потому что отладка выключена. Мы специально отключаем её после настройки, поэтому это нормально для телевизора, который уже настраивали.</string>
+    <string name="door_connect_refused_hint">Чтобы включить её снова, откройте на телевизоре Настройки → Настройки устройства или Система → Для разработчиков и включите отладку по USB. Пока этот экран открыт, мы продолжим попытки.</string>
+    <string name="door_copy_error">Скопировать ошибку</string>
+    <string name="door_error_copied">Скопировано. Вставьте текст в обращение о проблеме.</string>
+    <string name="connect_report">Сообщить о проблеме</string>
+    <string name="door_unknown_note">Мы ещё не настраивали именно эту модель телевизора. Обычно шаги такие же.</string>
+    <string name="family_atv_step1">На телевизоре откройте Настройки (значок шестерёнки справа вверху), затем Настройки устройства → Об устройстве. Нажмите ОК на пункте «Сборка» семь раз, пока не появится сообщение «Вы стали разработчиком».</string>
+    <string name="family_atv_step2">Вернитесь на один экран назад. Откройте Для разработчиков и включите Отладку по USB. Если есть пункты «Сетевая отладка» или «Отладка ADB», включите и их.</string>
+    <string name="family_atv_step3">Оставьте телевизор на этом экране. Телефон подключится автоматически.</string>
+    <string name="family_atv_extra_shield">На NVIDIA Shield важнее всего включить «Сетевую отладку».</string>
+    <string name="family_gtv_step1">На телевизоре откройте Настройки → Система → Об устройстве. Нажмите ОК на пункте «Сборка ОС Android TV» семь раз, пока не появится сообщение «Вы стали разработчиком».</string>
+    <string name="family_gtv_step2">Вернитесь на один экран назад. Откройте Система → Для разработчиков, включите Отладку по USB, а затем Беспроводную отладку.</string>
+    <string name="family_gtv_step3">Оставьте телевизор на этом экране. Телефон подключится автоматически.</string>
+    <string name="family_fire_step1">На телевизоре откройте Настройки → Мой Fire TV → О системе. Выберите название устройства семь раз, пока не появится сообщение «Вы стали разработчиком».</string>
+    <string name="family_fire_step2">Вернитесь на один экран назад. Откройте Для разработчиков и включите Отладку ADB.</string>
+    <string name="family_fire_step3">Оставьте телевизор на этом экране. Телефон подключится автоматически.</string>
+    <string name="family_tcl_step1">На телевизоре откройте Настройки → Об устройстве → 本机信息, затем нажмите на пульте Вверх, Вниз, Влево, Вправо.</string>
+    <string name="family_tcl_step2">Появится небольшое окно «ADB» с сетевым адресом. Не закрывайте его.</string>
+    <string name="family_tcl_step3">Оставьте телевизор на этом экране. Телефон подключится автоматически.</string>
+    <string name="family_tcl_extra_gtv_step1">На Google TV откройте Система → Об устройстве и нажмите ОК на пункте «Сборка ОС Android TV» семь раз.</string>
+    <string name="family_tcl_extra_gtv">На Google TV также включите Беспроводную отладку.</string>
+    <string name="family_unknown_step1">На телевизоре откройте Настройки (значок шестерёнки справа вверху), затем Настройки устройства → Об устройстве. Нажмите ОК на пункте «Сборка» семь раз, пока не появится сообщение «Вы стали разработчиком».</string>
+    <string name="family_unknown_step2">Вернитесь на один экран назад. Откройте Для разработчиков и включите Отладку по USB. Если есть пункты «Сетевая отладка» или «Отладка ADB», включите и их.</string>
+    <string name="family_unknown_step3">Оставьте телевизор на этом экране. Телефон подключится автоматически.</string>
+    <string name="banner_fire">На Fire TV можно отключить рекламу и отслеживание, но останется собственный главный экран. Очистка всё равно будет выполнена.</string>
+    <string name="banner_tcl">На этом телевизоре останется собственный главный экран (TCL не разрешает заменять его). Остальные функции очистки будут доступны.</string>
+    <string name="banner_mibox_usb">Пока отладка включена, эта приставка отключает USB-порт. USB-колонка или накопитель временно перестанут работать. После настройки мы снова выключим отладку.</string>
+    <string name="allow_title">Посмотрите на телевизор</string>
+    <string name="allow_body">Телевизор спрашивает, доверять ли этому телефону. Установите флажок «Всегда разрешать», затем выберите ОК.</string>
+    <string name="allow_body_emphasis_always">«Всегда разрешать»</string>
+    <string name="allow_body_emphasis_ok">ОК.</string>
+    <string name="allow_code_label">Последние символы кода на телевизоре</string>
+    <string name="allow_code_caption">Это код вашего телефона.</string>
+    <string name="allow_waiting">Ожидаем подтверждения на телевизоре...</string>
+    <string name="allow_still_waiting">Всё ещё ждём нажатия ОК на телевизоре.</string>
+    <string name="allow_trusted">Доверие подтверждено</string>
+    <string name="allow_dont_see">Не вижу это окно на телевизоре</string>
+    <string name="allow_art_cd">Окно разрешения отладки по USB на телевизоре. Отпечаток заканчивается на {tail}.</string>
+    <string name="notseen_title">Не вижу это окно на телевизоре</string>
+    <string name="notseen_hidden">Окно могло оказаться за другим экраном. Нажмите Домой на пульте, затем один раз Назад. Если окно не появилось, мы повторно отправим запрос телевизору.</string>
+    <string name="notseen_cancelled">Если кто-то нажал «Отмена», выключите и снова включите отладку по USB на телевизоре, затем нажмите «Запросить снова».</string>
+    <string name="notseen_greyed">Если пункт «Всегда разрешать» неактивен, достаточно нажать ОК. В следующий раз мы снова запросим разрешение.</string>
+    <string name="notseen_ask_again">Запросить снова</string>
+    <string name="notseen_asking">Повторно запрашиваем разрешение...</string>
+    <string name="notseen_restart">Телевизор не принимает подключение телефона. Такое бывает на некоторых моделях, если отладку включили до полной загрузки. Перезагрузите телевизор, снова включите отладку и вернитесь сюда.</string>
+    <string name="notseen_restarted">Телевизор перезагружен</string>
+    <string name="connected_title">Подключено к {tv}</string>
+    <string name="connected_cd">Подключено</string>
+    <string name="identity_question">Это ваш телевизор?</string>
+    <string name="identity_detail">{name}, серийный номер оканчивается на {serial}</string>
+    <string name="identity_body">Убедитесь, что изображение совпадает с тем, что сейчас показано на вашем телевизоре.</string>
+    <string name="identity_screenshot_cd">То, что сейчас отображается на телевизоре</string>
+    <string name="identity_yes">Да, это мой телевизор</string>
+    <string name="identity_no">Нет</string>
+    <string name="pairing_title">Для этого телевизора нужен код сопряжения</string>
+    <string name="pairing_body">В этой версии пока нельзя вводить код сопряжения; такая возможность появится в следующей версии. Если у вас есть компьютер, один раз выполните сопряжение через adb и команду adb tcpip 5555, затем вернитесь сюда — телефон продолжит настройку.</string>
+    <string name="pairing_show_steps">Показать инструкцию для компьютера</string>
+    <string name="pairing_steps_title">Однократное сопряжение через компьютер</string>
+    <string name="pairing_steps_intro">На телевизоре откройте Для разработчиков → Беспроводная отладка → Сопряжение устройства с помощью кода. Затем по очереди выполните на компьютере три команды.</string>
+    <string name="pairing_steps_cmd_pair" translatable="false">adb pair ADDRESS:PAIR_PORT</string>
+    <string name="pairing_steps_cmd_connect" translatable="false">adb connect ADDRESS:CONNECT_PORT</string>
+    <string name="pairing_steps_cmd_tcpip" translatable="false">adb -s ADDRESS:CONNECT_PORT tcpip 5555</string>
+    <string name="pairing_steps_note">Используйте адрес, порты и шестизначный код, показанные на телевизоре. После последней команды вернитесь в приложение. После перезагрузки телевизора повторите две последние команды с портом, который он покажет. Повторно сопрягать устройства не нужно.</string>
+    <string name="stop_tv_not_found_title">Телевизор пока не найден</string>
+    <string name="stop_tv_not_found_body">Убедитесь, что телевизор включён и подключён к той же сети Wi-Fi, что и телефон. После выхода из спящего режима телевизору может потребоваться минута, чтобы появиться в списке.</string>
+    <string name="stop_tv_not_found_primary">Продолжить поиск</string>
+    <string name="stop_tv_not_found_secondary">Ввести адрес телевизора</string>
+    <string name="stop_tv_not_found_tertiary">Помощь</string>
+    <string name="stop_tv_not_found_help_title">Почему телевизор может не отображаться</string>
+    <string name="stop_tv_not_found_help_isolation">Гостевая сеть Wi-Fi или роутер, изолирующий устройства друг от друга. Найдите в настройках роутера «Изоляция точек доступа» или «Изоляция клиентов» и отключите её.</string>
+    <string name="stop_tv_not_found_help_ethernet">Телевизор подключён кабелем Ethernet, а телефон — по Wi-Fi. Обычно это работает, но некоторые роутеры разделяют эти сети. Ввод адреса телевизора поможет обойти ограничение.</string>
+    <string name="stop_tv_not_found_help_mesh">В Mesh-системе может быть отдельная гостевая сеть. Подключите телефон к основной сети.</string>
+    <string name="stop_wrong_network_title">Телефон и телевизор подключены к разным сетям</string>
+    <string name="stop_wrong_network_body">В последний раз телевизор был обнаружен в другой сети. Подключитесь к той же сети Wi-Fi, что и телевизор, и мы продолжим.</string>
+    <string name="stop_wrong_network_primary">Открыть настройки Wi-Fi</string>
+    <string name="stop_wrong_network_secondary">Я подключён к нужной сети, повторить поиск</string>
+    <string name="stop_wrong_network_off_title">Телефон не подключён к Wi-Fi</string>
+    <string name="stop_wrong_network_off_body">Wi-Fi выключен. Подключиться к телевизору можно только через ту же сеть Wi-Fi.</string>
+    <string name="stop_identity_changed_title">По этому адресу ответил другой телевизор</string>
+    <string name="stop_identity_changed_body">По этому адресу находится не тот телевизор, который мы настраивали как {name}. Его адрес мог измениться или адрес заняло другое устройство. Мы остановились до внесения каких-либо изменений.</string>
+    <string name="stop_identity_changed_primary">Найти телевизор заново</string>
+    <string name="stop_identity_changed_secondary">Назад</string>
+    <string name="stop_tv_not_supported_title">Пока нельзя настроить этот телевизор с телефона</string>
+    <string name="stop_tv_not_supported_body">Отладочное подключение этого телевизора не поддерживает все необходимые команды для безопасной настройки. Мы остановились, ничего не изменив на телевизоре.</string>
+    <string name="stop_tv_not_supported_primary">Назад</string>
 </resources>'''
 )
