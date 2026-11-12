@@ -89,12 +89,13 @@ private fun usbAdbKeyFile(context: Context): File {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, tvIdValue: String, onBack: () -> Unit) {
+fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, tvIdValue: String?, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val tvId = remember(tvIdValue) { TvId(tvIdValue) }
+    var selectedTvId by remember { mutableStateOf(tvIdValue) }
+    var tvMenuExpanded by remember { mutableStateOf(false) }
     val tvs by tvsRepository.tvs.collectAsStateWithLifecycle()
-    val tv = tvs.firstOrNull { it.id == tvId }
+    val tv = tvs.firstOrNull { it.id.value == selectedTvId }
 
     var mode by remember { mutableStateOf("wifi") }
     var uri by remember { mutableStateOf<Uri?>(null) }
@@ -125,7 +126,8 @@ fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, 
                 val apk = prepareUserApk(context, picked)
                 prepared = apk
                 status = "Подключаемся к сохранённому телевизору…"
-                when (val access = tvAccess.session(tvId)) {
+                val targetTvId = selectedTvId?.let(::TvId) ?: throw IllegalStateException("Сначала выбери сохранённый телевизор")
+                when (val access = tvAccess.session(targetTvId)) {
                     is AccessResult.Ok -> {
                         status = "Устанавливаем ${apk.packageName} по Wi-Fi…"
                         when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
@@ -202,7 +204,20 @@ fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, 
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text("Телевизор: ${tv?.nickname ?: "не выбран"}", style = MaterialTheme.typography.titleMedium)
+            Box {
+                TextButton(onClick = { tvMenuExpanded = true }, enabled = tvs.isNotEmpty() && !busy) {
+                    Text("Телевизор: ${tv?.nickname ?: "не выбран"}  ▾")
+                }
+                DropdownMenu(expanded = tvMenuExpanded, onDismissRequest = { tvMenuExpanded = false }) {
+                    tvs.forEach { savedTv ->
+                        DropdownMenuItem(
+                            text = { Text(savedTv.nickname) },
+                            onClick = { selectedTvId = savedTv.id.value; tvMenuExpanded = false }
+                        )
+                    }
+                }
+            }
+            if (tvs.isEmpty()) Text("Сохранённых телевизоров пока нет. Для установки по Wi-Fi сначала добавь телевизор в Clean Your TV. Режим USB OTG доступен отдельно.")
             Text("Поиск телевизора уже выполнен в Clean Your TV. Здесь выбирается только APK и способ установки.")
             OutlinedButton(
                 enabled = !busy,
