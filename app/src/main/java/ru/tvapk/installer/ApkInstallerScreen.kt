@@ -232,7 +232,7 @@ fun ApkInstallerScreen(
         ) {
             Box {
                 TextButton(onClick = { tvMenuExpanded = true }, enabled = tvs.isNotEmpty() && !busy) {
-                    Text("Телевизор: ${tv?.nickname ?: "не выбран"}  ▾")
+                    Text("Телевизор: ${selectedDiscovered?.name ?: tv?.nickname ?: "не выбран"}  ▾")
                 }
                 DropdownMenu(expanded = tvMenuExpanded, onDismissRequest = { tvMenuExpanded = false }) {
                     tvs.forEach { savedTv ->
