@@ -1567,3 +1567,106 @@ write_russian_strings(
     <string name="cyt_look_ring_festival">Пока отображается «{picture}», подсветка будет золотой.</string>
 </resources>'''
 )
+
+
+write_russian_strings(
+    "ui/design/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cyt_look_band">Подложка панели приложений</string>
+    <string name="cyt_look_band_solid">Непрозрачная</string>
+    <string name="cyt_look_band_solid_desc">Тёмная подложка за панелью приложений.</string>
+    <string name="cyt_look_band_see">Прозрачная</string>
+    <string name="cyt_look_band_see_desc">Изображение просвечивает сквозь тёмную подложку.</string>
+    <string name="cyt_look_band_glass">Стеклянная</string>
+    <string name="cyt_look_band_glass_desc">Светлая матовая полупрозрачная подложка.</string>
+    <string name="cyt_look_band_all_apps">В стиле «Все приложения» подложка не используется.</string>
+    <string name="cyt_look_band_spotlight">В стиле «В центре внимания» используется собственная прозрачная подложка.</string>
+    <string name="cyt_look_more_top">Верхняя часть экрана</string>
+    <string name="cyt_look_buttons">Кнопки</string>
+    <string name="cyt_look_buttons_names">С названиями</string>
+    <string name="cyt_look_buttons_names_desc">Входы, Wi-Fi и Настройки с подписями.</string>
+    <string name="cyt_look_buttons_round">Круглые значки</string>
+    <string name="cyt_look_buttons_round_desc">Небольшие круглые кнопки без подписей.</string>
+    <string name="cyt_look_buttons_menu">Одна кнопка меню</string>
+    <string name="cyt_look_buttons_menu_desc">Входы, Wi-Fi и Настройки собраны в одной круглой кнопке. Надпись «Входы» больше не отображается на экране.</string>
+    <string name="cyt_look_wifi_green">Зелёный значок Wi-Fi при подключении к интернету</string>
+    <string name="cyt_look_wifi_green_desc">Значок Wi-Fi становится зелёным, когда телевизор подключён к сети.</string>
+    <string name="cyt_look_wifi_green_menu">Недоступно при использовании одной кнопки меню.</string>
+    <string name="cyt_look_more_picture">Изображение</string>
+    <string name="cyt_look_darken">Затемнить изображение</string>
+    <string name="cyt_look_percent">{value}%</string>
+    <string name="cyt_look_percent_cd">{value} процентов</string>
+    <string name="cyt_look_darken_none">Сначала выберите изображение.</string>
+    <string name="cyt_look_sky">Небо, меняющееся в зависимости от времени</string>
+    <string name="cyt_look_sky_desc">Голубое днём, тёплое на рассвете и закате, тёмное ночью.</string>
+    <string name="cyt_look_reset">Использовать настройки стиля «{style}»</string>
+    <string name="cyt_look_reset_count">{count, plural, one {# изменение} few {# изменения} many {# изменений} other {# изменения}}</string>
+    <string name="cyt_look_reset_done">Параметры сброшены.</string>
+    <string name="cyt_look_advanced">Расширенные настройки</string>
+    <string name="cyt_look_advanced_desc">Подъём и увеличение, точные значения и файл настроек.</string>
+    <string name="cyt_look_one_row">Все приложения в одном ряду</string>
+    <string name="cyt_look_one_row_desc">Сначала приложения панели, затем остальные. Ряд прокручивается по горизонтали при перемещении.</string>
+    <string name="cyt_look_one_row_note">При включении одного ряда дополнительные ряды под панелью не используются.</string>
+    <string name="cyt_look_band_none">Нет</string>
+    <string name="cyt_look_band_none_desc">Без подложки. Приложения располагаются прямо на изображении.</string>
+    <string name="cyt_look_greeting">Приветствие над часами</string>
+    <string name="cyt_look_greeting_desc">«Доброе утро», «Добрый вечер» и другие приветствия.</string>
+    <string name="cyt_look_date_below">Дата под часами</string>
+    <string name="cyt_look_date_below_desc">Дата отображается отдельной строкой под временем.</string>
+    <string name="cyt_look_bright_date">Более яркая дата</string>
+    <string name="cyt_look_bright_date_desc">Дата и линия рядом с ней отображаются ярко-белым цветом.</string>
+    <string name="cyt_look_wifi_warn">Предупреждать об отсутствии интернета</string>
+    <string name="cyt_look_wifi_warn_desc">Оранжевый цвет — Wi-Fi работает, но интернета нет; красный — телевизор отключён от сети.</string>
+    <string name="cyt_look_wifi_warn_needs">Сначала включите параметр «Зелёный значок Wi-Fi при подключении к интернету».</string>
+    <string name="cyt_look_more_tiles">Плитки</string>
+    <string name="cyt_look_tiles">Плитки приложений</string>
+    <string name="cyt_look_tiles_art">Собственные изображения приложений</string>
+    <string name="cyt_look_tiles_art_desc">Баннер каждого приложения в том виде, в котором его предоставляет разработчик.</string>
+    <string name="cyt_look_tiles_icons">Значки на карточках</string>
+    <string name="cyt_look_tiles_icons_desc">Значок каждого приложения на карточке его собственного цвета, без названия.</string>
+    <string name="cyt_look_highlight">Подсветка</string>
+    <string name="cyt_look_highlight_glass">Стекло</string>
+    <string name="cyt_look_highlight_glass_desc">Стеклянная панель с мягким блеском.</string>
+    <string name="cyt_look_highlight_rim">Контур</string>
+    <string name="cyt_look_highlight_rim_desc">Только тонкая подсвеченная граница.</string>
+    <string name="cyt_look_highlight_halo">Ореол</string>
+    <string name="cyt_look_highlight_halo_desc">Контур с мягким свечением.</string>
+    <string name="cyt_look_needs_30">Дополнительные варианты доступны в главном экране версии 3.0.</string>
+    <string name="cyt_look_needs_30_action">Обновить главный экран</string>
+    <string name="cyt_look_word_one_row">Один ряд</string>
+    <string name="cyt_look_word_no_band">Без подложки панели</string>
+    <string name="cyt_look_word_no_greeting">Без приветствия</string>
+    <string name="cyt_look_word_date_below">Дата под часами</string>
+    <string name="cyt_look_word_bright_date">Яркая дата</string>
+    <string name="cyt_look_word_wifi_warn">Предупреждения об интернете</string>
+    <string name="cyt_look_word_icon_tiles">Плитки со значками</string>
+    <string name="cyt_look_word_rim">Контурная подсветка</string>
+    <string name="cyt_look_word_halo">Подсветка ореолом</string>
+    <string name="cyt_look_tiles_note_icons">Здесь значки показаны буквами на карточках. На телевизоре у каждого приложения будет собственный значок.</string>
+    <string name="cyt_look_adv_lead">Для тех, кто знаком с настройками главного экрана. Все параметры здесь будут переданы на телевизор вместе с оформлением.</string>
+    <string name="cyt_look_lift">Подъём и увеличение</string>
+    <string name="cyt_look_lift_desc">Выбранное приложение приподнимается с тенью и немного увеличивается, а приложения открываются с коротким эффектом приближения. Требует больше памяти.</string>
+    <string name="cyt_look_lift_low_memory">В этом телевизоре {size} памяти, поэтому эффект может замедлить его работу.</string>
+    <string name="cyt_look_lift_needs_motion">Работает со стилями анимации «Живая» или «Плавная».</string>
+    <string name="cyt_look_see_amount">Степень прозрачности</string>
+    <string name="cyt_look_see_amount_desc">Чем ниже значение, тем больше изображения видно сквозь подложку.</string>
+    <string name="cyt_look_see_amount_off">Сначала выберите «Прозрачная» в разделе «Подложка панели».</string>
+    <string name="cyt_look_sky_strength">Интенсивность неба</string>
+    <string name="cyt_look_sky_strength_off">Сначала включите «Небо, меняющееся в зависимости от времени».</string>
+    <string name="cyt_look_key_names">Показывать названия параметров лаунчера</string>
+    <string name="cyt_look_key_names_desc">Показывает точные названия параметров из файла настроек главного экрана, например dock_glass.</string>
+    <string name="cyt_look_key_names_phone_only">(только на телефоне)</string>
+    <string name="cyt_look_file_title">Файл настроек</string>
+    <string name="cyt_look_file_desc">Здесь показаны параметры оформления, которые будут переданы на телевизор. Полный файл также содержит список приложений панели. Кнопка «Копировать» копирует весь файл.</string>
+    <string name="cyt_look_not_here">В этом приложении нельзя настроить ряды под панелью и скрытие приложений. Ряды можно настроить на телевизоре в параметрах лаунчера до следующего обновления.</string>
+    <string name="cyt_look_file_copy">Копировать</string>
+    <string name="cyt_look_file_copied">Скопировано.</string>
+    <string name="cyt_photo_after">Ничего ещё не отправлено. Нажмите «Применить на телевизоре», когда будете готовы.</string>
+    <string name="cyt_address_title">Введите адрес телевизора</string>
+    <string name="cyt_address_body">На телевизоре откройте Настройки → Сеть → выберите свою сеть Wi-Fi. Там будет указан адрес, например 192.168.1.50.</string>
+    <string name="cyt_address_field_label">Адрес телевизора</string>
+    <string name="cyt_address_error">Это не адрес устройства в вашей домашней сети.</string>
+    <string name="cyt_address_connect">Подключиться</string>
+</resources>'''
+)
