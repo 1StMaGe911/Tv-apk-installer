@@ -210,14 +210,14 @@ def write_russian_strings(relative: str, content: str) -> None:
     # Multiple reviewable localization blocks can target the same module.
     # Merge by resource type/name; later blocks intentionally replace duplicates.
     merged = {}
-    pattern = re.compile(r'<(string|plurals|string-array|integer-array)\\s+name="([^"]+)"[^>]*>[\\s\\S]*?</\\1>')
+    pattern = re.compile(r'<(string|plurals|string-array|integer-array)\s+name="([^"]+)"[^>]*>[\s\S]*?</\1>')
     if target.exists():
         for match in pattern.finditer(target.read_text(encoding="utf-8")):
             merged[(match.group(1), match.group(2))] = match.group(0)
     for match in pattern.finditer(content):
         merged[(match.group(1), match.group(2))] = match.group(0)
-    entries = "\\n    ".join(merged.values())
-    target.write_text('<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n    ' + entries + '\\n</resources>\\n', encoding="utf-8")
+    entries = "\n    ".join(merged.values())
+    target.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    ' + entries + '\n</resources>\n', encoding="utf-8")
 
 write_russian_strings(
     "feature/backup/src/main/res/values-ru/strings.xml",
