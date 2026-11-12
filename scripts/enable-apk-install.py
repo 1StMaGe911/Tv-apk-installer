@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Expose only APK installation inside Clean Your TV; keep its existing TV discovery and cleanup."""
+"""Expose APK installation as a standalone Clean Your TV menu section."""
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -18,14 +18,14 @@ app_root = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 manage_screens = upstream / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 
 replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen")
-replace_once(app_root, "@Serializable data object LegacyInstaller : Dest", "@Serializable data class InstallApk(val tvId: String) : Dest")
-replace_once(app_root, '"legacyinstaller" -> Dest.LegacyInstaller', '"installapk" -> id?.let { Dest.InstallApk(it) }')
-replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { key -> ApkInstallerScreen(graph.tvs, graph.access, key.tvId, onBack = { go("back") }) }')
-replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk/$it") })')
+replace_once(app_root, "@Serializable data object LegacyInstaller : Dest", "@Serializable data object InstallApk : Dest")
+replace_once(app_root, '"legacyinstaller" -> Dest.LegacyInstaller', '"installapk" -> Dest.InstallApk')
+replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { ApkInstallerScreen(graph.tvs, graph.access, null, onBack = { go("back") }) }')
+replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") })')
 replace_once(manage_screens,
     "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: (String) -> Unit = {}) {")
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {})")
 replace_once(manage_screens,
-    'ListRow("TV APK Installer — дополнительные инструменты", subtitle = "ADB, очистка, резервные копии и управление лаунчером", onClick = onLegacyInstaller)',
-    'ListRow("Установить APK", subtitle = "Выбрать APK-файл и установить на этот телевизор", onClick = { tv?.id?.value?.let(onInstallApk) })')
-print("Clean Your TV: added the APK-only installation screen. Existing TV discovery and cleanup are unchanged.")
+    '        val others = state.cards.filter { it.id != tv?.id }',
+    '        ListGroup(Modifier.padding(top = 12.dp)) {\n            ListRow("Установка APK", subtitle = "Установить выбранный APK по Wi-Fi или USB OTG", onClick = onInstallApk)\n        }\n        val others = state.cards.filter { it.id != tv?.id }')
+print("Clean Your TV: APK installation is now a standalone menu section.")
