@@ -104,8 +104,7 @@ cyt_application = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyo
 cyt_activity = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "MainActivity.kt"
 replace_once(
     cyt_application,
-    "    lateinit var graph: AppGraph\n        private set\n",
-    "    lateinit var graph: AppGraph\n        private set\n    var startupFailure: Exception? = null\n        private set\n",
+    "    lateinit var graph: AppGraph\n        private set\n    var startupFailure: Throwable? = null\n        private set\n",
 )
 replace_once(
     cyt_application,
@@ -115,16 +114,23 @@ replace_once(
         watchRuns()
         graph.sessionEnd.watch(graph.scope)
 """,
-    """        try {
+    """    }
+
+    @Synchronized
+    fun initializeGraph() {
+        if (this::graph.isInitialized || startupFailure != null) return
+        try {
             CytLog.init(File(noBackupFilesDir, "logs"))
             graph = AppGraph(this)
             OperationService.Bus.channelName = getString(R.string.app_channel_setup_name)
             watchRuns()
             graph.sessionEnd.watch(graph.scope)
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
+            if (failure is VirtualMachineError || failure is ThreadDeath) throw failure
             startupFailure = failure
-            runCatching { CytLog.w("Clean Your TV startup failed; legacy installer remains available", failure) }
+            runCatching { CytLog.w("Clean Your TV initialization failed; original installer remains available", failure) }
         }
+    }
 """,
 )
 replace_once(
