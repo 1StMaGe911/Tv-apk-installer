@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep the original welcome screen as the launcher; do not bypass its setup flow."""
+"""Launch directly into MainActivity, bypassing only the welcome/QR screen."""
 import sys
 import xml.etree.ElementTree as ET
 
@@ -14,22 +14,33 @@ app = root.find("application")
 if app is None:
     raise SystemExit("Manifest has no <application> element")
 
-activities = list(app.findall("activity")) + list(app.findall("activity-alias"))
+activities = list(app.findall("activity"))
 welcome = [n for n in activities if "WelcomeActivity" in n.get(ANDROID + "name", "")]
-if not welcome:
-    raise SystemExit("WelcomeActivity was not found; refusing to alter the launch flow")
+main = [n for n in activities if n.get(ANDROID + "name", "").endswith(".MainActivity")]
+if not welcome or len(main) != 1:
+    raise SystemExit("Expected WelcomeActivity and exactly one MainActivity; refusing to guess")
 
-has_launcher = False
+launcher_filters = []
 for node in welcome:
-    for filt in node.findall("intent-filter"):
+    for filt in list(node.findall("intent-filter")):
         actions = {x.get(ANDROID + "name") for x in filt.findall("action")}
         categories = {x.get(ANDROID + "name") for x in filt.findall("category")}
         if MAIN in actions and LAUNCHER in categories:
-            has_launcher = True
+            launcher_filters.append(filt)
+            node.remove(filt)
 
-if not has_launcher:
-    raise SystemExit("WelcomeActivity is not the original launcher; refusing to guess or rewrite launch flow")
+if len(launcher_filters) != 1:
+    raise SystemExit(f"Expected exactly one WelcomeActivity launcher filter, found {len(launcher_filters)}")
 
+target = main[0]
+for filt in list(target.findall("intent-filter")):
+    actions = {x.get(ANDROID + "name") for x in filt.findall("action")}
+    categories = {x.get(ANDROID + "name") for x in filt.findall("category")}
+    if MAIN in actions and LAUNCHER in categories:
+        target.remove(filt)
+
+target.append(launcher_filters[0])
+target.set(ANDROID + "exported", "true")
 app.set(ANDROID + "label", "Clean Your TV")
 tree.write(path, encoding="utf-8", xml_declaration=True)
-print("Original WelcomeActivity launcher preserved; app label set to Clean Your TV.")
+print("Launcher moved from WelcomeActivity to MainActivity; app label kept as Clean Your TV.")
