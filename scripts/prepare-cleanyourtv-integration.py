@@ -17,8 +17,8 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
 
-replace_once(app_gradle, "versionCode = 30", "versionCode = 188")
-replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.137"')
+replace_once(app_gradle, "versionCode = 30", "versionCode = 189")
+replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.138"')
 store_source = upstream / "app" / "src" / "full" / "kotlin" / "tv" / "cleanyour" / "app" / "Store.kt"
 replace_once(store_source, "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/releases/latest", "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest")
 replace_once(store_source, "https://github.com/udhaykumarbala/cleanyourtv-app/releases.atom", "https://github.com/1StMaGe911/Tv-apk-installer/releases.atom")
@@ -153,4 +153,4 @@ replace_once(
     "        if (requestCode == AndroidCredentialGate.REQUEST_CONFIRM && (application as CytApplication).startupFailure == null) graph.credentialGate.onConfirmCredentialResult(resultCode == RESULT_OK)",
 )
 
-print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.137 (188).")
+print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.138 (189).")
