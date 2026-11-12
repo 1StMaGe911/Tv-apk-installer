@@ -197,5 +197,9 @@ replace_once(
         }
 """
 )
+# Add Android's standard Russian locale overlay without changing app logic.
+import runpy
+runpy.run_path(str(root / "scripts" / "russian-localization.py"), run_name="__main__")
+
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
 
