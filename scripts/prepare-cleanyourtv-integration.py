@@ -104,6 +104,7 @@ cyt_application = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyo
 cyt_activity = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "MainActivity.kt"
 replace_once(
     cyt_application,
+    "    lateinit var graph: AppGraph\n        private set\n",
     "    lateinit var graph: AppGraph\n        private set\n    var startupFailure: Throwable? = null\n        private set\n",
 )
 replace_once(
@@ -141,7 +142,7 @@ replace_once(
 replace_once(
     cyt_activity,
     "        super.onCreate(savedInstanceState)\n        graph.credentialGate.attach(this)",
-    "        super.onCreate(savedInstanceState)\n        if (application is CytApplication && (application as CytApplication).startupFailure != null) {\n            setContent { TvInstallerApp() }\n            return\n        }\n        graph.credentialGate.attach(this)",
+    "        super.onCreate(savedInstanceState)\n        val cytApplication = application as CytApplication\n        cytApplication.initializeGraph()\n        if (cytApplication.startupFailure != null) {\n            setContent { TvInstallerApp() }\n            return\n        }\n        graph.credentialGate.attach(this)",
 )
 replace_once(
     cyt_activity,
