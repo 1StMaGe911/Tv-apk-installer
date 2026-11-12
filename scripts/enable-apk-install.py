@@ -24,7 +24,7 @@ replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entr
 replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") })')
 replace_once(manage_screens,
     "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {})")
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}) {")
 replace_once(manage_screens,
     '        val others = state.cards.filter { it.id != tv?.id }',
     '        ListGroup(Modifier.padding(top = 12.dp)) {\n            ListRow("Установка APK", subtitle = "Установить выбранный APK по Wi-Fi или USB OTG", onClick = onInstallApk)\n        }\n        val others = state.cards.filter { it.id != tv?.id }')
