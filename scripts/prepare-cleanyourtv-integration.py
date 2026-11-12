@@ -109,13 +109,18 @@ replace_once(
 )
 replace_once(
     cyt_application,
-    """        CytLog.init(File(noBackupFilesDir, "logs"))
+    """    override fun onCreate() {
+        super.onCreate()
+        CytLog.init(File(noBackupFilesDir, "logs"))
         graph = AppGraph(this)
         OperationService.Bus.channelName = getString(R.string.app_channel_setup_name)
         watchRuns()
         graph.sessionEnd.watch(graph.scope)
-""",
-    """    }
+    }""",
+    """    override fun onCreate() {
+        super.onCreate()
+        initializeGraph()
+    }
 
     @Synchronized
     fun initializeGraph() {
@@ -131,8 +136,7 @@ replace_once(
             startupFailure = failure
             runCatching { CytLog.w("Clean Your TV initialization failed; original installer remains available", failure) }
         }
-    }
-""",
+    }""",
 )
 replace_once(
     cyt_activity,
