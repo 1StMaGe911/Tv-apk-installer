@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_overline">TV CLEANUP</string>
+    <string name="welcome_title">Let us tidy up your TV</string>
+    <string name="welcome_body">Disable unnecessary components, keep the apps you need, and get a cleaner home screen. You can restore everything later.</string>
+    <string name="welcome_looking">Looking for TVs on your Wi-Fi network…</string>
+    <string name="welcome_start">Get started</string>
+    <string name="welcome_returning">I have already set up my TV</string>
+</resources>
