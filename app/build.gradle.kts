@@ -28,16 +28,16 @@ android {
 
     sourceSets {
         getByName("main") {
-            java.srcDir("../vendor/cleanyourtv-app/app/src/main/kotlin")
+            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/main/kotlin")
             res.srcDir("../vendor/cleanyourtv-app/app/src/main/res")
             assets.srcDir("../vendor/cleanyourtv-app/app/src/main/assets")
         }
         getByName("full") {
-            java.srcDir("../vendor/cleanyourtv-app/app/src/full/kotlin")
+            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/full/kotlin")
             res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
         }
         getByName("play") {
-            java.srcDir("../vendor/cleanyourtv-app/app/src/play/kotlin")
+            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/play/kotlin")
             res.srcDir("../vendor/cleanyourtv-app/app/src/play/res")
         }
         getByName("debug") {
