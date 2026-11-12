@@ -37,14 +37,10 @@
         android:theme="@style/Theme.CleanYourTv"
         android:usesCleartextTraffic="false">
 
+        <!-- Keep the proven installer Activity as the process entry point. -->
         <activity
-            android:name="tv.cleanyour.app.MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:taskAffinity=""
-            android:excludeFromRecents="false"
-            android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode|density">
+            android:name="ru.tvapk.installer.MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -52,10 +48,15 @@
             </intent-filter>
         </activity>
 
-        <!-- Previous installer UI retained as an internal fallback during the port. -->
+        <!-- The Clean Your TV graph is initialized only when the user opens this screen. -->
         <activity
-            android:name="ru.tvapk.installer.MainActivity"
-            android:exported="false" />
+            android:name="tv.cleanyour.app.MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode|density" />
 
         <service
             android:name="tv.cleanyour.android.work.OperationService"
