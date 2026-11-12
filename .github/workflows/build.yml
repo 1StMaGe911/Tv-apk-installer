@@ -3,7 +3,7 @@ name: Собрать APK
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main", "integration/apk-install-only"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,7 +26,10 @@ jobs:
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
 
-      - name: Определить версию TV APK Installer
+      - name: Добавить установку APK в Clean Your TV
+        run: python3 scripts/enable-apk-install.py
+
+      - name: Определить версию Clean Your TV
         id: version
         run: |
           VERSION_NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
@@ -58,7 +61,7 @@ jobs:
             echo "Keystore secret is not configured; Gradle will use the debug signing key."
           fi
 
-      - name: Собрать TV APK Installer
+      - name: Собрать Clean Your TV
         env:
           SIGNING_STORE_FILE: ${{ github.workspace }}/signing.jks
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
@@ -79,7 +82,7 @@ jobs:
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-APK-Installer-debug
+          name: Clean-Your-TV-apk-install
           path: app/build/outputs/apk/full/debug/app-full-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -88,10 +91,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.name }}
-          name: TV APK Installer v${{ steps.version.outputs.name }}
-          target_commitish: main
+          name: Clean Your TV v${{ steps.version.outputs.name }}
+          target_commitish: ${{ github.ref_name }}
           body: |
-            Автоматическая сборка TV APK Installer v${{ steps.version.outputs.name }}.
+            Автоматическая сборка Clean Your TV v${{ steps.version.outputs.name }}.
             Установочный APK прикреплён к этому релизу.
 
             SHA-256: ${{ steps.apk.outputs.sha256 }}
