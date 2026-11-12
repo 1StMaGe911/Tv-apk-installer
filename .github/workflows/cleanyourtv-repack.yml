@@ -6,6 +6,7 @@ on:
     branches: ["cleanyourtv-build"]
     paths:
       - "tools/clean-your-tv/input/*.apk"
+      - ".github/workflows/cleanyourtv-repack.yml"
 
 permissions:
   contents: read
