@@ -102,7 +102,7 @@
     <string name="cyt_address_field_label">Адрес телевизора</string>
     <string name="cyt_address_error">Это не адрес устройства в вашей домашней сети</string>
     <string name="cyt_address_connect">Подключить</string>
-    <string name="cyt_earlier_steps">предыдущий шаг</string>
+    <plurals name="cyt_earlier_steps"><item quantity="one">%d предыдущий шаг</item><item quantity="few">%d предыдущих шага</item><item quantity="many">%d предыдущих шагов</item><item quantity="other">%d предыдущего шага</item></plurals>
     <string name="cyt_look_columns_empty">На панели приложений {apps, plural, one {# приложение} other {# приложений}}, поэтому {free, plural, one {# место остаётся} other {# места остаются}} пустыми. Можно добавить приложения в разделе «Панель приложений».</string>
     <string name="cyt_look_columns_waiting">В сетке {count, plural, one {# приложение ожидает} other {# приложений ожидают}}, пока вы не выберете больше приложений в ряду.</string>
     <string name="cyt_look_columns_seven">При значении 7 длинные названия приложений на телевизоре обрезаются.</string>
@@ -308,4 +308,33 @@
     <string name="cyt_look_highlight_rim_desc">Только тонкая окантовка.</string>
     <string name="cyt_look_highlight_halo">Ореол</string>
     <string name="cyt_look_highlight_halo_desc">Контур с лёгким свечением.</string>
+    <string name="cyt_look_needs_30">Дополнительные параметры доступны в главном экране версии 3.0.</string>
+    <string name="cyt_look_needs_30_action">Обновить главный экран</string>
+    <string name="cyt_look_word_one_row">Один ряд</string>
+    <string name="cyt_look_word_no_band">Без полосы панели приложений</string>
+    <string name="cyt_look_word_no_greeting">Без приветствия</string>
+    <string name="cyt_look_word_date_below">Дата под часами</string>
+    <string name="cyt_look_word_bright_date">Яркая дата</string>
+    <string name="cyt_look_word_wifi_warn">Предупреждения об интернете</string>
+    <string name="cyt_look_word_icon_tiles">Плитки со значками</string>
+    <string name="cyt_look_word_rim">Контурная подсветка</string>
+    <string name="cyt_look_word_halo">Подсветка ореолом</string>
+    <string name="cyt_look_tiles_note_icons">Здесь значки показаны буквами на карточках. На телевизоре у каждого приложения будет собственный значок.</string>
+    <string name="cyt_look_adv_lead">Для тех, кто знаком с настройками главного экрана. Все параметры здесь отправляются на телевизор вместе с внешним видом.</string>
+    <string name="cyt_look_lift">Подъём и увеличение</string>
+    <string name="cyt_look_lift_desc">Выбранное приложение приподнимается, отбрасывает тень и немного увеличивается, а приложения открываются с коротким эффектом приближения. Требуется больше памяти.</string>
+    <string name="cyt_look_lift_low_memory">В этом телевизоре {size} памяти, поэтому эта функция может замедлить его работу.</string>
+    <string name="cyt_look_lift_needs_motion">Работает в режимах «Активная» или «Плавная».</string>
+    <string name="cyt_look_see_amount">Степень прозрачности</string>
+    <string name="cyt_look_see_amount_desc">Чем ниже значение, тем больше видно изображение на фоне.</string>
+    <string name="cyt_look_see_amount_off">Сначала выберите вариант «Прозрачная» для полосы панели приложений.</string>
+    <string name="cyt_look_sky_strength">Интенсивность неба</string>
+    <string name="cyt_look_sky_strength_off">Сначала включите параметр «Небо в зависимости от времени суток».</string>
+    <string name="cyt_look_key_names">Показывать названия параметров лаунчера</string>
+    <string name="cyt_look_key_names_desc">Показывает названия параметров так, как они записаны в файле настроек главного экрана, например dock_glass.</string>
+    <string name="cyt_look_key_names_phone_only">(только на телефоне)</string>
+    <string name="cyt_look_file_title">Файл настроек</string>
+    <string name="cyt_look_file_desc">Здесь находятся параметры внешнего вида, которые отправляются на телевизор. Полный файл также содержит список приложений на панели. Кнопка «Копировать» копирует весь файл.</string>
+    <string name="cyt_look_not_here">В этом приложении нельзя настроить дополнительные ряды под панелью и скрытие приложений. Ряды можно настроить на телевизоре в параметрах лаунчера, но при следующей отправке настроек с телефона изменения будут заменены.</string>
+    <string name="cyt_photo_after">Данные ещё не отправлены. Когда будете готовы, нажмите «Применить на телевизоре».</string>
 </resources>
