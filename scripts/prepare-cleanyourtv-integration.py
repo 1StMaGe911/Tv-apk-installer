@@ -788,7 +788,7 @@ write_russian_strings(
     <string name="group_adverts">Реклама</string>
     <string name="group_tracking">Отслеживание</string>
     <string name="group_nobody">Ненужные приложения</string>
-    <string name="group_brand">Дополнения {brand}</string>
+    <string name="group_brand">Дополнения производителя: %1$s</string>
     <string name="group_brand_unknown">Дополнения производителя</string>
     <string name="group_shop">Магазин и демонстрационный режим</string>
     <string name="group_other">Другие приложения</string>
