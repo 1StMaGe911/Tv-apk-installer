@@ -1,0 +1,78 @@
+name: Clean Your TV — убрать стартовый экран
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["cleanyourtv-build"]
+    paths:
+      - "tools/clean-your-tv/input/*.apk"
+
+permissions:
+  contents: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Получить файлы
+        uses: actions/checkout@v4
+
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Установить Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Установить инструменты APK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apktool
+          sdkmanager "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+
+      - name: Найти исходный APK
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(tools/clean-your-tv/input/*.apk)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::Положите ровно один исходный APK в tools/clean-your-tv/input/"
+            exit 1
+          fi
+          echo "apk=${files[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Убрать экран приветствия и донат
+        env:
+          SOURCE_APK: ${{ steps.source.outputs.apk }}
+        run: |
+          set -euo pipefail
+          apktool d -f --no-src "$SOURCE_APK" -o decoded
+          python3 tools/clean-your-tv/patch_manifest.py decoded/AndroidManifest.xml
+          rm -rf decoded/assets/rusmod
+          apktool b decoded -o unsigned.apk
+
+      - name: Выровнять и подписать APK
+        run: |
+          set -euo pipefail
+          zipalign -p -f 4 unsigned.apk aligned.apk
+          keytool -genkeypair -v -keystore signing.jks -storepass temporary123 -keypass temporary123 \
+            -alias cleanyourtv -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Clean Your TV, OU=Android, O=Clean Your TV, C=US"
+          apksigner sign --ks signing.jks --ks-pass pass:temporary123 \
+            --key-pass pass:temporary123 --out Clean-Your-TV.apk aligned.apk
+          apksigner verify --verbose Clean-Your-TV.apk
+          aapt dump badging Clean-Your-TV.apk | grep -E "^(package:|application-label:|launchable-activity:)"
+
+      - name: Сохранить готовый APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clean-Your-TV-no-welcome
+          path: Clean-Your-TV.apk
+          if-no-files-found: error
+          retention-days: 14
