@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import dadb.AdbKeyPair
+import dadb.Dadb
 import dadb.InstallResult
 import tv.cleanyour.core.flows.DocumentTvRepository
 import tv.cleanyour.core.flows.TvAccess
@@ -89,11 +90,20 @@ private fun usbAdbKeyFile(context: Context): File {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, tvIdValue: String?, onBack: () -> Unit) {
+fun ApkInstallerScreen(
+    tvsRepository: DocumentTvRepository,
+    tvAccess: TvAccess,
+    tvIdValue: String?,
+    onBack: () -> Unit,
+    discoverDevices: suspend () -> List<TvDevice>
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedTvId by remember { mutableStateOf(tvIdValue) }
     var tvMenuExpanded by remember { mutableStateOf(false) }
+    var discoveredDevices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var selectedDiscovered by remember { mutableStateOf<TvDevice?>(null) }
+    var searching by remember { mutableStateOf(false) }
     val tvs by tvsRepository.tvs.collectAsStateWithLifecycle()
     val tv = tvs.firstOrNull { it.id.value == selectedTvId }
 
@@ -125,24 +135,40 @@ fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, 
                 status = "Проверяем APK-файл…"
                 val apk = prepareUserApk(context, picked)
                 prepared = apk
-                status = "Подключаемся к сохранённому телевизору…"
-                val targetTvId = selectedTvId?.let(::TvId) ?: throw IllegalStateException("Сначала выбери сохранённый телевизор")
-                when (val access = tvAccess.session(targetTvId)) {
-                    is AccessResult.Ok -> {
-                        status = "Устанавливаем ${apk.packageName} по Wi-Fi…"
-                        when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
-                            mainHandler.post { progress = (sent.toFloat() / apk.size).coerceIn(0f, 1f) }
-                        }) {
-                            InstallOutcome.Installed -> {
-                                progress = 1f
-                                status = "Приложение успешно установлено по Wi-Fi: ${apk.packageName}"
+                val discovered = selectedDiscovered
+                if (discovered != null) {
+                    status = "Подключаемся к найденному телевизору ${discovered.name} (${discovered.ip}:${discovered.port})…"
+                    status = withContext(Dispatchers.IO) {
+                        val privateKey = usbAdbKeyFile(context)
+                        val keyPair = AdbKeyPair.read(privateKey, File(privateKey.parentFile, "adbkey.pub"))
+                        Dadb.create(discovered.ip, discovered.port, keyPair).use { adb ->
+                            when (val result = adb.install(apk.file)) {
+                                is InstallResult.Success -> "Приложение успешно установлено по Wi-Fi: ${apk.packageName}"
+                                is InstallResult.Failure -> throw IllegalStateException("Телевизор отклонил установку: ${result.reason}")
                             }
-                            is InstallOutcome.Failed -> status = "Телевизор отклонил установку (${result.code}): ${result.detail}"
                         }
                     }
-                    is AccessResult.Failed -> status = "Не удалось подключиться к телевизору: ${access.error}"
-                    AccessResult.Cancelled -> status = "Подключение отменено."
-                    AccessResult.Unknown -> status = "Телевизор не найден в сохранённых устройствах. Вернись и выбери телевизор."
+                    progress = 1f
+                } else {
+                    status = "Подключаемся к сохранённому телевизору…"
+                    val targetTvId = selectedTvId?.let(::TvId) ?: throw IllegalStateException("Сначала выбери или найди телевизор")
+                    when (val access = tvAccess.session(targetTvId)) {
+                        is AccessResult.Ok -> {
+                            status = "Устанавливаем ${apk.packageName} по Wi-Fi…"
+                            when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
+                                mainHandler.post { progress = (sent.toFloat() / apk.size).coerceIn(0f, 1f) }
+                            }) {
+                                InstallOutcome.Installed -> {
+                                    progress = 1f
+                                    status = "Приложение успешно установлено по Wi-Fi: ${apk.packageName}"
+                                }
+                                is InstallOutcome.Failed -> status = "Телевизор отклонил установку (${result.code}): ${result.detail}"
+                            }
+                        }
+                        is AccessResult.Failed -> status = "Не удалось подключиться к телевизору: ${access.error}"
+                        AccessResult.Cancelled -> status = "Подключение отменено."
+                        AccessResult.Unknown -> status = "Телевизор не найден в сохранённых устройствах. Найди его через поиск."
+                    }
                 }
             } catch (failure: Exception) {
                 status = "Ошибка установки: ${failure.message ?: failure.javaClass.simpleName}"
@@ -212,13 +238,54 @@ fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, 
                     tvs.forEach { savedTv ->
                         DropdownMenuItem(
                             text = { Text(savedTv.nickname) },
-                            onClick = { selectedTvId = savedTv.id.value; tvMenuExpanded = false }
+                            onClick = { selectedTvId = savedTv.id.value; selectedDiscovered = null; tvMenuExpanded = false }
                         )
                     }
                 }
             }
-            if (tvs.isEmpty()) Text("Сохранённых телевизоров пока нет. Для установки по Wi-Fi сначала добавь телевизор в Clean Your TV. Режим USB OTG доступен отдельно.")
-            Text("Поиск телевизора уже выполнен в Clean Your TV. Здесь выбирается только APK и способ установки.")
+            OutlinedButton(
+                enabled = !busy && !searching,
+                onClick = {
+                    scope.launch {
+                        searching = true
+                        selectedDiscovered = null
+                        status = "Ищем телевизоры с включённой ADB-отладкой в локальной сети…"
+                        try {
+                            discoveredDevices = discoverDevices()
+                            status = if (discoveredDevices.isEmpty()) {
+                                "Телевизоры с доступной ADB-отладкой не найдены. Проверь, что телефон и ТВ в одной Wi-Fi-сети и на ТВ включена отладка по сети."
+                            } else {
+                                "Найдено ADB-устройств: ${discoveredDevices.size}. Выбери телевизор ниже."
+                            }
+                        } catch (failure: Exception) {
+                            status = "Ошибка поиска: ${failure.message ?: failure.javaClass.simpleName}"
+                        } finally {
+                            searching = false
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (searching) "Ищем телевизоры…" else "Найти телевизоры в локальной сети") }
+            discoveredDevices.forEach { device ->
+                OutlinedButton(
+                    enabled = !busy && !searching,
+                    onClick = {
+                        selectedDiscovered = device
+                        selectedTvId = null
+                        status = "Выбран найденный телевизор: ${device.name} — ${device.ip}:${device.port}"
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        (if (selectedDiscovered == device) "✓ " else "") +
+                            "${device.name} — ${device.ip}:${device.port}"
+                    )
+                }
+            }
+            if (tvs.isEmpty() && discoveredDevices.isEmpty()) {
+                Text("Сохранённых телевизоров пока нет. Нажми «Найти телевизоры в локальной сети» или используй USB OTG.")
+            }
+            Text("Можно выбрать сохранённый телевизор или найти новый в локальной сети. Для поиска на ТВ должна быть включена ADB-отладка по сети.")
             OutlinedButton(
                 enabled = !busy,
                 onClick = { picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) },
@@ -231,7 +298,7 @@ fun ApkInstallerScreen(tvsRepository: DocumentTvRepository, tvAccess: TvAccess, 
             }
             if (mode == "wifi") {
                 Text("Установка на выбранный телевизор через уже настроенное ADB-подключение.", style = MaterialTheme.typography.bodySmall)
-                Button(enabled = uri != null && !busy && tv != null, onClick = { installWifi() }, modifier = Modifier.fillMaxWidth()) {
+                Button(enabled = uri != null && !busy && (tv != null || selectedDiscovered != null), onClick = { installWifi() }, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Выполняется…" else "Установить по Wi-Fi")
                 }
             } else {
