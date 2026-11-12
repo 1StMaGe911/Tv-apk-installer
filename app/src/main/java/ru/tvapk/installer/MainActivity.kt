@@ -6192,6 +6192,12 @@ fun TvInstallerApp() {
                     NavigationDrawerItem(label = { Text("Модули Clean Your TV") }, selected = activeSection == "modules",
                         icon = { Text("🧩") },
                         onClick = { showSettings = false; activeSection = "modules"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Clean Your TV — новый интерфейс") }, selected = false,
+                        icon = { Text("✨") },
+                        onClick = {
+                            drawerScope.launch { drawerState.close() }
+                            activity.startActivity(Intent().setClassName(activity, "tv.cleanyour.app.MainActivity"))
+                        })
                     NavigationDrawerItem(label = { Text("Оформление Launcher") }, selected = activeSection == "appearance",
                         icon = { Text("🎨") },
                         onClick = { showSettings = false; activeSection = "appearance"; drawerScope.launch { drawerState.close() } })
