@@ -94,7 +94,7 @@ data class TvDevice(
 
 // Ищет только устройства, которые сами объявили ADB в локальной сети.
 // Никакого сканирования диапазона IP и отправки данных во внешнюю сеть.
-private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<TvDevice> {
+internal fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<TvDevice> {
     val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
         ?: return emptyList()
     val found = java.util.concurrent.ConcurrentHashMap<String, TvDevice>()
