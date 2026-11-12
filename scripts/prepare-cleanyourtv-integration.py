@@ -1406,3 +1406,29 @@ write_russian_strings(
     <string name="helper_consent_no">Не сейчас</string>
 </resources>'''
 )
+
+
+write_russian_strings(
+    "feature/setup/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="confirm_stop_title">Остановить сейчас?</string>
+    <string name="confirm_stop_body">Мы остановимся и вернём всё, что успели изменить. Телевизор останется в безопасном состоянии.</string>
+    <string name="confirm_stop_button">Остановить и отменить изменения</string>
+    <string name="confirm_keep_going">Продолжить</string>
+    <string name="confirm_stop_here_title">Остановиться здесь?</string>
+    <string name="confirm_stop_here_body">Сохраним уже выполненные изменения и больше ничего менять не будем. Телевизор останется в безопасном состоянии.</string>
+    <string name="confirm_stop_here_button">Остановиться здесь</string>
+    <string name="confirm_undo_title">Отменить изменения на телевизоре?</string>
+    <string name="confirm_undo_body">Вернём всё, что изменил этот процесс, и восстановим прежнее состояние телевизора. Ничего не удаляется.</string>
+    <string name="confirm_undo_button">Отменить изменения</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "feature/manage/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="switchedoff_title">{count, plural, other {Отключено (#)}}</string>
+</resources>'''
+)
