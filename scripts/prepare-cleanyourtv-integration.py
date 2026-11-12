@@ -655,3 +655,130 @@ write_russian_strings(
     <string name="cyt_look_style_calm_desc">Без свечения и крупных надписей. Только приложения и ваше изображение.</string>
 </resources>'''
 )
+
+
+write_russian_strings(
+    "feature/launcher/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_back">Назад</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_done">Готово</string>
+    <string name="action_undo">Отменить</string>
+    <string name="gate_title">Подтвердите, что это вы</string>
+    <string name="gate_subtitle">Перед изменением настроек телевизора: {tv}</string>
+    <string name="gate_negative">Отмена</string>
+    <string name="gate_failed">Не удалось подтвердить вашу личность. Изменения не внесены.</string>
+    <string name="home_title">Главный экран</string>
+    <string name="home_row_dock">Панель приложений</string>
+    <string name="home_row_dock_rows">{names}, а ниже ещё {count, plural, one {# приложение} few {# приложения} many {# приложений} other {# приложения}}</string>
+    <string name="home_row_look">Внешний вид</string>
+    <string name="home_tcl_remote_keys">На TCL с Google TV кнопки Настройки (шестерёнка), Netflix и YouTube на пульте не работают с новым главным экраном. Чтобы вернуть их, выберите «Использовать собственный главный экран телевизора».</string>
+    <string name="home_google_tv_settings_key">На Google TV кнопка Настройки (шестерёнка) на пульте открывает собственную панель настроек Google TV, где на многих телевизорах также находятся настройки изображения и звука текущего входа. С новым главным экраном эта кнопка может перестать работать. Чтобы вернуть её, выберите «Использовать собственный главный экран телевизора».</string>
+    <string name="home_row_stock">Использовать собственный главный экран телевизора</string>
+    <string name="home_row_stock_note">Вернёт главный экран телевизора. Наш экран останется установленным, поэтому вы сможете снова переключиться.</string>
+    <string name="home_drift_banner">Настройки главного экрана телевизора изменились после последней настройки.</string>
+    <string name="home_drift_restore">Отправить мои настройки снова</string>
+    <string name="home_applying">Обновляем главный экран телевизора...</string>
+    <string name="home_snackbar_done">Готово.</string>
+    <string name="home_not_on_tv_lead">{tv} использует собственный главный экран. Панель приложений и оформление относятся к новому экрану, который на этом телевизоре не установлен.</string>
+    <string name="home_not_on_tv_refuses">{brand} разрешает использовать только собственный главный экран, поэтому настройка не установила наш. Очистка телевизора работает и без него.</string>
+    <string name="home_not_on_tv_old_android">Для нового главного экрана требуется Android 8 или новее, поэтому настройка не установила его. Очистка работает и без него.</string>
+    <string name="home_not_on_tv_unknown_home">Мы недостаточно хорошо знаем собственный главный экран этого телевизора, чтобы безопасно его заменить. Поэтому настройка оставила всё как есть.</string>
+    <string name="home_not_on_tv_wizard_wifi">Данные Wi-Fi этого телевизора сохранены мастером первоначальной настройки. Для нового главного экрана мастер нужно отключить, но тогда сеть Wi-Fi будет забыта. Если оставить мастер включённым, телевизор может работать с ошибками. Поэтому главный экран не меняли.</string>
+    <string name="home_not_on_tv_wizard_wifi_unlisted">Данные Wi-Fi сохранены мастером настройки, а мы пока недостаточно хорошо знаем эту модель, чтобы безопасно его отключить. Если оставить мастер включённым, новый главный экран может вызвать сбой. Поэтому экран не меняли.</string>
+    <string name="home_not_on_tv_wizard_wifi_unknown">Не удалось проверить, кто сохранил данные Wi-Fi. Для нового главного экрана мастер настройки нужно отключить, но сеть может быть забыта. Поэтому главный экран оставили без изменений.</string>
+    <string name="home_not_on_tv_casting">На этом устройстве Google для нового главного экрана нужно отключить мастер настройки. После этого трансляция с телефонов перестаёт работать после каждой перезагрузки. Поэтому главный экран не меняли.</string>
+    <string name="home_not_on_tv_boot_loop">На телевизорах этой серии мастер настройки запускается при каждой перезагрузке. Если отключить собственный главный экран, телевизор может перестать загружаться. Поэтому экран не меняли.</string>
+    <string name="home_not_on_tv_remote_buttons">На этом телевизоре кнопки приложений на пульте работают только через собственный главный экран. Поэтому настройка оставила его без изменений.</string>
+    <string name="home_not_on_tv_wizard_stays_on">Мы недостаточно хорошо знаем эту модель, чтобы отключить мастер настройки. Если оставить его включённым, а собственный главный экран выключить, телевизор может дать сбой. Поэтому экран не меняли.</string>
+    <string name="home_not_on_tv_home_changed">Главный экран этого телевизора уже был изменён другим приложением или ранее. Настройка оставила его как есть и не устанавливала наш экран. Очистка работает и без него.</string>
+    <string name="home_not_on_tv_earlier">При предыдущей настройке главный экран оставили без изменений, но приложение обновилось и теперь, возможно, сможет установить новый экран.</string>
+    <string name="home_not_on_tv_other_home">На телевизоре уже настроено другое приложение главного экрана, поэтому настройка не стала его менять.</string>
+    <string name="home_not_on_tv_next_other_home">Чтобы использовать новый экран, удалите то приложение и запустите настройку снова. Или сообщите о проблеме.</string>
+    <string name="home_not_on_tv_vendor_home">На этом телевизоре системная служба тоже обрабатывает кнопку Домой. На одном из таких телевизоров после замены главного экрана произошёл сбой загрузки, поэтому настройка оставила всё как есть.</string>
+    <string name="home_not_on_tv_patchwall_feeds">На телевизоре включён PatchWall, а Mi TV+ или его веб-содержимое выключено. На похожем устройстве после замены главного экрана произошёл сбой, поэтому настройка оставила всё как есть.</string>
+    <string name="home_not_on_tv_next_patchwall_feeds">Чтобы установить новый экран, снова запустите настройку и отключите PatchWall в разделе «Настроить».</string>
+    <string name="home_not_on_tv_none">Новый главный экран сейчас не установлен на этом телевизоре.</string>
+    <string name="home_not_on_tv_next_wifi">Чтобы изменить это, удалите все сохранённые на телевизоре сети Wi-Fi и подключитесь к своей сети заново. Подключение кабелем Ethernet ничего не меняет. Затем запустите настройку снова.</string>
+    <string name="home_not_on_tv_next_check">Повторный запуск настройки ещё раз проверит возможность замены.</string>
+    <string name="home_not_on_tv_next_home_changed">Если хотите установить новый экран, назначьте собственный экран телевизора главным в настройках ТВ, затем запустите настройку снова.</string>
+    <string name="home_not_on_tv_next_setup">Запустите настройку снова, чтобы установить его.</string>
+    <string name="home_not_on_tv_next_list">Для этого нужна база, подготовленная для вашей модели. Функция «Помочь добавить телевизор» отправит нам отчёт. Мы составляем базу по таким отчётам и сообщим в обращении, когда появится подходящий вариант.</string>
+    <string name="home_run_setup_again">Запустить настройку снова</string>
+    <string name="home_help_add_tv">Помочь добавить телевизор</string>
+    <string name="home_report">Сообщить о проблеме</string>
+    <string name="home_tv_now_title">Так теперь выглядит ваш телевизор</string>
+    <string name="home_tv_now_cd">Текущее изображение на телевизоре</string>
+    <string name="home_tv_now_again">Что-то не так? Отправить ещё раз</string>
+    <string name="home_installed_lead">Новый главный экран установлен, но пока не используется. Сейчас работает собственный экран телевизора.</string>
+    <string name="home_installed_body">Повторная попытка запускает настройку ещё раз и вместе с вами проверяет главный экран на телевизоре.</string>
+    <string name="home_installed_rows_note">Появится, когда новый главный экран начнёт использоваться.</string>
+    <string name="home_try_switch_again">Повторить переключение</string>
+    <string name="home_by_design">Это не ошибка, а предусмотренное решение: настройка выбрала его с учётом особенностей телевизора. Причина и возможные варианты указаны выше. Если телевизор изменился, всё равно можно сообщить о проблеме.</string>
+    <string name="home_tv_list">Посмотреть, на каких телевизорах доступен новый главный экран</string>
+    <string name="home_report_sent">Отчёт об этом телевизоре отправлен {date}. Мы сообщим в обращении, когда появятся новости. Его можно отправить повторно.</string>
+    <string name="home_fire_tv_name" translatable="false">Fire TV</string>
+    <string name="home_tv_changes_note">Настройки, изменённые непосредственно на телевизоре, будут заменены настройками, отправленными отсюда.</string>
+    <string name="home_row_look_summary_picture">{style}, изображение «{picture}»</string>
+    <string name="home_row_look_summary_photo">{style}, ваша фотография</string>
+    <string name="home_row_look_summary_none">{style}, без изображения</string>
+    <string name="home_row_look_columns">{count, plural, one {# приложение в ряду} few {# приложения в ряду} many {# приложений в ряду} other {# приложения в ряду}}</string>
+    <string name="home_row_look_sending">Отправляем...</string>
+    <string name="home_look_failed">Не удалось передать оформление на телевизор.</string>
+    <string name="home_look_failed_open">Открыть оформление</string>
+    <string name="home_row_update">Обновить главный экран</string>
+    <string name="home_row_update_note">Доступна версия {version}. Панель приложений и оформление сохранятся.</string>
+    <string name="home_update_preview_title">Обновить главный экран?</string>
+    <string name="home_update_preview_body">Установим версию {version} поверх текущей. Панель приложений, оформление и ответы на запросы карточек сохранятся. Если этот экран сейчас используется, телевизор один раз перезагрузится.</string>
+    <string name="home_update_confirm">Обновить</string>
+    <string name="home_update_done">Главный экран обновлён до версии {version}.</string>
+    <string name="home_stock_preview_title">Использовать собственный главный экран телевизора?</string>
+    <string name="home_stock_preview_body">Включим собственный главный экран телевизора и назначим его основным. Новый экран останется установленным.</string>
+    <string name="home_stock_confirm">Использовать экран телевизора</string>
+    <string name="home_stock_working">Возвращаем собственный главный экран телевизора...</string>
+    <string name="home_stock_done">Собственный главный экран телевизора восстановлен. Наш экран по-прежнему установлен.</string>
+    <string name="theme_default">По умолчанию</string>
+    <string name="home_look_ended_banner">Срок действия изображения «{picture}» истёк. Вернуть на телевизор предыдущее изображение?</string>
+    <string name="home_look_ended_restore">Восстановить</string>
+    <string name="dock_title">Ваша панель приложений</string>
+    <string name="dock_body">Внизу можно разместить до {count, spellout} приложений. Перетаскивайте приложение за точки, чтобы изменить порядок.</string>
+    <string name="dock_waiting">{count, plural, one {# приложение ожидает} few {# приложения ожидают} many {# приложений ожидают} other {# приложения ожидают}} в сетке, пока вы не выберете больше приложений в одном ряду в разделе «Внешний вид».</string>
+    <string name="helper_card_title">Помощник кнопки Домой</string>
+    <string name="helper_card_on">Кнопка Домой открывает новый главный экран через небольшой вспомогательный модуль. Собственный экран телевизора остаётся включённым, поэтому трансляция продолжает работать.</string>
+    <string name="helper_card_off_by_tv">Телевизор отключил помощник (после перезагрузки или работы приложения-очистителя). Запустите настройку снова, чтобы включить его.</string>
+    <string name="helper_card_no_redirect">Помощник включён, но в оформлении на телевизоре не указан главный экран, поэтому он ничего не делает. Отключите помощник или запустите настройку снова.</string>
+    <string name="helper_card_redirect_only">Новый главный экран настроен для работы с помощником, но сам помощник выключен. Запустите настройку снова, чтобы включить его.</string>
+    <string name="helper_card_escape">На телевизоре его также можно отключить: Настройки → Специальные возможности → Кнопка Домой.</string>
+    <string name="helper_card_apps_only">Google TV продолжает работать в фоне. Режим «Только приложения» делает интерфейс спокойнее, но также отключает Поиск и Ассистент. Их можно включить обратно в настройках телевизора.</string>
+    <string name="helper_card_switch_off">Отключить</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "tv/curtain/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Очистка ТВ</string>
+    <string name="caption">Очистка ТВ</string>
+    <string name="hint">Не выключайте телевизор. Подробности отображаются на телефоне.</string>
+    <string name="chip">Точка восстановления</string>
+    <string name="all_clean">Очистка завершена.</string>
+    <string name="stage_scan">Сохраняем точку восстановления...</string>
+    <string name="stage_restore_saved">Точка восстановления сохранена</string>
+    <string name="stage_off">Отключаем элементы: %1$d из %2$d...</string>
+    <string name="stage_off_group">%1$s: %2$d из %3$d...</string>
+    <string name="stage_group_done">Отключено: %1$d</string>
+    <string name="stage_group_done_group">Отключено: %1$s (%2$d)</string>
+    <string name="stage_install">Устанавливаем новый главный экран</string>
+    <string name="stage_installed">Новый главный экран установлен</string>
+    <string name="stage_finale">Переключаем кнопку Домой</string>
+    <string name="group_adverts">Реклама</string>
+    <string name="group_tracking">Отслеживание</string>
+    <string name="group_nobody">Ненужные приложения</string>
+    <string name="group_brand">Дополнения {brand}</string>
+    <string name="group_brand_unknown">Дополнения производителя</string>
+    <string name="group_shop">Магазин и демонстрационный режим</string>
+    <string name="group_other">Другие приложения</string>
+</resources>'''
+)
