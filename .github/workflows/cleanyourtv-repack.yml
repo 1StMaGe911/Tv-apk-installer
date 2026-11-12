@@ -60,7 +60,7 @@ jobs:
           rm -rf decoded/assets/rusmod
           grep -rlF '$cyt_ic_launcher_foreground__' decoded/res | xargs -r sed -i 's/\$cyt_ic_launcher_foreground__/cyt_ic_launcher_foreground__/g'
           while IFS= read -r -d '' f; do
-            mv "$f" "$(dirname "$f")/cyt_${f##*/\$}"
+            base=${f##*/}; mv "$f" "$(dirname "$f")/${base#\$}"
           done < <(find decoded/res -type f -name '$cyt_ic_launcher_foreground__*.xml' -print0)
           apktool b decoded -o unsigned.apk
 
