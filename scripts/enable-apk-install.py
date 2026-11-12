@@ -7,9 +7,11 @@ upstream = root / "vendor" / "cleanyourtv-app"
 
 def replace_once(path: Path, old: str, new: str) -> None:
     data = path.read_text(encoding="utf-8")
-    if new in data:
+    if new and new in data:
         return
     count = data.count(old)
+    if count == 0 and not new:
+        return
     if count != 1:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
