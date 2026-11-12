@@ -98,4 +98,59 @@ replace_once(
     "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\n                ListDivider()\n                ListRow(\"TV APK Installer — дополнительные инструменты\", subtitle = \"ADB, очистка, резервные копии и управление лаунчером\", onClick = onLegacyInstaller)",
 )
 
+# Keep the original installer usable if the new Clean Your TV dependency graph fails at startup.
+# This is a guarded fallback, not a silent success: the failure is retained and logged.
+cyt_application = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "CytApplication.kt"
+cyt_activity = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "MainActivity.kt"
+replace_once(
+    cyt_application,
+    "    lateinit var graph: AppGraph\\n        private set\\n",
+    "    lateinit var graph: AppGraph\\n        private set\\n    var startupFailure: Exception? = null\\n        private set\\n",
+)
+replace_once(
+    cyt_application,
+    """        CytLog.init(File(noBackupFilesDir, "logs"))
+        graph = AppGraph(this)
+        OperationService.Bus.channelName = getString(R.string.app_channel_setup_name)
+        watchRuns()
+        graph.sessionEnd.watch(graph.scope)
+""",
+    """        try {
+            CytLog.init(File(noBackupFilesDir, "logs"))
+            graph = AppGraph(this)
+            OperationService.Bus.channelName = getString(R.string.app_channel_setup_name)
+            watchRuns()
+            graph.sessionEnd.watch(graph.scope)
+        } catch (failure: Exception) {
+            startupFailure = failure
+            runCatching { CytLog.w("Clean Your TV startup failed; legacy installer remains available", failure) }
+        }
+""",
+)
+replace_once(
+    cyt_activity,
+    "import tv.cleanyour.ui.design.theme.CytTheme",
+    "import tv.cleanyour.ui.design.theme.CytTheme\\nimport ru.tvapk.installer.TvInstallerApp",
+)
+replace_once(
+    cyt_activity,
+    "        super.onCreate(savedInstanceState)\\n        graph.credentialGate.attach(this)",
+    "        super.onCreate(savedInstanceState)\\n        if (application is CytApplication && (application as CytApplication).startupFailure != null) {\\n            setContent { TvInstallerApp() }\\n            return\\n        }\\n        graph.credentialGate.attach(this)",
+)
+replace_once(
+    cyt_activity,
+    "    override fun onStart() { super.onStart(); graph.foreground.set(true) }\\n    override fun onStop() { graph.foreground.set(false); super.onStop() }",
+    "    override fun onStart() { super.onStart(); if ((application as CytApplication).startupFailure == null) graph.foreground.set(true) }\\n    override fun onStop() { if ((application as CytApplication).startupFailure == null) graph.foreground.set(false); super.onStop() }",
+)
+replace_once(
+    cyt_activity,
+    "        graph.credentialGate.attach(null)\\n        super.onDestroy()",
+    "        if ((application as CytApplication).startupFailure == null) graph.credentialGate.attach(null)\\n        super.onDestroy()",
+)
+replace_once(
+    cyt_activity,
+    "        if (requestCode == AndroidCredentialGate.REQUEST_CONFIRM) graph.credentialGate.onConfirmCredentialResult(resultCode == RESULT_OK)",
+    "        if (requestCode == AndroidCredentialGate.REQUEST_CONFIRM && (application as CytApplication).startupFailure == null) graph.credentialGate.onConfirmCredentialResult(resultCode == RESULT_OK)",
+)
+
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.137 (188).")
