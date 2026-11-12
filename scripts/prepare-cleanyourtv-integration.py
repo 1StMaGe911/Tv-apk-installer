@@ -1670,3 +1670,38 @@ write_russian_strings(
     <string name="cyt_address_connect">Подключиться</string>
 </resources>'''
 )
+
+
+# Fail the build if a Clean Your TV resource module is missing any Russian
+# translation or if a generated translation file is not well-formed XML.
+import xml.etree.ElementTree as ET
+
+_russian_modules = (
+    "app",
+    "feature/backup",
+    "feature/connect",
+    "feature/launcher",
+    "feature/manage",
+    "feature/modules",
+    "feature/setup",
+    "tv/curtain",
+    "ui/design",
+)
+for _module in _russian_modules:
+    _base = upstream / _module / "src/main/res/values/strings.xml"
+    _localized = upstream / _module / "src/main/res/values-ru/strings.xml"
+    if not _base.exists():
+        raise SystemExit(f"Missing source strings: {_base}")
+    if not _localized.exists():
+        raise SystemExit(f"Missing Russian strings: {_localized}")
+    try:
+        _base_root = ET.parse(_base).getroot()
+        _localized_root = ET.parse(_localized).getroot()
+    except ET.ParseError as _error:
+        raise SystemExit(f"Invalid localization XML in {_module}: {_error}")
+    _base_keys = {node.attrib.get("name") for node in _base_root if node.attrib.get("name")}
+    _localized_keys = {node.attrib.get("name") for node in _localized_root if node.attrib.get("name")}
+    _missing = sorted(_base_keys - _localized_keys)
+    if _missing:
+        raise SystemExit(f"Russian localization incomplete in {_module}: {', '.join(_missing)}")
+    print(f"Russian localization verified: {_module} ({len(_base_keys)} resources)")
