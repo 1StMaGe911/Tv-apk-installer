@@ -1,0 +1,80 @@
+name: Clean Your TV — убрать рекламу, сохранив первый экран
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["cleanyourtv-build"]
+    paths:
+      - "tools/clean-your-tv/input/*.apk"
+      - "tools/clean-your-tv/remove_promo_text_v2.py"
+      - ".github/workflows/cleanyourtv-no-promo.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  repack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Получить файлы
+        uses: actions/checkout@v4
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Установить Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Установить инструменты APK
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apktool
+          sdkmanager "build-tools;35.0.0"
+          echo "$ANDROID_HOME/build-tools/35.0.0" >> "$GITHUB_PATH"
+      - name: Найти исходный APK
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(tools/clean-your-tv/input/*.apk)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "::error::В input должен находиться ровно один исходный APK"
+            exit 1
+          fi
+          echo "apk=${files[0]}" >> "$GITHUB_OUTPUT"
+      - name: Сохранить первый экран и удалить рекламу
+        env:
+          SOURCE_APK: ${{ steps.source.outputs.apk }}
+        run: |
+          set -euo pipefail
+          apktool d -f "$SOURCE_APK" -o decoded
+          python3 tools/clean-your-tv/patch_manifest.py decoded/AndroidManifest.xml
+          python3 tools/clean-your-tv/remove_promo_text_v2.py decoded
+          rm -rf decoded/assets/rusmod
+          grep -rlF '$cyt_ic_launcher_foreground__' decoded/res | xargs -r sed -i 's/\$cyt_ic_launcher_foreground__/cyt_ic_launcher_foreground__/g'
+          while IFS= read -r -d '' f; do
+            base=${f##*/}; mv "$f" "$(dirname "$f")/${base#\$}"
+          done < <(find decoded/res -type f -name '$cyt_ic_launcher_foreground__*.xml' -print0)
+          apktool b decoded -o unsigned.apk
+      - name: Выровнять, подписать и проверить APK
+        run: |
+          set -euo pipefail
+          zipalign -p -f 4 unsigned.apk aligned.apk
+          keytool -genkeypair -v -keystore signing.jks -storepass temporary123 -keypass temporary123 \
+            -alias cleanyourtv -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Clean Your TV, OU=Android, O=Clean Your TV, C=US"
+          apksigner sign --ks signing.jks --ks-pass pass:temporary123 \
+            --key-pass pass:temporary123 --out Clean-Your-TV.apk aligned.apk
+          apksigner verify --verbose Clean-Your-TV.apk
+          aapt dump badging Clean-Your-TV.apk | grep -E "^(package:|application-label:|launchable-activity:)"
+      - name: Сохранить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clean-Your-TV-no-promo
+          path: Clean-Your-TV.apk
+          if-no-files-found: error
+          retention-days: 14
