@@ -20,7 +20,7 @@ manage_screens = upstream / "feature/manage/src/main/kotlin/tv/cleanyour/feature
 replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen")
 replace_once(app_root, "@Serializable data object LegacyInstaller : Dest", "@Serializable data class InstallApk(val tvId: String) : Dest")
 replace_once(app_root, '"legacyinstaller" -> Dest.LegacyInstaller', '"installapk" -> id?.let { Dest.InstallApk(it) }')
-replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { key -> ApkInstallerScreen(graph, key.tvId, onBack = { go("back") }) }')
+replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { key -> ApkInstallerScreen(graph.tvs, graph.access, key.tvId, onBack = { go("back") }) }')
 replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk/$it") })')
 replace_once(manage_screens,
     "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
