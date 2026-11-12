@@ -665,6 +665,15 @@ write_russian_strings(
     <string name="cyt_look_style_all_apps_desc">Все приложения в одной сетке без панели.</string>
     <string name="cyt_look_style_calm">Спокойный</string>
     <string name="cyt_look_style_calm_desc">Без свечения и крупных надписей. Только приложения и ваше изображение.</string>
+    <string name="cyt_tv_good_morning">Доброе утро</string>
+    <string name="cyt_tv_good_afternoon">Добрый день</string>
+    <string name="cyt_tv_good_evening">Добрый вечер</string>
+    <string name="cyt_tv_good_night">Доброй ночи</string>
+    <string name="cyt_tv_am">ДО ПОЛУДНЯ</string>
+    <string name="cyt_tv_pm">ПОСЛЕ ПОЛУДНЯ</string>
+    <string name="cyt_tv_inputs">Входы</string>
+    <string name="cyt_tv_wifi">Домашний Wi-Fi</string>
+    <string name="cyt_tv_settings">Настройки</string>
 </resources>'''
 )
 
