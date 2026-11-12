@@ -43,6 +43,7 @@ import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -93,7 +94,7 @@ data class TvDevice(
 
 // Ищет только устройства, которые сами объявили ADB в локальной сети.
 // Никакого сканирования диапазона IP и отправки данных во внешнюю сеть.
-private fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<TvDevice> {
+internal fun discoverAdbDevices(context: Context, timeoutMs: Long = 6500L): List<TvDevice> {
     val nsd = context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
         ?: return emptyList()
     val found = java.util.concurrent.ConcurrentHashMap<String, TvDevice>()
@@ -4546,6 +4547,7 @@ private fun DashboardTile(
 @Composable
 fun TvInstallerApp() {
     val context = LocalContext.current
+    val displayLocale = LocalConfiguration.current.locales[0]
     val activity = context as ComponentActivity
     val uriHandler = LocalUriHandler.current
 
@@ -5121,7 +5123,7 @@ fun TvInstallerApp() {
                     maintenanceDeviceIdentityForLauncher = deviceIdentityForHistory
                     maintenanceHistorySavedForCurrentRun = historySaved
                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
+                                                maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                     pendingCleanupPackages = if (disableSupported) plan.safeToDisable.toList() else emptyList()
                     pendingCleanupAutoExecute = disableSupported &&
                         TvAutomationEngine.shouldAutoExecuteApprovedCleanup(
@@ -6190,6 +6192,12 @@ fun TvInstallerApp() {
                     NavigationDrawerItem(label = { Text("Модули Clean Your TV") }, selected = activeSection == "modules",
                         icon = { Text("🧩") },
                         onClick = { showSettings = false; activeSection = "modules"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Clean Your TV — новый интерфейс") }, selected = false,
+                        icon = { Text("✨") },
+                        onClick = {
+                            drawerScope.launch { drawerState.close() }
+                            activity.startActivity(Intent().setClassName(activity, "tv.cleanyour.app.MainActivity"))
+                        })
                     NavigationDrawerItem(label = { Text("Оформление Launcher") }, selected = activeSection == "appearance",
                         icon = { Text("🎨") },
                         onClick = { showSettings = false; activeSection = "appearance"; drawerScope.launch { drawerState.close() } })
@@ -7893,7 +7901,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     "Журнал восстановления повреждён или не читается. Новая очистка заблокирована; исходные данные сохранены."
                                 } else {
                                     val journal = cleanupJournal!!
-                                    "Операция от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}: подтверждено ${journal.completedPackages.size} из ${journal.plannedPackages.size}. Перед продолжением требуется сверка состояния телевизора."
+                                    "Операция от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", displayLocale).format(java.util.Date(journal.createdAt))}: подтверждено ${journal.completedPackages.size} из ${journal.plannedPackages.size}. Перед продолжением требуется сверка состояния телевизора."
                                 },
                                 color = TextMain,
                                 fontSize = 11.sp
@@ -8364,7 +8372,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                             Card(colors = CardDefaults.cardColors(containerColor = Panel)) {
                                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text("НЕЗАВЕРШЁННАЯ ОЧИСТКА", color = Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
-                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(journal.createdAt))}. Отмечено завершёнными: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
+                                    Text("Журнал от ${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", displayLocale).format(java.util.Date(journal.createdAt))}. Отмечено завершёнными: ${journal.completedPackages.size} из ${journal.plannedPackages.size}.", color = TextMain, fontSize = 12.sp)
                                     journal.inFlightPackage?.let { pkg ->
                                         Text("Операция прервалась на пакете: $pkg. Его фактическое состояние неизвестно до повторной проверки.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                                     }
@@ -8751,7 +8759,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     cleanupHistory.forEach { entry ->
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             Text(
-                                                "${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))} · ${entry.outcome}",
+                                                "${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", displayLocale).format(java.util.Date(entry.createdAt))} · ${entry.outcome}",
                                                 color = TextMain, fontSize = 12.sp
                                             )
                                             Text(
@@ -9179,7 +9187,7 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                                 )
                                                 activity.runOnUiThread {
                                                     maintenanceRunHistory = loadMaintenanceRunHistory(context)
-                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
+                                                    maintenanceHistoryCorrupt = MaintenanceHistoryWritePolicy.isCorrupt(prefs(context).getString("maintenance_run_history", null))
                                                     if (confirmedDisabled.isNotEmpty()) {
                                                         val userDisabledNow = confirmedDisabled.filter { it in userPackages }.toSet()
                                                         val systemDisabledNow = confirmedDisabled.filter { it !in userPackages }.toSet()
@@ -9432,13 +9440,13 @@ Text("МОДУЛИ CLEAN YOUR TV", color = GoldLight, style = MaterialTheme.typo
                                     }
                                     (if (showAllMaintenanceHistory) maintenanceRunHistory else maintenanceRunHistory.take(5)).forEach { entry ->
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entry.createdAt))}", color = TextMain, fontSize = 11.sp)
+                                            Text("${java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", displayLocale).format(java.util.Date(entry.createdAt))}", color = TextMain, fontSize = 11.sp)
                                             Text("Устройство: ${entry.deviceIdentity.ifBlank { "Не определено" }}", color = TextMuted, fontSize = 10.sp)
                                             Text("Кэш: ${entry.cacheTrimOutcome}", color = TextMuted, fontSize = 10.sp)
                                             Text("RAM доступно: ${entry.memoryBefore?.let { "$it%" } ?: "н/д"} → ${entry.memoryAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.memoryBefore, entry.memoryAfter)}); /data занято: ${entry.storageBefore?.let { "$it%" } ?: "н/д"} → ${entry.storageAfter?.let { "$it%" } ?: "н/д"} (${formatPercentDelta(entry.storageBefore, entry.storageAfter)})",
                                                 color = TextMuted, fontSize = 10.sp)
-                                            val freeBefore = entry.storageAvailableBytesBefore?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
-                                            val freeAfter = entry.storageAvailableBytesAfter?.let { String.format(java.util.Locale.getDefault(), "%.0f МБ", it / 1048576.0) } ?: "н/д"
+                                            val freeBefore = entry.storageAvailableBytesBefore?.let { String.format(displayLocale, "%.0f МБ", it / 1048576.0) } ?: "н/д"
+                                            val freeAfter = entry.storageAvailableBytesAfter?.let { String.format(displayLocale, "%.0f МБ", it / 1048576.0) } ?: "н/д"
                                             Text("Свободно /data: $freeBefore → $freeAfter (${TvAutomationEngine.formatStorageDelta(entry.storageAvailableBytesBefore, entry.storageAvailableBytesAfter)})", color = TextMuted, fontSize = 10.sp)
                                             Text("Кандидаты: ${entry.detectedCandidates}; одобрено: ${entry.approvedCandidates}; ручная проверка: ${entry.reviewCandidates}; защищено: ${entry.blockedCandidates}",
                                                 color = TextMuted, fontSize = 10.sp)
