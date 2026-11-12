@@ -26,6 +26,8 @@ jobs:
 
       - name: Установить Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Установить инструменты APK
         run: |
