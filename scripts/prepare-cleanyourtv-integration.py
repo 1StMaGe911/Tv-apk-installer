@@ -104,8 +104,8 @@ cyt_application = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyo
 cyt_activity = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "MainActivity.kt"
 replace_once(
     cyt_application,
-    "    lateinit var graph: AppGraph\\n        private set\\n",
-    "    lateinit var graph: AppGraph\\n        private set\\n    var startupFailure: Exception? = null\\n        private set\\n",
+    "    lateinit var graph: AppGraph\n        private set\n",
+    "    lateinit var graph: AppGraph\n        private set\n    var startupFailure: Exception? = null\n        private set\n",
 )
 replace_once(
     cyt_application,
@@ -130,22 +130,22 @@ replace_once(
 replace_once(
     cyt_activity,
     "import tv.cleanyour.ui.design.theme.CytTheme",
-    "import tv.cleanyour.ui.design.theme.CytTheme\\nimport ru.tvapk.installer.TvInstallerApp",
+    "import tv.cleanyour.ui.design.theme.CytTheme\nimport ru.tvapk.installer.TvInstallerApp",
 )
 replace_once(
     cyt_activity,
-    "        super.onCreate(savedInstanceState)\\n        graph.credentialGate.attach(this)",
-    "        super.onCreate(savedInstanceState)\\n        if (application is CytApplication && (application as CytApplication).startupFailure != null) {\\n            setContent { TvInstallerApp() }\\n            return\\n        }\\n        graph.credentialGate.attach(this)",
+    "        super.onCreate(savedInstanceState)\n        graph.credentialGate.attach(this)",
+    "        super.onCreate(savedInstanceState)\n        if (application is CytApplication && (application as CytApplication).startupFailure != null) {\n            setContent { TvInstallerApp() }\n            return\n        }\n        graph.credentialGate.attach(this)",
 )
 replace_once(
     cyt_activity,
-    "    override fun onStart() { super.onStart(); graph.foreground.set(true) }\\n    override fun onStop() { graph.foreground.set(false); super.onStop() }",
-    "    override fun onStart() { super.onStart(); if ((application as CytApplication).startupFailure == null) graph.foreground.set(true) }\\n    override fun onStop() { if ((application as CytApplication).startupFailure == null) graph.foreground.set(false); super.onStop() }",
+    "    override fun onStart() { super.onStart(); graph.foreground.set(true) }\n    override fun onStop() { graph.foreground.set(false); super.onStop() }",
+    "    override fun onStart() { super.onStart(); if ((application as CytApplication).startupFailure == null) graph.foreground.set(true) }\n    override fun onStop() { if ((application as CytApplication).startupFailure == null) graph.foreground.set(false); super.onStop() }",
 )
 replace_once(
     cyt_activity,
-    "        graph.credentialGate.attach(null)\\n        super.onDestroy()",
-    "        if ((application as CytApplication).startupFailure == null) graph.credentialGate.attach(null)\\n        super.onDestroy()",
+    "        graph.credentialGate.attach(null)\n        super.onDestroy()",
+    "        if ((application as CytApplication).startupFailure == null) graph.credentialGate.attach(null)\n        super.onDestroy()",
 )
 replace_once(
     cyt_activity,
