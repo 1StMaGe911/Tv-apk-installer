@@ -199,3 +199,64 @@ replace_once(
 )
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
 
+
+# Russian localization is generated inside the pinned upstream submodule at build time.
+# The submodule is intentionally immutable from the parent repository's Contents API.
+def write_russian_strings(relative: str, content: str) -> None:
+    target = upstream / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content.strip() + "\\n", encoding="utf-8")
+
+write_russian_strings(
+    "feature/backup/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_back">Назад</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_ok">ОК</string>
+    <string name="action_done">Готово</string>
+    <string name="gate_title">Подтвердите, что это вы</string>
+    <string name="gate_subtitle">Перед тем как менять настройки телевизора: {tv}</string>
+    <string name="gate_negative">Отмена</string>
+    <string name="gate_failed">Не удалось подтвердить вашу личность. Изменения не внесены.</string>
+    <string name="restore_title">Точка восстановления</string>
+    <string name="restore_current">Сохранена: {date}</string>
+    <string name="restore_none">Точки восстановления пока нет. Она будет создана перед первым изменением.</string>
+    <string name="restore_read_failed">Не удалось прочитать точку восстановления</string>
+    <string name="restore_row_undo">Отменить все изменения</string>
+    <string name="restore_row_undo_sub">Вернуть телевизор к состоянию на {date}</string>
+    <string name="restore_row_save">Сохранить копию</string>
+    <string name="restore_row_save_sub">Сохранить ZIP-архив в выбранное вами место.</string>
+    <string name="restore_row_factory">Перед сбросом к заводским настройкам</string>
+    <string name="restore_row_factory_sub">Включить мастер первоначальной настройки, чтобы после сброса телевизор смог нормально запуститься.</string>
+    <string name="restore_preview_title">Телевизор будет возвращён к состоянию на {date}:</string>
+    <string name="restore_preview_things">{count, plural, one {Будет включён # компонент} few {Будут включены # компонента} many {Будут включены # компонентов} other {Будут включены # компонента}}</string>
+    <string name="restore_preview_home">Снова будет использоваться исходный главный экран телевизора ({name})</string>
+    <string name="restore_preview_wizard">Мастер первоначальной настройки будет включён</string>
+    <string name="restore_preview_helper">Помощник кнопки «Домой» будет выключен</string>
+    <string name="restore_preview_screensaver">Вернётся стандартная заставка телевизора с часами</string>
+    <string name="restore_preview_keyboard">Вернётся стандартная клавиатура телевизора</string>
+    <string name="restore_launcher_title">Новый главный экран</string>
+    <string name="restore_launcher_keep">Оставить установленным как обычное приложение</string>
+    <string name="restore_launcher_remove">Удалить с телевизора</string>
+    <string name="restore_launcher_remove_note">При удалении также будут удалены ответы, которые карточки модулей получили на телевизоре.</string>
+    <string name="restore_preview_button">Вернуть всё как было</string>
+    <string name="restore_confirm_title">Вернуть всё как было?</string>
+    <string name="restore_confirm_body">Реклама и отслеживание тоже снова включатся. При желании очистку можно будет запустить повторно.</string>
+    <string name="restore_confirm_button">Вернуть всё как было</string>
+    <string name="restore_working_title">Восстанавливаем прежние настройки</string>
+    <string name="restore_working_things">{total, plural, other {Включаем компоненты: {done} из #...}}</string>
+    <string name="restore_working_home">Возвращаем исходный главный экран телевизора...</string>
+    <string name="restore_working_wizard">Включаем мастер первоначальной настройки...</string>
+    <string name="restore_done_title">Всё восстановлено</string>
+    <string name="restore_done_body">Телевизор возвращён к состоянию на {date}. Точка восстановления сохранена на случай, если вы передумаете.</string>
+    <string name="restore_clean_again">Запустить настройку заново</string>
+    <string name="restore_factory_title">Перед сбросом к заводским настройкам</string>
+    <string name="restore_factory_body">Сброс к заводским настройкам возвращает мастер первоначальной настройки телевизора. Мы включим его заранее, чтобы после сброса телевизор смог нормально запуститься.</string>
+    <string name="restore_factory_button">Включить мастер настройки</string>
+    <string name="restore_factory_working">Включаем мастер первоначальной настройки...</string>
+    <string name="restore_factory_done">Мастер первоначальной настройки включён. Теперь можно сбросить телевизор.</string>
+    <string name="restore_export_saved">Копия точки восстановления сохранена.</string>
+    <string name="restore_export_failed">Не удалось сохранить копию. Попробуйте выбрать другое место.</string>
+</resources>'''
+)
