@@ -4,24 +4,68 @@ on:
   pull_request:
     branches: ["main"]
 
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   test:
+    name: Модульные тесты
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - name: Получить исходный код
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Установить Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
       - name: Установить Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
+          gradle-version: '9.6.0'
           cache-disabled: false
-      - name: Выполнить модульные тесты и компиляцию приложения
-        run: gradle :app:testDebugUnitTest --no-daemon
+      - name: Настроить исходники Clean Your TV
+        run: python3 scripts/prepare-cleanyourtv-integration.py
+      - name: Выполнить модульные тесты
+        run: gradle check --no-daemon
+
+  build:
+    name: Сборка именно TV APK Installer
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Установить Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Установить Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+          cache-disabled: false
+      - name: Настроить исходники Clean Your TV
+        run: python3 scripts/prepare-cleanyourtv-integration.py
+      - name: Собрать TV APK Installer
+        run: gradle :app:assembleFullDebug --no-daemon
+      - name: Проверить APK
+        run: test -s app/build/outputs/apk/full/debug/app-full-debug.apk
+      - name: Сохранить APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TV-APK-Installer-0.9.139-full-debug
+          path: app/build/outputs/apk/full/debug/app-full-debug.apk
+          if-no-files-found: error
+          retention-days: 14
