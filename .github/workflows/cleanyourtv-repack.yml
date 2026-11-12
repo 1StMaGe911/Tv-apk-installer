@@ -58,7 +58,7 @@ jobs:
           apktool d -f --no-src "$SOURCE_APK" -o decoded
           python3 tools/clean-your-tv/patch_manifest.py decoded/AndroidManifest.xml
           rm -rf decoded/assets/rusmod
-          apktool b decoded -o unsigned.apk
+          apktool b -r decoded -o unsigned.apk
 
       - name: Выровнять и подписать APK
         run: |
