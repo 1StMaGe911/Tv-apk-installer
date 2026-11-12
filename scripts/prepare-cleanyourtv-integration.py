@@ -217,7 +217,7 @@ def write_russian_strings(relative: str, content: str) -> None:
     for match in pattern.finditer(content):
         merged[(match.group(1), match.group(2))] = match.group(0)
     entries = "\n    ".join(merged.values())
-    target.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    ' + entries + '\n</resources>\n', encoding="utf-8")
+    target.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources xmlns:tools="http://schemas.android.com/tools" xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">\n    ' + entries + '\n</resources>\n', encoding="utf-8")
 
 write_russian_strings(
     "feature/backup/src/main/res/values-ru/strings.xml",
