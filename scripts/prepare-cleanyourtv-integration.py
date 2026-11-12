@@ -407,3 +407,107 @@ write_russian_strings(
     <string name="stop_tv_not_supported_primary">Назад</string>
 </resources>'''
 )
+
+
+write_russian_strings(
+    "feature/modules/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_back">Назад</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_ok">ОК</string>
+    <string name="action_done">Готово</string>
+    <string name="action_undo">Отменить</string>
+    <string name="gate_title">Подтвердите, что это вы</string>
+    <string name="gate_subtitle">Перед изменением настроек телевизора: {tv}</string>
+    <string name="gate_negative">Отмена</string>
+    <string name="gate_failed">Не удалось подтвердить вашу личность. Изменения не внесены.</string>
+    <string name="modules_title">Карточки и модули</string>
+    <string name="modules_state_shown">Показано</string>
+    <string name="modules_state_hidden">Скрыто</string>
+    <string name="modules_state_over_limit">Превышен лимит</string>
+    <string name="modules_over_limit_note">На главном экране можно разместить не более восьми карточек.</string>
+    <string name="modules_remove">Удалить с телевизора</string>
+    <string name="modules_show_card">Показать карточку</string>
+    <string name="modules_cards_off_note">Карточки отключены на главном экране телевизора. При показе карточки телевизор попросит подтвердить действие.</string>
+    <string name="modules_update">Обновить</string>
+    <string name="modules_add">Добавить</string>
+    <string name="modules_update_available">Доступна версия {version}</string>
+    <string name="modules_empty">Карточек пока нет. Добавьте карточку, чтобы разместить её на главном экране.</string>
+    <string name="modules_normal_app_note">На этом телевизоре модуль отображается как обычное приложение.</string>
+    <string name="modules_remove_title">Удалить {name} с телевизора {tv}?</string>
+    <string name="modules_remove_body">Приложение будет удалено с телевизора. Главный экран и остальные карточки останутся без изменений.</string>
+    <string name="modules_remove_confirm">Удалить</string>
+    <string name="modules_removed">{name} удалён.</string>
+    <string name="modules_state_cd">{name}: {state}</string>
+    <string name="modules_update_consent">В версии {version} приложения {name} появились дополнительные разрешения: {permissions}. Разрешить их?</string>
+    <string name="modules_update_skip">Пропустить эту версию</string>
+    <string name="addmodule_title">Добавить на телевизор {tv}</string>
+    <string name="addmodule_search_hint">Поиск</string>
+    <string name="addmodule_search_cd">Поиск модулей</string>
+    <string name="addmodule_open_source">Открытый исходный код</string>
+    <string name="addmodule_size">{size, plural, other {# МБ}}</string>
+    <string name="addmodule_tier_community">Сообщество</string>
+    <string name="addmodule_tier_verified">Проверено специалистом</string>
+    <string name="addmodule_tier_paused">Приостановлено</string>
+    <string name="addmodule_loading">Загружаем список...</string>
+    <string name="addmodule_empty">По вашему запросу ничего не найдено.</string>
+    <string name="addmodule_refresh">Обновить список</string>
+    <string name="addmodule_footer">Все модули созданы участниками сообщества и автоматически проверяются.</string>
+    <string name="addmodule_footer_link">Кто создал модули</string>
+    <string name="addmodule_tiers_title">Кто создал модули</string>
+    <string name="addmodule_tiers_community">Сообщество: модуль создан независимым автором и автоматически проверен на соответствие опубликованным данным.</string>
+    <string name="addmodule_tiers_verified">Проверено специалистом: указанная версия прошла проверку конкретным специалистом.</string>
+    <string name="addmodule_tiers_paused">Приостановлено: сопровождающие временно прекратили распространение модуля.</string>
+    <string name="module_what_title">ЧТО МОДУЛЬ МОЖЕТ ДЕЛАТЬ НА ТЕЛЕВИЗОРЕ</string>
+    <string name="module_who_title">КТО СОЗДАЛ МОДУЛЬ</string>
+    <string name="module_runs_background">Работает в фоне: {reason}</string>
+    <string name="module_no_background">Фоновые службы отсутствуют</string>
+    <string name="module_perm_can_cd">{statement}. Это действие разрешено.</string>
+    <string name="module_perm_cannot_cd">{statement}. Это действие не выполняется.</string>
+    <string name="module_maker">{handle} на GitHub</string>
+    <string name="module_version_line">Версия {version}, выпущена {date}</string>
+    <string name="module_checks">{count, plural, =0 {Автоматическая проверка: файл совпадает с опубликованным автором и не запрашивает разрешений.} one {Автоматическая проверка: файл совпадает с опубликованным автором и запрашивает только указанное выше разрешение.} few {Автоматическая проверка: файл совпадает с опубликованным автором и запрашивает только # указанных выше разрешения.} many {Автоматическая проверка: файл совпадает с опубликованным автором и запрашивает только # указанных выше разрешений.} other {Автоматическая проверка: файл совпадает с опубликованным автором и запрашивает только # указанных выше разрешения.}}</string>
+    <string name="module_not_reviewed">Автоматическая проверка пройдена. Специалистом ещё не проверено.</string>
+    <string name="module_key_line">Ключ {key}, такой же, как на телевизоре</string>
+    <string name="module_source">Исходный код</string>
+    <string name="module_report">Сообщить о проблеме</string>
+    <string name="module_hero_badge">Карточка на вашем телевизоре</string>
+    <string name="module_add">Добавить на телевизор {tv}</string>
+    <string name="module_outside_store">Дополнения загружаются из раздела релизов GitHub их авторов, а не из магазина приложений. Они не собираются и не проверяются F-Droid.</string>
+    <string name="module_add_turns_cards_on">Добавление включает карточки на главном экране телевизора. Перед показом карточки телевизор запросит подтверждение.</string>
+    <string name="module_paused_reason">Приостановлено сопровождающими: {reason}</string>
+    <string name="module_install_adding">Добавляем {name}...</string>
+    <string name="module_install_downloading">{size, plural, other {Загрузка (# МБ)...}}</string>
+    <string name="module_install_checking">Проверяем соответствие копии автора...</string>
+    <string name="module_install_installing">Устанавливаем на телевизор...</string>
+    <string name="module_install_asking">Просим телевизор показать запрос подтверждения...</string>
+    <string name="module_install_failed">Не удалось установить {name} на телевизор. Другие настройки не изменены.</string>
+    <string name="cardprompt_title">Посмотрите на телевизор</string>
+    <string name="cardprompt_art_keep">Оставить скрытой</string>
+    <string name="cardprompt_art_cd">Телевизор спрашивает: {name} хочет добавить карточку на главный экран. Ключ {key}. Доступны варианты «Оставить скрытой» и «Показать карточку».</string>
+    <string name="cardprompt_body">Телевизор запрашивает подтверждение, чтобы приложение не могло добавить себя на главный экран без вашего разрешения.</string>
+    <string name="cardprompt_instruction">Выберите на пульте «Показать карточку». Ключ на телевизоре должен совпадать с этим: {key}.</string>
+    <string name="cardprompt_waiting">Ожидаем ваш ответ на телевизоре...</string>
+    <string name="cardprompt_later">Можно сделать позже: удерживайте ОК на пункте «Настройки» телевизора, чтобы найти карточки модулей.</string>
+    <string name="cardprompt_shown">{name} добавлен на главный экран.</string>
+    <string name="cardprompt_hidden">{name} установлен, но скрыт. Он по-прежнему доступен как обычное приложение. В любой момент можно показать карточку в разделе «Карточки и модули».</string>
+    <string name="cardprompt_signer_changed">Новая версия {name} подписана другим ключом. Это необычно, поэтому телевизор специально запрашивает подтверждение ещё раз. Если вы не ожидали обновления, выберите «Оставить скрытой».</string>
+    <string name="index_failure_bad_signature">Не удалось подтвердить подлинность списка модулей, поэтому мы не стали его использовать. Телевизор не изменён.</string>
+    <string name="index_failure_unknown_key">Список модулей подписан неизвестным ключом, поэтому мы не стали его использовать. Телевизор не изменён.</string>
+    <string name="index_failure_revoked_key">Список модулей подписан отозванным ключом, поэтому мы не стали его использовать. Телевизор не изменён.</string>
+    <string name="index_failure_bad_keys_file">Список доверенных ключей не прошёл проверку, поэтому список модулей не использован. Телевизор не изменён.</string>
+    <string name="index_failure_expired">Список модулей устарел. Подключитесь к интернету и обновите его.</string>
+    <string name="index_failure_rollback">Полученный список модулей старее уже сохранённого. Мы оставили более новую версию.</string>
+    <string name="index_failure_malformed">Не удалось прочитать список модулей. Попробуйте немного позже.</string>
+    <string name="index_stale_warning">Список модулей может быть устаревшим. Обновите его при подключении к интернету.</string>
+    <string name="fetch_failure_offline">Сейчас у телефона нет подключения к интернету. Подключитесь и попробуйте снова.</string>
+    <string name="fetch_failure_host_not_allowed">Загрузка выполняется с неизвестного сайта, поэтому мы остановились. Ничего не установлено.</string>
+    <string name="fetch_failure_http_error">Сайт загрузки вернул ошибку ({code}). Попробуйте немного позже.</string>
+    <string name="fetch_failure_too_large">Файл загрузки оказался больше ожидаемого. Мы остановились, ничего не установив.</string>
+    <string name="fetch_failure_hash_mismatch">Загруженный файл не совпадает с копией автора, поэтому мы не стали его устанавливать.</string>
+    <string name="fetch_failure_size_mismatch">Размер файла не совпадает с указанным в списке. Мы остановились, ничего не установив.</string>
+    <string name="fetch_failure_signer_mismatch">Приложение подписано не тем автором, который указан в списке. Мы не стали его устанавливать.</string>
+    <string name="fetch_failure_try_again">Повторить</string>
+</resources>'''
+)
