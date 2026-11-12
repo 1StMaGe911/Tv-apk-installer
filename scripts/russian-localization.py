@@ -13,6 +13,7 @@ RU = {
 # Shared actions
 "action_back": "Назад", "action_cancel": "Отмена", "action_ok": "ОК",
 "action_done": "Готово", "action_undo": "Отменить",
+"app_restore_read_failed": "Не удалось прочитать точку восстановления.",
 "gate_title": "Подтвердите, что это вы", "gate_subtitle": "Прежде чем менять что-либо на телевизоре {tv}",
 "gate_negative": "Отмена", "gate_failed": "Не удалось подтвердить вашу личность. Изменения не внесены.",
 # Connection and discovery
