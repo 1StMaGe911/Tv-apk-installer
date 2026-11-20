@@ -15,6 +15,7 @@ object CleanYourTvUpdater {
     private const val APK = "app-full-debug.apk"
     private const val PREFS = "clean_your_tv_updates"
     private const val DOWNLOAD_ID = "download_id"
+    private const val DOWNLOADED_FROM_VERSION = "downloaded_from_version"
 
     /** Checks GitHub and starts downloading the newest full APK. Installation is always user-initiated. */
     fun download(context: Context) {
@@ -51,7 +52,9 @@ object CleanYourTvUpdater {
                     .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "clean-your-tv-update.apk")
                 val id = (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                    .putLong(DOWNLOAD_ID, id).apply()
+                    .putLong(DOWNLOAD_ID, id)
+                    .putLong(DOWNLOADED_FROM_VERSION, appVersionCode(context))
+                    .apply()
                 toast(context, "Загрузка Clean Your TV $tag началась. После завершения нажмите «Установить обновление».")
             } catch (e: Exception) {
                 toast(context, "Ошибка обновления: ${e.message ?: "не удалось загрузить APK"}")
@@ -80,6 +83,37 @@ object CleanYourTvUpdater {
         } finally {
             cursor.close()
         }
+    }
+
+    /**
+     * Runs on app startup. If the installed version is newer than the version
+     * that downloaded the APK, remove the DownloadManager entry and APK file.
+     */
+    fun cleanupIfUpdated(context: Context) {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val downloadedFromVersion = preferences.getLong(DOWNLOADED_FROM_VERSION, -1L)
+        if (downloadedFromVersion < 0L || appVersionCode(context) <= downloadedFromVersion) return
+
+        val id = preferences.getLong(DOWNLOAD_ID, -1L)
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val removedRows = if (id >= 0L) manager.remove(id) else 0
+        val apkFile = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?.resolve("clean-your-tv-update.apk")
+        val deletedFile = apkFile?.delete() == true
+
+        preferences.edit()
+            .remove(DOWNLOAD_ID)
+            .remove(DOWNLOADED_FROM_VERSION)
+            .apply()
+
+        if (removedRows > 0 || deletedFile) {
+            toast(context, "Обновление установлено. Загруженный APK удалён.")
+        }
+    }
+
+    private fun appVersionCode(context: Context): Long {
+        val info = context.packageManager.getPackageInfo(context.packageName, 0)
+        return if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
     }
 
     /**
