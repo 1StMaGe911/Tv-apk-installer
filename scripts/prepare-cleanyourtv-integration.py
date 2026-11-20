@@ -182,12 +182,12 @@ replace_once(
 replace_once(
     cyt_activity,
     "import tv.cleanyour.ui.design.theme.CytTheme",
-    "import tv.cleanyour.ui.design.theme.CytTheme\nimport ru.tvapk.installer.TvInstallerApp",
+    "import tv.cleanyour.ui.design.theme.CytTheme\nimport ru.tvapk.installer.TvInstallerApp\nimport ru.tvapk.installer.CleanYourTvUpdater",
 )
 replace_once(
     cyt_activity,
     "        super.onCreate(savedInstanceState)\n        graph.credentialGate.attach(this)",
-    "        super.onCreate(savedInstanceState)\n        val cytApplication = application as CytApplication\n        cytApplication.initializeGraph()\n        if (cytApplication.startupFailure != null) {\n            setContent { TvInstallerApp() }\n            return\n        }\n        graph.credentialGate.attach(this)",
+    "        super.onCreate(savedInstanceState)\n        CleanYourTvUpdater.cleanupIfUpdated(this)\n        val cytApplication = application as CytApplication\n        cytApplication.initializeGraph()\n        if (cytApplication.startupFailure != null) {\n            setContent { TvInstallerApp() }\n            return\n        }\n        graph.credentialGate.attach(this)",
 )
 replace_once(
     cyt_activity,
