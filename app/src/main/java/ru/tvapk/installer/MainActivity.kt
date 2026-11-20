@@ -1183,22 +1183,22 @@ private fun checkLatestVersion(): UpdateInfo {
         }
 
         val assets = json.optJSONArray("assets") ?: JSONArray()
-        var apkUrl: String? = null
-        var apkSize = 0L
-        var apkSha256: String? = null
-        for (i in 0 until assets.length()) {
-            val asset = assets.optJSONObject(i) ?: continue
-            val name = asset.optString("name")
-            if (name.equals("app-debug.apk", ignoreCase = true)) {
-                apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
-                apkSize = asset.optLong("size", 0L)
-                apkSha256 = asset.optString("digest")
-                    .removePrefix("sha256:")
-                    .lowercase()
-                    .takeIf { it.matches(Regex("[0-9a-f]{64}")) }
-                if (apkUrl != null) break
-            }
-        }
+        // Prefer the full Clean Your TV APK published by the main build workflow.
+        // Keep app-debug.apk as a compatibility fallback for older releases.
+        val selectedAsset = (0 until assets.length())
+            .mapNotNull { assets.optJSONObject(it) }
+            .firstOrNull { it.optString("name").equals("app-full-debug.apk", ignoreCase = true) }
+            ?: (0 until assets.length())
+                .mapNotNull { assets.optJSONObject(it) }
+                .firstOrNull { it.optString("name").equals("app-debug.apk", ignoreCase = true) }
+
+        val apkUrl = selectedAsset?.optString("browser_download_url")
+            ?.takeIf { it.startsWith("https://") }
+        val apkSize = selectedAsset?.optLong("size", 0L) ?: 0L
+        val apkSha256 = selectedAsset?.optString("digest")
+            ?.removePrefix("sha256:")
+            ?.lowercase()
+            ?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
 
         return when {
             apkUrl == null -> UpdateInfo("Доступно обновление $tag, но APK ещё не прикреплён к релизу", releaseUrl, null, 0L)

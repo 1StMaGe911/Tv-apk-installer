@@ -62,14 +62,29 @@ jobs:
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Добавить установку APK в Clean Your TV
         run: python3 scripts/enable-apk-install.py
+      - name: Подготовить ключ подписи
+        env:
+          KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${KEY_BASE64:-}" ]; then
+            echo "$KEY_BASE64" | base64 --decode > signing.jks
+          else
+            rm -f signing.jks
+            echo "Keystore secret is not configured; Gradle will use the debug signing key."
+          fi
       - name: Собрать TV APK Installer
+        env:
+          SIGNING_STORE_FILE: ${{ github.workspace }}/signing.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          SIGNING_KEY_ALIAS: tvapk
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: gradle :app:assembleFullDebug --no-daemon
       - name: Проверить APK
         run: test -s app/build/outputs/apk/full/debug/app-full-debug.apk
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-APK-Installer-0.9.139-full-debug
+          name: TV-APK-Installer-0.9.3-full-debug
           path: app/build/outputs/apk/full/debug/app-full-debug.apk
           if-no-files-found: error
           retention-days: 14

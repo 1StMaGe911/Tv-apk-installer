@@ -17,8 +17,8 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
 
-replace_once(app_gradle, "versionCode = 30", "versionCode = 190")
-replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.139"')
+replace_once(app_gradle, "versionCode = 32", "versionCode = 193")
+replace_once(app_gradle, 'versionName = "0.5.0-beta1"', 'versionName = "0.9.3"')
 store_source = upstream / "app" / "src" / "full" / "kotlin" / "tv" / "cleanyour" / "app" / "Store.kt"
 replace_once(store_source, "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/releases/latest", "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest")
 replace_once(store_source, "https://github.com/udhaykumarbala/cleanyourtv-app/releases.atom", "https://github.com/1StMaGe911/Tv-apk-installer/releases.atom")
@@ -201,8 +201,17 @@ replace_once(
         }
 """
 )
-print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
+print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.3 (193).")
 
+
+# Show each discovered TV's resolved IPv4 address as the picker subtitle.
+# FoundTv.host is populated by NSD discovery and is already a literal LAN address.
+connect_screens = upstream / "feature" / "connect" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "connect" / "ConnectScreens.kt"
+replace_once(
+    connect_screens,
+    "ChoiceOption(tv.host, title, subtitle = tv.model?.takeIf { it != name })",
+    "ChoiceOption(tv.host, title, subtitle = tv.host)",
+)
 
 # Russian localization is generated inside the pinned upstream submodule at build time.
 # The submodule is intentionally immutable from the parent repository's Contents API.
@@ -1685,6 +1694,289 @@ write_russian_strings(
 )
 
 
+# Additional strings introduced by upstream 0.5.0-beta1.
+write_russian_strings(
+    "feature/launcher/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_not_on_tv_home_changed_off">Кнопка «Домой» открывает установленный вами лаунчер, а собственный главный экран телевизора отключён не этим приложением. Поэтому мастер настройки оставил экран как есть и не устанавливал наш. Очистка работает и без него.</string>
+    <string name="home_not_on_tv_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV, добавленный другим способом (например, через компьютер) и подписанный другим ключом. Мастер настройки оставил его как есть и не устанавливал ещё одну копию.</string>
+    <string name="home_not_on_tv_next_home_changed_off">Если хотите установить новый главный экран, сначала включите собственный экран телевизора. На телевизоре откройте: Настройки → Приложения → Все приложения → Показать системные приложения, выберите {app} и нажмите «Включить» (названия пунктов могут немного отличаться). Не удаляйте свой лаунчер. Затем запустите настройку ещё раз — приложение всё проверит.</string>
+    <string name="home_not_on_tv_next_home_changed_ours">Чтобы это приложение могло управлять им (док-станцией, оформлением и обновлениями), сначала отмените установку через средство восстановления той программы, которая его установила: собственный главный экран телевизора должен вернуться. Затем запустите настройку ещё раз. Не удаляйте его до этого — иначе телевизору может быть не на что переключиться.</string>
+    <string name="home_own_home_screen">собственный главный экран телевизора</string>
+    <string name="miy_title">Настройте под себя</string>
+    <string name="home_row_hub_note">Оформление, обои, приложения, виджеты и заставка</string>
+    <string name="miy_row_home">Главный экран</string>
+    <string name="miy_row_home_note">Какой главный экран используется и как его обновлять</string>
+    <string name="miy_preview_caption">Так будет выглядеть телевизор. Все изменения ниже будут показаны здесь вместе.</string>
+    <string name="miy_preview_cd">Предварительный просмотр главного экрана телевизора с вашими изменениями</string>
+    <string name="miy_row_look">Внешний вид</string>
+    <string name="miy_row_wallpaper">Обои</string>
+    <string name="miy_row_wallpaper_none">Без изображения</string>
+    <string name="miy_row_wallpaper_photo">Ваше фото</string>
+    <string name="miy_row_apps">Приложения</string>
+    <string name="miy_row_apps_dock">Док-станция: {names}</string>
+    <string name="miy_row_apps_dock_more">Док-станция: {names} и ещё {count}</string>
+    <string name="miy_row_widgets">Виджеты</string>
+    <string name="miy_row_widgets_clock">Часы</string>
+    <string name="miy_row_widgets_greets">Приветствие: {name}</string>
+    <string name="miy_row_widgets_buttons">{count, plural, one {# кнопка} few {# кнопки} many {# кнопок} other {# кнопки}}</string>
+    <string name="miy_row_widgets_menu">кнопки в одном меню</string>
+    <string name="miy_row_widgets_second">Вторая дата</string>
+    <string name="miy_row_widgets_stats">Состояние ТВ</string>
+    <string name="miy_row_inputs">Входы и эфирное ТВ</string>
+    <string name="miy_row_buttons">Кнопки пульта</string>
+    <string name="miy_row_buttons_helper">Помощник кнопки «Домой»</string>
+    <string name="miy_row_saver">Заставка</string>
+    <string name="miy_row_saver_tv">Стандартная от телевизора</string>
+    <string name="miy_row_saver_clock">Часы через {count, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}}</string>
+    <string name="miy_start_home">Запускать главный экран</string>
+    <string name="miy_start_live">Запускать эфирное ТВ</string>
+    <string name="miy_start_app">Запускать приложение</string>
+    <string name="miy_changes">{count, plural, one {# изменение ещё не применено к ТВ} few {# изменения ещё не применены к ТВ} many {# изменений ещё не применено к ТВ} other {# изменения ещё не применены к ТВ}}</string>
+    <string name="miy_put">Применить на телевизоре</string>
+    <string name="miy_discard">Оставить без изменений</string>
+    <string name="miy_failed">Не удалось передать изменения на телевизор. Они сохранены здесь — попробуйте ещё раз.</string>
+    <string name="miy_needs_update">Для некоторых параметров нужен более новый главный экран. Обновите его на странице «Главный экран».</string>
+    <string name="miy_apps_sub">Какие приложения и где показывать</string>
+    <string name="miy_apps_dock_hint">Количество приложений в строке и подписи под ними настраиваются в разделе «Внешний вид».</string>
+    <string name="miy_apps_on_tv">На телевизоре</string>
+    <string name="miy_apps_move">Переместить приложения с помощью пульта</string>
+    <string name="miy_apps_move_desc">Удерживайте OK на любом приложении на телевизоре и выберите «Переместить». Порядок сохранится, пока вы не измените док-станцию здесь.</string>
+    <string name="miy_apps_library">Библиотека приложений</string>
+    <string name="miy_apps_library_desc">Кнопка «Библиотека» после последнего ряда: все приложения телевизора.</string>
+    <string name="miy_apps_hidden">Скрытые приложения</string>
+    <string name="miy_apps_hidden_hint">Скрытые приложения остаются установленными и доступны в библиотеке. Приложения из док-станции здесь не отображаются: сначала удалите их из док-станции.</string>
+    <string name="miy_apps_hidden_cd">Скрыть {name}</string>
+    <string name="miy_apps_names">Названия</string>
+    <string name="miy_apps_names_hint">Собственное название плитки на телевизоре. Оставьте поле пустым, чтобы использовать название приложения.</string>
+    <string name="miy_apps_name_label">Отображать {name} как</string>
+    <string name="miy_inputs_start">Что открывать при включении телевизора</string>
+    <string name="miy_inputs_home">Главный экран</string>
+    <string name="miy_inputs_home_desc">Новый главный экран, как сейчас.</string>
+    <string name="miy_inputs_live">Эфирное ТВ</string>
+    <string name="miy_inputs_live_desc">Открывает {app}.</string>
+    <string name="miy_inputs_app">Приложение</string>
+    <string name="miy_inputs_app_desc">При первом запуске выберите его на телевизоре в настройках главного экрана.</string>
+    <string name="miy_inputs_start_hint">Один раз после каждого перезапуска. Если сначала нажать другую кнопку, сработает она; до главного экрана всегда можно добраться одним нажатием.</string>
+    <string name="miy_inputs_no_live">На этом телевизоре нет приложения эфирного ТВ, поэтому можно запускать главный экран или другое приложение.</string>
+    <string name="miy_inputs_elsewhere">В другом месте</string>
+    <string name="miy_inputs_live_tile">Плитка эфирного ТВ</string>
+    <string name="miy_inputs_live_tile_in">В док-станции. Измените её в разделе «Док-станция».</string>
+    <string name="miy_inputs_live_tile_out">Нет в док-станции. Добавьте её в разделе «Док-станция».</string>
+    <string name="miy_inputs_input_key">Кнопка Input на пульте по-прежнему открывает собственный список входов телевизора.</string>
+    <string name="miy_buttons_home">Кнопка «Домой»</string>
+    <string name="miy_buttons_none">Кнопка «Домой» на пульте открывает новый главный экран.</string>
+    <string name="miy_saver_sub">Что показывает телевизор, когда его никто не смотрит</string>
+    <string name="miy_saver_tv">Стандартная от телевизора</string>
+    <string name="miy_saver_tv_desc">Остаётся стандартная заставка телевизора. На Google TV это режим Ambient.</string>
+    <string name="miy_saver_clock">Часы</string>
+    <string name="miy_saver_clock_desc">Большие часы с лёгкой анимацией на главном экране.</string>
+    <string name="miy_saver_after">Запускать через</string>
+    <string name="miy_saver_minutes">{count} мин.</string>
+    <string name="miy_saver_minutes_cd">{count, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}}</string>
+    <string name="miy_saver_behind">Фон часов</string>
+    <string name="miy_saver_picture">Изображение главного экрана</string>
+    <string name="miy_saver_black">Просто чёрный фон — лучше для OLED</string>
+    <string name="miy_saver_glow_now">Сейчас: мягкое свечение цветом часов, встроенное в главный экран.</string>
+    <string name="miy_saver_where">Только на главном экране, не поверх эфира или приложения. В остальных случаях продолжает запускаться стандартная заставка телевизора.</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "feature/setup/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="found_zero_kept_choices">Некоторые приложения оставлены включёнными, чтобы вы могли решить сами. Они перечислены в разделе «Настроить».</string>
+    <string name="kept_reason_home_changed_off">Собственный главный экран отключён, а кнопка «Домой» открывает ваш лаунчер, поэтому мы не трогаем его.</string>
+    <string name="kept_reason_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV другим способом.</string>
+    <string name="found_home_changed_off">Кнопка «Домой» открывает установленный вами лаунчер, а собственный главный экран телевизора отключён не этим приложением. Мы не отменяем такие изменения, поэтому телевизор сохранит текущий главный экран.</string>
+    <string name="found_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV другим способом (например, через компьютер) и подписанный другим ключом. Мы оставляем его как есть и не устанавливаем свою копию.</string>
+    <string name="kept_next_home_changed_off">Если хотите установить новый главный экран, сначала включите собственный экран телевизора. На телевизоре откройте: Настройки → Приложения → Все приложения → Показать системные приложения, выберите {app} и нажмите «Включить» (названия пунктов могут немного отличаться). Не удаляйте свой лаунчер. Затем запустите настройку ещё раз — приложение всё проверит.</string>
+    <string name="kept_next_home_changed_ours">Чтобы это приложение могло управлять им (док-станцией, оформлением и обновлениями), сначала отмените установку через средство восстановления той программы, которая его установила: собственный главный экран телевизора должен вернуться. Затем запустите настройку ещё раз. Не удаляйте его до этого — иначе телевизору может быть не на что переключиться.</string>
+    <string name="kept_own_home_screen">собственный главный экран телевизора</string>
+    <string name="stop_home_other_key_title">Сначала удалите старую копию главного экрана</string>
+    <string name="stop_home_other_key_body">На телевизоре уже есть копия нового главного экрана, установленная другим способом, например через компьютер. Она подписана другим ключом, поэтому телевизор не позволит обновить её. Собственный главный экран телевизора остаётся включённым, а все остальные выполненные изменения сохраняются. Чтобы безопасно удалить старую копию, сначала убедитесь, что собственный главный экран телевизора включён и открывается кнопкой «Домой» (если программа установки отключила его, включите обратно с помощью той же программы). Никогда не оставляйте телевизор без главного экрана. Затем удалите старую копию (com.gathin.tvhome) в Настройки → Приложения и снова запустите настройку.</string>
+    <string name="done_restart_first">Перед завершением перезапустите телевизор и проверьте, что новый главный экран сохранился.</string>
+    <string name="helper_not_offered_new_home">Недоступно, пока новый главный экран назначен основным. Чтобы попробовать, выберите «Использовать собственный главный экран телевизора» в разделе «Главный экран для этого ТВ», затем снова запустите настройку.</string>
+    <string name="helper_not_offered_not_google">Недоступно: сейчас кнопка «Домой» на этом телевизоре открывает не главный экран Google. Если это приложение меняло его раньше, команда «Отменить все изменения» восстановит исходное состояние. Затем снова запустите настройку.</string>
+    <string name="helper_not_offered_home_unknown">Недоступно: мы недостаточно хорошо знаем, как устроен главный экран этого телевизора.</string>
+    <string name="helper_not_offered_tv">Недоступно: этот телевизор не поддерживает установку нового главного экрана.</string>
+    <string name="helper_not_offered_accessibility">Недоступно: безопасно изменить специальные возможности телевизора не удалось.</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "ui/design/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cyt_look_moved_widgets">Приветствие, дата и кнопки в верхней части экрана теперь находятся в разделе «Виджеты» меню «Настройте под себя» — рядом с переключателями их отображения.</string>
+</resources>'''
+)
+
+
+# Russian localization for the 0.5.0-beta1 Widgets page (all 154 resources).
+write_russian_strings(
+    "feature/launcher/src/main/res/values-ru/strings_widgets.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widgets_place_clock">Часы</string>
+    <string name="widgets_place_under_clock">Под часами</string>
+    <string name="widgets_place_buttons">Кнопки</string>
+    <string name="widgets_place_under_buttons">Под кнопками</string>
+    <string name="widgets_place_before_apps">Перед приложениями</string>
+    <string name="widgets_board_place_cd">{place}. {now}</string>
+    <string name="widgets_board_add">+ Добавить</string>
+    <string name="widgets_board_add_card">+ Добавить карточку</string>
+    <string name="widgets_board_nothing">Пока ничего нет</string>
+    <string name="widgets_board_no_cards">В этой версии карточек нет</string>
+    <string name="widgets_board_hint">Расположение как на телевизоре. Места остаются на своих позициях — вы выбираете, что в них показывать.</string>
+    <string name="widgets_sample_greeting">Добрый вечер</string>
+    <string name="widgets_sample_greeting_name">Добрый вечер, {name}</string>
+    <string name="widgets_sample_time_12">8:41</string>
+    <string name="widgets_sample_am_pm">PM</string>
+    <string name="widgets_sample_time_24">20:41</string>
+    <string name="widgets_sample_date">Вторник, 28 октября</string>
+    <string name="widgets_second_name">Вторая дата</string>
+    <string name="widgets_second_sub">Солнечная хиджра или лунный календарь</string>
+    <string name="widgets_line_shamsi">6 абана 1405</string>
+    <string name="widgets_line_lunar">Лунная дата 13/9 · Год Лошади</string>
+    <string name="widgets_stats_name">Состояние ТВ</string>
+    <string name="widgets_stats_sub">Каждые 10 секунд</string>
+    <string name="widgets_line_stats" formatted="false">ЦП 14% · Свободно в памяти 1,2 ГБ · Свободно на накопителе 61%</string>
+    <string name="widgets_caption_name">Название изображения</string>
+    <string name="widgets_caption_sub">Переключается ниже</string>
+    <string name="widgets_line_caption">Название изображения</string>
+    <string name="widgets_retro_name">Ретро</string>
+    <string name="widgets_retro_sub">Дополнительная карточка</string>
+    <string name="widgets_line_retro">Классические игры</string>
+    <string name="widgets_later_tag">Позже</string>
+    <string name="widgets_later_sub">Пока недоступно на телевизорах</string>
+    <string name="widgets_later_cd">{name}. Появится позже, пока недоступно на телевизорах.</string>
+    <string name="widgets_later_action">Что для этого нужно</string>
+    <string name="widgets_weather_name">Погода</string>
+    <string name="widgets_weather_line">29°, небольшой дождь</string>
+    <string name="widgets_weather_why">Главный экран пока не показывает здесь погоду. Он остаётся компактным и не подключается к интернету, поэтому для погоды сначала потребуется небольшое изменение главного экрана.</string>
+    <string name="widgets_world_name">Мировое время</string>
+    <string name="widgets_world_line">Лондон 15:12 · Нью-Йорк 10:12</string>
+    <string name="widgets_countdown_name">Обратный отсчёт</string>
+    <string name="widgets_countdown_line">До Дивали 4 дня</string>
+    <string name="widgets_sun_name">Восход и закат</string>
+    <string name="widgets_sun_line">Закат в 18:04</string>
+    <string name="widgets_note_name">Заметка</string>
+    <string name="widgets_note_line">Стоматолог в 16:00</string>
+    <string name="widgets_small_change_why">Требуется изменение главного экрана. Его основа остаётся компактной, поэтому мы добавим небольшое собственное изменение.</string>
+    <string name="widgets_prayer_name">Время молитвы</string>
+    <string name="widgets_prayer_line">Аср 15:42</string>
+    <string name="widgets_prayer_why">Появится в строке «Скоро», когда дополнение Prayer Times получит поддержку, или как карточка после подписания.</string>
+    <string name="widgets_f1_name">Этапы Формулы-1</string>
+    <string name="widgets_f1_line">F1 · На этих выходных</string>
+    <string name="widgets_f1_why">Главный экран уже умеет это показывать. Сначала приложению нужно загружать календарь гонок каждого сезона, поэтому функция появится в одной из следующих версий.</string>
+    <string name="widgets_match_name">Скоро</string>
+    <string name="widgets_match_line">IND — NZ · Сб, 14:00</string>
+    <string name="widgets_match_why">Главный экран 3.3 уже умеет показывать здесь матчи и события через дополнение Game Day. Функция появится после подписания дополнения.</string>
+    <string name="widgets_sources_name">Источники</string>
+    <string name="widgets_sources_line">Ваши входы</string>
+    <string name="widgets_sources_why">Карточка из дополнений Gathin. Появится после подписания, как и «Ретро».</string>
+    <string name="widgets_wcard_name">Карточка погоды</string>
+    <string name="widgets_wcard_line">Прогноз и качество воздуха</string>
+    <string name="widgets_wclock_name">Мировые часы</string>
+    <string name="widgets_wclock_line">Время в разных городах</string>
+    <string name="widgets_card_why">Карточка из дополнений Gathin. Появится после подписания.</string>
+    <string name="widgets_pick_on">Включено</string>
+    <string name="widgets_pick_off">Выключено</string>
+    <string name="widgets_greeting">Приветствие</string>
+    <string name="widgets_greeting_sub">«Доброе утро», «Добрый день», «Добрый вечер» или «Спокойной ночи» над часами.</string>
+    <string name="widgets_greeting_plain">Без имени</string>
+    <string name="widgets_greeting_with_name">С вашим именем</string>
+    <string name="widgets_name_label">Ваше имя</string>
+    <string name="widgets_name_hint">Имя остаётся на телевизоре и не попадает в отчёты об ошибках.</string>
+    <string name="widgets_greeting_times">Утро — до 12:00, день — до 17:00, вечер — до 22:00, затем ночь. Во время праздничных сезонов, например Дивали, приветствие меняется вместе с оформлением.</string>
+    <string name="widgets_date_label">Дата</string>
+    <string name="widgets_date_below">Дата под часами</string>
+    <string name="widgets_date_below_sub">Если выключено — отображается рядом с часами, после короткой линии.</string>
+    <string name="widgets_bright_date">Яркая дата</string>
+    <string name="widgets_bright_date_sub">Белым, как часы, а не приглушённым цветом.</string>
+    <string name="widgets_time_label">Время</string>
+    <string name="widgets_time_system">Как на телевизоре</string>
+    <string name="widgets_time_12">12-часовой формат</string>
+    <string name="widgets_time_24">24-часовой формат</string>
+    <string name="widgets_time_hint">Главный экран этого телевизора получает настройку с телефона. Если выбрано «Как на телевизоре», используется настройка самого ТВ.</string>
+    <string name="widgets_time_older">Главный экран этого телевизора использует собственную настройку ТВ — 12- или 24-часовой формат. Измените её в настройках телевизора.</string>
+    <string name="widgets_clock_always">Часы всегда отображаются, как только телевизор узнаёт время: подключите его к интернету или установите дату.</string>
+    <string name="widgets_under_hint">Элементы располагаются в порядке главного экрана. Нажмите на элемент с пометкой «Позже», чтобы узнать, что ему требуется.</string>
+    <string name="widgets_second_label">Вторая дата</string>
+    <string name="widgets_second_shamsi">Солнечная хиджра</string>
+    <string name="widgets_second_lunar">Лунный календарь (китайский и вьетнамский)</string>
+    <string name="widgets_second_shamsi_hint">Над обычной датой; она станет немного меньше, чтобы обе даты поместились.</string>
+    <string name="widgets_second_lunar_hint">Под обычной датой, рассчитывается для вашего часового пояса.</string>
+    <string name="widgets_stats_hint">Состояние ТВ: насколько загружен телевизор и сколько свободного места осталось. Полезно для медленных телевизоров.</string>
+    <string name="widgets_look_label">Внешний вид</string>
+    <string name="widgets_look_names">С подписями</string>
+    <string name="widgets_look_names_sub">Текст и значки</string>
+    <string name="widgets_look_icons">Круглые значки</string>
+    <string name="widgets_look_icons_sub">Также для входов</string>
+    <string name="widgets_look_menu">Одно меню</string>
+    <string name="widgets_look_menu_sub">Как в Google TV</string>
+    <string name="widgets_look_menu_hint">Одна кнопка с шестерёнкой. В её меню находятся входы, сеть, сортировка и настройки.</string>
+    <string name="widgets_which_label">Какие кнопки показывать</string>
+    <string name="widgets_which_hint">На телевизоре они располагаются в этом порядке, слева направо.</string>
+    <string name="widgets_btn_inputs">Входы</string>
+    <string name="widgets_btn_inputs_sub">Скрывается, если ничего не подключено</string>
+    <string name="widgets_btn_apps">Ваши приложения</string>
+    <string name="widgets_btn_apps_sub">Круглые значки вне рядов</string>
+    <string name="widgets_btn_wifi">Wi-Fi</string>
+    <string name="widgets_btn_wifi_sub">Показывает название сети</string>
+    <string name="widgets_btn_vpn">VPN</string>
+    <string name="widgets_btn_vpn_sub">Зелёный — включён, красный — выключен</string>
+    <string name="widgets_btn_reorder">Сортировка</string>
+    <string name="widgets_btn_reorder_sub">Изменить порядок приложений</string>
+    <string name="widgets_btn_library">Библиотека</string>
+    <string name="widgets_btn_library_sub">Все приложения на телевизоре</string>
+    <string name="widgets_btn_library_needs">Требуется библиотека приложений. Она также будет включена.</string>
+    <string name="widgets_btn_settings">Настройки</string>
+    <string name="widgets_btn_settings_sub">Всегда отображается</string>
+    <string name="widgets_btn_settings_always">Кнопка настроек всегда отображается на телевизоре, поэтому настройки ТВ доступны одним нажатием.</string>
+    <string name="widgets_btn_menu">Меню</string>
+    <string name="widgets_apps_label">Ваши приложения в верхней панели</string>
+    <string name="widgets_apps_hint">До 3 приложений в виде круглых значков. Они убираются из рядов ниже, поэтому каждое приложение будет только в одном месте.</string>
+    <string name="widgets_apps_full">В верхней панели может быть до 3 приложений. Сначала уберите одно из них.</string>
+    <string name="widgets_apps_number">Номер {n} в верхней панели</string>
+    <string name="widgets_wifi_label">Кнопка Wi-Fi</string>
+    <string name="widgets_wifi_green">Зелёный цвет при подключении к сети</string>
+    <string name="widgets_wifi_green_sub">Значок Wi-Fi становится зелёным, когда телевизор подключён к интернету.</string>
+    <string name="widgets_wifi_warn">Оранжевый или красный при проблемах</string>
+    <string name="widgets_wifi_warn_sub">Оранжевый: подключено, но нет интернета. Красный: нет подключения.</string>
+    <string name="widgets_wifi_name">Название сети рядом со значком</string>
+    <string name="widgets_wifi_name_sub">Если выключено — только круглый значок.</string>
+    <string name="widgets_opens_label">При нажатии OK открывается</string>
+    <string name="widgets_wifi_opens_wifi">Настройки Wi-Fi</string>
+    <string name="widgets_wifi_opens_vpn">Приложение VPN</string>
+    <string name="widgets_wifi_hold">При удержании OK по-прежнему открываются настройки Wi-Fi.</string>
+    <string name="widgets_vpn_app_label">Какое приложение VPN</string>
+    <string name="widgets_vpn_none">На этом телевизоре приложение VPN не найдено.</string>
+    <string name="widgets_vpn_label">Кнопка VPN открывает</string>
+    <string name="widgets_vpn_hint">Зелёный замок — VPN подключён, красная надпись «VPN выключен» — нет. В этом случае кнопка Wi-Fi всегда открывает настройки Wi-Fi.</string>
+    <string name="widgets_settings_label">Кнопка настроек</string>
+    <string name="widgets_settings_tv">Настройки телевизора</string>
+    <string name="widgets_settings_home">Настройки главного экрана</string>
+    <string name="widgets_settings_hint">Удерживайте OK, чтобы открыть меню с обоими вариантами.</string>
+    <string name="widgets_collide">Дата накладывается на кнопки. При таком количестве кнопок на телевизоре нет места для даты рядом с часами.</string>
+    <string name="widgets_collide_action">Переместить дату под часы</string>
+    <string name="widgets_caption_none">У ваших изображений пока нет названий. Приложение отправляет одно изображение; названия появятся в коллекциях изображений.</string>
+    <string name="widgets_caption_showing">Сейчас отображается название каждого изображения под кнопками.</string>
+    <string name="widgets_caption_off">У ваших изображений есть названия, но их показ выключен.</string>
+    <string name="widgets_caption_switch">Названия изображений</string>
+    <string name="widgets_caption_switch_sub">Название каждого изображения под кнопками.</string>
+    <string name="widgets_cards_label">Карточки перед приложениями</string>
+    <string name="widgets_cards_hint">Карточка — это плитка с названием и одной короткой строкой, как у приложения. Она находится в начале ряда под док-панелью. Каждая карточка — дополнение из репозитория Gathin, подписанное нами; автор указан на телевизоре. До 8 карточек.</string>
+    <string name="widgets_retro_hint">«Ретро» открывает игры из дополнения. Интернет и специальные разрешения не требуются.</string>
+    <string name="widgets_retro_action">Изменить в разделе «Карточки и модули»</string>
+    <string name="widgets_cards_link">Карточки и модули</string>
+    <string name="widgets_cards_play">Карточки добавляются дополнениями, которых в этой версии приложения пока нет.</string>
+</resources>'''
+)
+
 # Fail the build if a Clean Your TV resource module is missing any Russian
 # translation or if a generated translation file is not well-formed XML.
 import xml.etree.ElementTree as ET
@@ -1701,19 +1993,27 @@ _russian_modules = (
     "ui/design",
 )
 for _module in _russian_modules:
-    _base = upstream / _module / "src/main/res/values/strings.xml"
-    _localized = upstream / _module / "src/main/res/values-ru/strings.xml"
-    if not _base.exists():
-        raise SystemExit(f"Missing source strings: {_base}")
-    if not _localized.exists():
-        raise SystemExit(f"Missing Russian strings: {_localized}")
-    try:
-        _base_root = ET.parse(_base).getroot()
-        _localized_root = ET.parse(_localized).getroot()
-    except ET.ParseError as _error:
-        raise SystemExit(f"Invalid localization XML in {_module}: {_error}")
-    _base_keys = {node.attrib.get("name") for node in _base_root if node.attrib.get("name")}
-    _localized_keys = {node.attrib.get("name") for node in _localized_root if node.attrib.get("name")}
+    _base_dir = upstream / _module / "src/main/res/values"
+    _localized_dir = upstream / _module / "src/main/res/values-ru"
+    _base_files = sorted(_base_dir.glob("strings*.xml"))
+    if not _base_files:
+        raise SystemExit(f"Missing source strings: {_base_dir}")
+    if not _localized_dir.exists():
+        raise SystemExit(f"Missing Russian strings: {_localized_dir}")
+    _base_keys = set()
+    for _base_file in _base_files:
+        try:
+            _base_root = ET.parse(_base_file).getroot()
+        except ET.ParseError as _error:
+            raise SystemExit(f"Invalid source XML in {_base_file}: {_error}")
+        _base_keys.update(node.attrib.get("name") for node in _base_root if node.attrib.get("name"))
+    _localized_keys = set()
+    for _localized_file in sorted(_localized_dir.glob("strings*.xml")):
+        try:
+            _localized_root = ET.parse(_localized_file).getroot()
+        except ET.ParseError as _error:
+            raise SystemExit(f"Invalid localization XML in {_localized_file}: {_error}")
+        _localized_keys.update(node.attrib.get("name") for node in _localized_root if node.attrib.get("name"))
     _missing = sorted(_base_keys - _localized_keys)
     if _missing:
         raise SystemExit(f"Russian localization incomplete in {_module}: {', '.join(_missing)}")
