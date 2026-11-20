@@ -3947,12 +3947,16 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
             addText("device-info.txt", readTvDetails(adb))
             addText("applications.txt", packages.joinToString("\n"))
             packages.forEach { pkg ->
+                val localFiles = mutableListOf<File>()
                 try {
                     val paths = shellText(adb, "pm path $pkg").lineSequence()
                         .map { it.removePrefix("package:").trim() }
                         .filter { it.startsWith("/") }
                         .toList()
                     if (paths.isEmpty()) throw Exception("Пути APK не найдены")
+
+                    // Pull every split first. A failed package is never left in the ZIP
+                    // as an incomplete set that could later be mistaken for restorable.
                     paths.forEachIndexed { index, remotePath ->
                         val local = File(tempDir, "${pkg.replace('.', '_')}_${index}.apk")
                         when (val pullResult = adb.pull(local, remotePath)) {
@@ -3960,14 +3964,18 @@ private fun createTvBackup(adb: Dadb, context: Context): File {
                             is dadb.SyncResult.Failure -> throw Exception(pullResult.toString())
                         }
                         if (!local.exists() || local.length() == 0L) throw Exception("Пустой APK")
+                        localFiles += local
+                    }
+                    localFiles.forEach { local ->
                         zip.putNextEntry(ZipEntry("apks/$pkg/${local.name}"))
                         local.inputStream().use { input -> input.copyTo(zip) }
                         zip.closeEntry()
                         savedApks++
-                        local.delete()
                     }
                 } catch (e: Exception) {
                     failures.add("$pkg: ${e.message ?: "ошибка копирования"}")
+                } finally {
+                    localFiles.forEach { it.delete() }
                 }
             }
             addText(
