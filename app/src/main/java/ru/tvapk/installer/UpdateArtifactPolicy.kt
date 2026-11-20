@@ -33,6 +33,14 @@ internal object UpdateArtifactPolicy {
             actualSha256.matches(Regex("[0-9a-fA-F]{64}")) &&
             actualSha256.equals(expectedSha256, ignoreCase = true)
 
+    fun sha256FromRelease(assetDigest: String, releaseBody: String): String? {
+        val fromAsset = assetDigest.removePrefix("sha256:")
+            .takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
+        val fromBody = Regex("(?im)^SHA-256:\\s*([0-9a-f]{64})\\s*$")
+            .find(releaseBody)?.groupValues?.getOrNull(1)
+        return (fromAsset ?: fromBody)?.lowercase(Locale.ROOT)
+    }
+
     fun isTrustedUpdate(
         packageName: String,
         installedPackageName: String,
