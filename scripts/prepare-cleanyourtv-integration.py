@@ -67,6 +67,25 @@ replace_once(
     "import tv.cleanyour.feature.setup.SetupFlow",
     "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.TvInstallerApp",
 )
+
+# The Settings update action downloads our own full APK and launches Android's installer.
+replace_once(
+    app_root,
+    "import ru.tvapk.installer.TvInstallerApp",
+    "import ru.tvapk.installer.TvInstallerApp\nimport ru.tvapk.installer.CleanYourTvUpdater",
+)
+replace_once(
+    app_root,
+    'onOpenRelease = { graph.store.releasePage?.let { url -> scope.launch { onManageEffect(ManageEffect.OpenUrl(url)) } } },',
+    'onOpenRelease = { CleanYourTvUpdater.download(this@MainActivity) },',
+)
+manifest = upstream / "app" / "src" / "main" / "AndroidManifest.xml"
+replace_once(
+    manifest,
+    '        <receiver\n            android:name="androidx.profileinstaller.ProfileInstallReceiver"',
+    '        <receiver\n            android:name="ru.tvapk.installer.CleanYourTvUpdateReceiver"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />\n            </intent-filter>\n        </receiver>\n\n        <receiver\n            android:name="androidx.profileinstaller.ProfileInstallReceiver"',
+)
+
 replace_once(
     app_root,
     "    @Serializable data object AppSettings : Dest",
