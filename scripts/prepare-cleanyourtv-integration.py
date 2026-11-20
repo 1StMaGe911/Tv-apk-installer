@@ -77,7 +77,7 @@ replace_once(
 replace_once(
     app_root,
     'onOpenRelease = { graph.store.releasePage?.let { url -> scope.launch { onManageEffect(ManageEffect.OpenUrl(url)) } } },',
-    'onOpenRelease = { CleanYourTvUpdater.download(this@MainActivity) },',
+    'onOpenRelease = { CleanYourTvUpdater.download(context) },',
 )
 manifest = upstream / "app" / "src" / "main" / "AndroidManifest.xml"
 replace_once(
