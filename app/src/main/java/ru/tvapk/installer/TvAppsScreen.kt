@@ -43,8 +43,8 @@ private fun parseUserPackages(output: String): List<String> =
         .distinct().sorted().toList()
 
 internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String): TvInstalledApp {
-    val versionName = Regex("""versionName=([^\\s]+)""").find(details)?.groupValues?.get(1)
-    val versionCode = Regex("""versionCode=(\\d+)""").find(details)?.groupValues?.get(1)
+    val versionName = Regex("""versionName=(\S+)""").find(details)?.groupValues?.get(1)
+    val versionCode = Regex("""versionCode=(\d+)""").find(details)?.groupValues?.get(1)
     val sizeKb = sizeOutput.lineSequence().mapNotNull { line ->
         line.trim().split(Regex("\\s+")).firstOrNull()?.toLongOrNull()
     }.sum().takeIf { it > 0L }
