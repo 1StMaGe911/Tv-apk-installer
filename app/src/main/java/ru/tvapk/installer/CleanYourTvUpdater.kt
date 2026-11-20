@@ -207,6 +207,10 @@ object CleanYourTvUpdater {
 /** Handles the package-replaced broadcast after Android has finished installing our update. */
 class CleanYourTvUpdateReceiver : android.content.BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            // Remove notifications created by older builds; their PendingIntent targeted the legacy installer.
+            androidx.core.app.NotificationManagerCompat.from(context).cancel(1001)
+        }
         CleanYourTvUpdater.onPackageReplaced(context, intent.action)
     }
 }
