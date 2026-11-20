@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 214
-        versionName = "0.9.24" // TV APK backup to user-selected folder
+        versionCode = 215
+        versionName = "0.9.25" // restore backed-up APK files to TV
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
