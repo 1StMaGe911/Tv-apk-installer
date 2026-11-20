@@ -74,7 +74,8 @@ private fun formatApkSize(bytes: Long?): String {
 fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevice>) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var devices by remember { mutableStateOf(emptyList<TvDevice>()) }
+    var devices by remember { mutableStateOf(loadSavedTvAppsDevices(context)) }
+    var deviceInfo by remember { mutableStateOf("") }
     var selectedDevice by remember { mutableStateOf<TvDevice?>(null) }
     var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -109,12 +110,18 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             try {
                 val result = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
+                        val model = adb.shell("getprop ro.product.model").output.trim()
+                        val manufacturer = adb.shell("getprop ro.product.manufacturer").output.trim()
+                        val androidVersion = adb.shell("getprop ro.build.version.release").output.trim()
+                        val sdk = adb.shell("getprop ro.build.version.sdk").output.trim()
+                        val identity = listOf(manufacturer, model).filter { it.isNotBlank() }.distinct().joinToString(" ").ifBlank { device.name }
+                        val info = listOf(identity, androidVersion.takeIf { it.isNotBlank() }?.let { "Android $it" }, sdk.takeIf { it.isNotBlank() }?.let { "SDK $it" }).filterNotNull().joinToString(" • ")
                         val response = adb.shell("pm list packages -3")
                         if (response.exitCode != 0) throw IllegalStateException(
                             response.allOutput.ifBlank { "Команда ADB завершилась с ошибкой ${response.exitCode}" }
                         )
                         val packageNames = parseUserPackages(response.output)
-                        packageNames.mapIndexed { index, packageName ->
+                        val installed = packageNames.mapIndexed { index, packageName ->
                             withContext(Dispatchers.Main) {
                                 status = "Получаем сведения: ${index + 1}/${packageNames.size}"
                             }
@@ -124,9 +131,11 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                             ).output
                             parseInstalledApp(packageName, details, sizes)
                         }
+                        info to installed
                     }
                 }
-                packages = result
+                deviceInfo = result.first
+                packages = result.second
                 status = "Найдено пользовательских приложений: ${result.size}. Системные приложения скрыты."
             } catch (failure: Exception) {
                 status = "Не удалось получить список: ${failure.message ?: failure.javaClass.simpleName}"
@@ -243,10 +252,11 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             busy = true
             status = "Ищем телевизоры в локальной сети…"
             try {
-                devices = discoverDevices()
-                status = if (devices.isEmpty()) {
+                val discovered = discoverDevices()
+                devices = mergeSavedTvAppsDevices(context, devices + discovered)
+                status = if (discovered.isEmpty()) {
                     "Телевизоры с доступной ADB-отладкой не найдены. Проверь, что телефон и ТВ в одной Wi-Fi-сети."
-                } else "Найдено устройств: ${devices.size}. Выбери свой телевизор."
+                } else "Найдено новых устройств: ${discovered.size}. Всего сохранено: ${devices.size}."
             } catch (failure: Exception) {
                 status = "Ошибка поиска: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
