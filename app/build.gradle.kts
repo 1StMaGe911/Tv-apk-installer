@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 211
-        versionName = "0.9.21" // TV apps manager and update notification navigation fix
+        versionCode = 212
+        versionName = "0.9.22" // persistent APK installation history
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
