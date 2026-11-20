@@ -17,8 +17,8 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
 
-replace_once(app_gradle, "versionCode = 30", "versionCode = 190")
-replace_once(app_gradle, 'versionName = "0.4.8"', 'versionName = "0.9.139"')
+replace_once(app_gradle, "versionCode = 32", "versionCode = 193")
+replace_once(app_gradle, 'versionName = "0.5.0-beta1"', 'versionName = "0.9.3"')
 store_source = upstream / "app" / "src" / "full" / "kotlin" / "tv" / "cleanyour" / "app" / "Store.kt"
 replace_once(store_source, "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/releases/latest", "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest")
 replace_once(store_source, "https://github.com/udhaykumarbala/cleanyourtv-app/releases.atom", "https://github.com/1StMaGe911/Tv-apk-installer/releases.atom")
@@ -201,7 +201,7 @@ replace_once(
         }
 """
 )
-print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.139 (190).")
+print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.3 (193).")
 
 
 # Russian localization is generated inside the pinned upstream submodule at build time.
@@ -1684,6 +1684,126 @@ write_russian_strings(
 </resources>'''
 )
 
+
+# Additional strings introduced by upstream 0.5.0-beta1.
+write_russian_strings(
+    "feature/launcher/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_not_on_tv_home_changed_off">Кнопка «Домой» открывает установленный вами лаунчер, а собственный главный экран телевизора отключён не этим приложением. Поэтому мастер настройки оставил экран как есть и не устанавливал наш. Очистка работает и без него.</string>
+    <string name="home_not_on_tv_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV, добавленный другим способом (например, через компьютер) и подписанный другим ключом. Мастер настройки оставил его как есть и не устанавливал ещё одну копию.</string>
+    <string name="home_not_on_tv_next_home_changed_off">Если хотите установить новый главный экран, сначала включите собственный экран телевизора. На телевизоре откройте: Настройки → Приложения → Все приложения → Показать системные приложения, выберите {app} и нажмите «Включить» (названия пунктов могут немного отличаться). Не удаляйте свой лаунчер. Затем запустите настройку ещё раз — приложение всё проверит.</string>
+    <string name="home_not_on_tv_next_home_changed_ours">Чтобы это приложение могло управлять им (док-станцией, оформлением и обновлениями), сначала отмените установку через средство восстановления той программы, которая его установила: собственный главный экран телевизора должен вернуться. Затем запустите настройку ещё раз. Не удаляйте его до этого — иначе телевизору может быть не на что переключиться.</string>
+    <string name="home_own_home_screen">собственный главный экран телевизора</string>
+    <string name="miy_title">Настройте под себя</string>
+    <string name="home_row_hub_note">Оформление, обои, приложения, виджеты и заставка</string>
+    <string name="miy_row_home">Главный экран</string>
+    <string name="miy_row_home_note">Какой главный экран используется и как его обновлять</string>
+    <string name="miy_preview_caption">Так будет выглядеть телевизор. Все изменения ниже будут показаны здесь вместе.</string>
+    <string name="miy_preview_cd">Предварительный просмотр главного экрана телевизора с вашими изменениями</string>
+    <string name="miy_row_look">Внешний вид</string>
+    <string name="miy_row_wallpaper">Обои</string>
+    <string name="miy_row_wallpaper_none">Без изображения</string>
+    <string name="miy_row_wallpaper_photo">Ваше фото</string>
+    <string name="miy_row_apps">Приложения</string>
+    <string name="miy_row_apps_dock">Док-станция: {names}</string>
+    <string name="miy_row_apps_dock_more">Док-станция: {names} и ещё {count}</string>
+    <string name="miy_row_widgets">Виджеты</string>
+    <string name="miy_row_widgets_clock">Часы</string>
+    <string name="miy_row_widgets_greets">Приветствие: {name}</string>
+    <string name="miy_row_widgets_buttons">{count, plural, one {# кнопка} few {# кнопки} many {# кнопок} other {# кнопки}}</string>
+    <string name="miy_row_widgets_menu">кнопки в одном меню</string>
+    <string name="miy_row_widgets_second">Вторая дата</string>
+    <string name="miy_row_widgets_stats">Состояние ТВ</string>
+    <string name="miy_row_inputs">Входы и эфирное ТВ</string>
+    <string name="miy_row_buttons">Кнопки пульта</string>
+    <string name="miy_row_buttons_helper">Помощник кнопки «Домой»</string>
+    <string name="miy_row_saver">Заставка</string>
+    <string name="miy_row_saver_tv">Стандартная от телевизора</string>
+    <string name="miy_row_saver_clock">Часы через {count, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}}</string>
+    <string name="miy_start_home">Запускать главный экран</string>
+    <string name="miy_start_live">Запускать эфирное ТВ</string>
+    <string name="miy_start_app">Запускать приложение</string>
+    <string name="miy_changes">{count, plural, one {# изменение ещё не применено к ТВ} few {# изменения ещё не применены к ТВ} many {# изменений ещё не применено к ТВ} other {# изменения ещё не применены к ТВ}}</string>
+    <string name="miy_put">Применить на телевизоре</string>
+    <string name="miy_discard">Оставить без изменений</string>
+    <string name="miy_failed">Не удалось передать изменения на телевизор. Они сохранены здесь — попробуйте ещё раз.</string>
+    <string name="miy_needs_update">Для некоторых параметров нужен более новый главный экран. Обновите его на странице «Главный экран».</string>
+    <string name="miy_apps_sub">Какие приложения и где показывать</string>
+    <string name="miy_apps_dock_hint">Количество приложений в строке и подписи под ними настраиваются в разделе «Внешний вид».</string>
+    <string name="miy_apps_on_tv">На телевизоре</string>
+    <string name="miy_apps_move">Переместить приложения с помощью пульта</string>
+    <string name="miy_apps_move_desc">Удерживайте OK на любом приложении на телевизоре и выберите «Переместить». Порядок сохранится, пока вы не измените док-станцию здесь.</string>
+    <string name="miy_apps_library">Библиотека приложений</string>
+    <string name="miy_apps_library_desc">Кнопка «Библиотека» после последнего ряда: все приложения телевизора.</string>
+    <string name="miy_apps_hidden">Скрытые приложения</string>
+    <string name="miy_apps_hidden_hint">Скрытые приложения остаются установленными и доступны в библиотеке. Приложения из док-станции здесь не отображаются: сначала удалите их из док-станции.</string>
+    <string name="miy_apps_hidden_cd">Скрыть {name}</string>
+    <string name="miy_apps_names">Названия</string>
+    <string name="miy_apps_names_hint">Собственное название плитки на телевизоре. Оставьте поле пустым, чтобы использовать название приложения.</string>
+    <string name="miy_apps_name_label">Отображать {name} как</string>
+    <string name="miy_inputs_start">Что открывать при включении телевизора</string>
+    <string name="miy_inputs_home">Главный экран</string>
+    <string name="miy_inputs_home_desc">Новый главный экран, как сейчас.</string>
+    <string name="miy_inputs_live">Эфирное ТВ</string>
+    <string name="miy_inputs_live_desc">Открывает {app}.</string>
+    <string name="miy_inputs_app">Приложение</string>
+    <string name="miy_inputs_app_desc">При первом запуске выберите его на телевизоре в настройках главного экрана.</string>
+    <string name="miy_inputs_start_hint">Один раз после каждого перезапуска. Если сначала нажать другую кнопку, сработает она; до главного экрана всегда можно добраться одним нажатием.</string>
+    <string name="miy_inputs_no_live">На этом телевизоре нет приложения эфирного ТВ, поэтому можно запускать главный экран или другое приложение.</string>
+    <string name="miy_inputs_elsewhere">В другом месте</string>
+    <string name="miy_inputs_live_tile">Плитка эфирного ТВ</string>
+    <string name="miy_inputs_live_tile_in">В док-станции. Измените её в разделе «Док-станция».</string>
+    <string name="miy_inputs_live_tile_out">Нет в док-станции. Добавьте её в разделе «Док-станция».</string>
+    <string name="miy_inputs_input_key">Кнопка Input на пульте по-прежнему открывает собственный список входов телевизора.</string>
+    <string name="miy_buttons_home">Кнопка «Домой»</string>
+    <string name="miy_buttons_none">Кнопка «Домой» на пульте открывает новый главный экран.</string>
+    <string name="miy_saver_sub">Что показывает телевизор, когда его никто не смотрит</string>
+    <string name="miy_saver_tv">Стандартная от телевизора</string>
+    <string name="miy_saver_tv_desc">Остаётся стандартная заставка телевизора. На Google TV это режим Ambient.</string>
+    <string name="miy_saver_clock">Часы</string>
+    <string name="miy_saver_clock_desc">Большие часы с лёгкой анимацией на главном экране.</string>
+    <string name="miy_saver_after">Запускать через</string>
+    <string name="miy_saver_minutes">{count} мин.</string>
+    <string name="miy_saver_minutes_cd">{count, plural, one {# минуту} few {# минуты} many {# минут} other {# минуты}}</string>
+    <string name="miy_saver_behind">Фон часов</string>
+    <string name="miy_saver_picture">Изображение главного экрана</string>
+    <string name="miy_saver_black">Просто чёрный фон — лучше для OLED</string>
+    <string name="miy_saver_glow_now">Сейчас: мягкое свечение цветом часов, встроенное в главный экран.</string>
+    <string name="miy_saver_where">Только на главном экране, не поверх эфира или приложения. В остальных случаях продолжает запускаться стандартная заставка телевизора.</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "feature/setup/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="found_zero_kept_choices">Некоторые приложения оставлены включёнными, чтобы вы могли решить сами. Они перечислены в разделе «Настроить».</string>
+    <string name="kept_reason_home_changed_off">Собственный главный экран отключён, а кнопка «Домой» открывает ваш лаунчер, поэтому мы не трогаем его.</string>
+    <string name="kept_reason_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV другим способом.</string>
+    <string name="found_home_changed_off">Кнопка «Домой» открывает установленный вами лаунчер, а собственный главный экран телевизора отключён не этим приложением. Мы не отменяем такие изменения, поэтому телевизор сохранит текущий главный экран.</string>
+    <string name="found_home_changed_ours">На телевизоре уже установлен главный экран Clean Your TV другим способом (например, через компьютер) и подписанный другим ключом. Мы оставляем его как есть и не устанавливаем свою копию.</string>
+    <string name="kept_next_home_changed_off">Если хотите установить новый главный экран, сначала включите собственный экран телевизора. На телевизоре откройте: Настройки → Приложения → Все приложения → Показать системные приложения, выберите {app} и нажмите «Включить» (названия пунктов могут немного отличаться). Не удаляйте свой лаунчер. Затем запустите настройку ещё раз — приложение всё проверит.</string>
+    <string name="kept_next_home_changed_ours">Чтобы это приложение могло управлять им (док-станцией, оформлением и обновлениями), сначала отмените установку через средство восстановления той программы, которая его установила: собственный главный экран телевизора должен вернуться. Затем запустите настройку ещё раз. Не удаляйте его до этого — иначе телевизору может быть не на что переключиться.</string>
+    <string name="kept_own_home_screen">собственный главный экран телевизора</string>
+    <string name="stop_home_other_key_title">Сначала удалите старую копию главного экрана</string>
+    <string name="stop_home_other_key_body">На телевизоре уже есть копия нового главного экрана, установленная другим способом, например через компьютер. Она подписана другим ключом, поэтому телевизор не позволит обновить её. Собственный главный экран телевизора остаётся включённым, а все остальные выполненные изменения сохраняются. Чтобы безопасно удалить старую копию, сначала убедитесь, что собственный главный экран телевизора включён и открывается кнопкой «Домой» (если программа установки отключила его, включите обратно с помощью той же программы). Никогда не оставляйте телевизор без главного экрана. Затем удалите старую копию (com.gathin.tvhome) в Настройки → Приложения и снова запустите настройку.</string>
+    <string name="done_restart_first">Перед завершением перезапустите телевизор и проверьте, что новый главный экран сохранился.</string>
+    <string name="helper_not_offered_new_home">Недоступно, пока новый главный экран назначен основным. Чтобы попробовать, выберите «Использовать собственный главный экран телевизора» в разделе «Главный экран для этого ТВ», затем снова запустите настройку.</string>
+    <string name="helper_not_offered_not_google">Недоступно: сейчас кнопка «Домой» на этом телевизоре открывает не главный экран Google. Если это приложение меняло его раньше, команда «Отменить все изменения» восстановит исходное состояние. Затем снова запустите настройку.</string>
+    <string name="helper_not_offered_home_unknown">Недоступно: мы недостаточно хорошо знаем, как устроен главный экран этого телевизора.</string>
+    <string name="helper_not_offered_tv">Недоступно: этот телевизор не поддерживает установку нового главного экрана.</string>
+    <string name="helper_not_offered_accessibility">Недоступно: безопасно изменить специальные возможности телевизора не удалось.</string>
+</resources>'''
+)
+
+write_russian_strings(
+    "ui/design/src/main/res/values-ru/strings.xml",
+    r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cyt_look_moved_widgets">Приветствие, дата и кнопки в верхней части экрана теперь находятся в разделе «Виджеты» меню «Настройте под себя» — рядом с переключателями их отображения.</string>
+</resources>'''
+)
 
 # Fail the build if a Clean Your TV resource module is missing any Russian
 # translation or if a generated translation file is not well-formed XML.
