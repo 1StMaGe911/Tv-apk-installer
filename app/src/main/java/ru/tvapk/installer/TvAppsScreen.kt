@@ -33,7 +33,7 @@ private fun parseUserPackages(output: String): List<String> =
         .filter { it.startsWith("package:") }
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
-        .distinct().sorted()
+        .distinct().sorted().toList()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
