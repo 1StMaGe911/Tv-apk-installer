@@ -204,6 +204,15 @@ replace_once(
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.3 (193).")
 
 
+# Show each discovered TV's resolved IPv4 address as the picker subtitle.
+# FoundTv.host is populated by NSD discovery and is already a literal LAN address.
+connect_screens = upstream / "feature" / "connect" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "connect" / "ConnectScreens.kt"
+replace_once(
+    connect_screens,
+    "ChoiceOption(tv.host, title, subtitle = tv.model?.takeIf { it != name })",
+    "ChoiceOption(tv.host, title, subtitle = tv.host)",
+)
+
 # Russian localization is generated inside the pinned upstream submodule at build time.
 # The submodule is intentionally immutable from the parent repository's Contents API.
 def write_russian_strings(relative: str, content: str) -> None:
