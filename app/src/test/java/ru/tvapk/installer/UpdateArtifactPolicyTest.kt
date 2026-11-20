@@ -1,5 +1,6 @@
 package ru.tvapk.installer
 
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -42,6 +43,16 @@ class UpdateArtifactPolicyTest {
         assertFalse(UpdateArtifactPolicy.matchesSha256("b".repeat(64), hash))
         assertFalse(UpdateArtifactPolicy.matchesSha256(hash, "not-a-hash"))
         assertFalse(UpdateArtifactPolicy.matchesSha256("short", hash))
+    }
+
+    @Test
+    fun readsSha256FromAssetDigestAndFallsBackToReleaseNotes() {
+        val hash = "a".repeat(64)
+        assertEquals(hash, UpdateArtifactPolicy.sha256FromRelease("sha256:$hash", ""))
+        assertEquals(hash, UpdateArtifactPolicy.sha256FromRelease("", "Release notes\nSHA-256: $hash\n"))
+        assertEquals(hash, UpdateArtifactPolicy.sha256FromRelease("invalid", "SHA-256: $hash"))
+        assertNull(UpdateArtifactPolicy.sha256FromRelease("invalid", "No checksum published"))
+        assertNull(UpdateArtifactPolicy.sha256FromRelease("sha256:short", "SHA-256: short"))
     }
 
     @Test
