@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 218
-        versionName = "0.9.28" // tested GitHub release checksum parsing
+        versionCode = 219
+        versionName = "0.9.29" // checksum parser tests and secure in-app update
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
