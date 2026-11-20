@@ -81,6 +81,11 @@ internal fun LicenseGate(content: @Composable () -> Unit) {
             } else {
                 false
             }
+        } catch (e: LicenseHttpException) {
+            // A definitive client error (including revoked/invalid license) must
+            // never be mistaken for an offline/network failure.
+            if (e.statusCode in 400..499) false
+            else last > 0L && now >= last && now - last < LICENSE_GRACE_MS
         } catch (_: Exception) {
             // Keep the app usable offline only within the 30-day grace period.
             last > 0L && now >= last && now - last < LICENSE_GRACE_MS
@@ -157,6 +162,8 @@ internal fun LicenseGate(content: @Composable () -> Unit) {
     }
 }
 
+private class LicenseHttpException(val statusCode: Int) : java.io.IOException("License server HTTP $statusCode")
+
 private object LicenseApi {
     fun call(endpoint: String, key: String, deviceId: String): Boolean {
         val connection = (URL("$LICENSE_URL/functions/v1/$endpoint").openConnection() as HttpURLConnection)
@@ -172,7 +179,7 @@ private object LicenseApi {
             connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
-                throw java.io.IOException("License server HTTP $responseCode")
+                throw LicenseHttpException(responseCode)
             }
             val response = connection.inputStream.bufferedReader().use { it.readText() }
             return JSONObject(response).optBoolean("ok", false)
