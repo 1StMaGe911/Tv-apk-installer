@@ -60,6 +60,8 @@ jobs:
           cache-disabled: false
 
       - name: Проверить логику автоматизации
+        env:
+          JAVA_TOOL_OPTIONS: "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED"
         run: gradle :app:testFullDebugUnitTest --no-daemon
 
       - name: Проверить и подготовить постоянный ключ подписи
