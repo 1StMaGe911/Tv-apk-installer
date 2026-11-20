@@ -48,9 +48,8 @@ replace_once(
 )
 replace_once(
     activity,
-    "        super.onCreate(savedInstanceState)\n        graph.credentialGate.attach(this)",
-    """        super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= 33 &&
+    "        graph.credentialGate.attach(this)",
+    """        if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             val preferences = getSharedPreferences("update_notification_permission", MODE_PRIVATE)
