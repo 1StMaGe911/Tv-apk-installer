@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 207
-        versionName = "0.9.17"
+        versionCode = 208
+        versionName = "0.9.18"
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
