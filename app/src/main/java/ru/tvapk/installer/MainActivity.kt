@@ -6189,6 +6189,9 @@ fun TvInstallerApp() {
                     NavigationDrawerItem(label = { Text("Clean Your TV") }, selected = activeSection == "clean",
                         icon = { Text("🧹") },
                         onClick = { showSettings = false; activeSection = "clean"; drawerScope.launch { drawerState.close() } })
+                    NavigationDrawerItem(label = { Text("Диагностика ТВ") }, selected = activeSection == "diagnostics",
+                        icon = { Text("🩺") },
+                        onClick = { showSettings = false; activeSection = "diagnostics"; drawerScope.launch { drawerState.close() } })
                     NavigationDrawerItem(label = { Text("Модули Clean Your TV") }, selected = activeSection == "modules",
                         icon = { Text("🧩") },
                         onClick = { showSettings = false; activeSection = "modules"; drawerScope.launch { drawerState.close() } })
@@ -6636,6 +6639,7 @@ fun TvInstallerApp() {
                 "wifi" -> "Wi-Fi ADB"
                 "usb" -> "USB OTG"
                 "clean" -> "Clean Your TV"
+                "diagnostics" -> "Диагностика ТВ"
                 "remote" -> "Пульт TV"
                 "modules" -> "Модули Clean Your TV"
                 "appearance" -> "Оформление Clean Your TV"
@@ -6803,7 +6807,7 @@ fun TvInstallerApp() {
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
                                             if (section == "remote") showRemoteControl = true
-                                            if (section != "modules" && section != "appearance") activeSection = null
+                                            if (section != "modules" && section != "appearance" && section != "diagnostics") activeSection = null
                                         }
                                     })
                                 }
@@ -6822,6 +6826,75 @@ fun TvInstallerApp() {
                                     Text("Выбрать APK-файл")
                                 }
                             }
+                        }
+                    }
+                }
+                if (section == "diagnostics") {
+                    val health = TvAutomationEngine.assessHealth(diagnostics)
+                    Card(colors = CardDefaults.cardColors(containerColor = Panel), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("ПРОВЕРКА СОСТОЯНИЯ ТЕЛЕВИЗОРА", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Проверка считывает показатели Android TV через ADB. Она ничего не отключает, не удаляет и не меняет настройки.",
+                                color = TextMuted,
+                                fontSize = 12.sp
+                            )
+                            Button(
+                                enabled = !busy && ip.isNotBlank(),
+                                onClick = {
+                                    val host = ip.trim()
+                                    val adbPort = port.toIntOrNull() ?: 5555
+                                    if (adbPort !in 1..65535) {
+                                        status = "Проверь порт ADB"
+                                    } else {
+                                        runTask(
+                                            action = {
+                                                connectWithRetry(context, host, adbPort) { adb ->
+                                                    readTvDiagnostics(adb)
+                                                }
+                                            },
+                                            onFinished = { result ->
+                                                if (!result.startsWith("Ошибка")) {
+                                                    diagnostics = result
+                                                    dataStorageUsedPercent = TvAutomationEngine.assessHealth(result).dataUsedPercent
+                                                }
+                                            }
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (busy) "Проверка..." else "Запустить диагностику")
+                            }
+                            if (ip.isBlank()) {
+                                Text("Сначала укажи IP-адрес телевизора в разделе Wi-Fi ADB.", color = Color(0xFFFFD98A), fontSize = 11.sp)
+                            }
+                            Text(health.summary, color = if (health.warnings.isEmpty()) GoldLight else Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
+                            health.memoryAvailablePercent?.let { value ->
+                                Text("Свободная оперативная память: $value%", color = TextMain, fontSize = 13.sp)
+                            }
+                            health.dataUsedPercent?.let { value ->
+                                Text("Занято внутреннее хранилище: $value%", color = TextMain, fontSize = 13.sp)
+                            }
+                            health.uptimeDays?.let { value ->
+                                Text("Время непрерывной работы: $value дн.", color = TextMain, fontSize = 13.sp)
+                            }
+                            if (health.warnings.isNotEmpty()) {
+                                Text("РЕКОМЕНДАЦИИ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                                health.warnings.forEach { warning ->
+                                    Text("• $warning", color = Color(0xFFFFD98A), fontSize = 12.sp)
+                                }
+                            } else if (diagnostics != "Диагностика ещё не выполнялась." && health.summary.startsWith("По доступным")) {
+                                Text("По считанным показателям срочные действия не требуются.", color = TextMain, fontSize = 12.sp)
+                            }
+                            HorizontalDivider(color = Color.DarkGray)
+                            Text("ПОДРОБНЫЕ ДАННЫЕ", color = GoldLight, style = MaterialTheme.typography.titleSmall)
+                            Text(diagnostics, color = TextMuted, fontSize = 11.sp)
+                            Text(
+                                "Советы носят информационный характер. Любые действия по очистке или изменению системы запускаются отдельно и только после подтверждения.",
+                                color = TextMuted,
+                                fontSize = 10.sp
+                            )
                         }
                     }
                 }
