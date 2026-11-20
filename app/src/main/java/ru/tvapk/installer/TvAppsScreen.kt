@@ -28,12 +28,40 @@ private fun tvAppsKeyPair(context: Context): AdbKeyPair {
     return AdbKeyPair.read(privateKey, publicKey)
 }
 
+data class TvInstalledApp(
+    val packageName: String,
+    val versionName: String?,
+    val versionCode: String?,
+    val apkSizeBytes: Long?
+)
+
 private fun parseUserPackages(output: String): List<String> =
     output.lineSequence().map { it.trim() }
         .filter { it.startsWith("package:") }
         .map { it.removePrefix("package:").trim() }
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .distinct().sorted().toList()
+
+internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String): TvInstalledApp {
+    val versionName = Regex("""versionName=([^\\s]+)""").find(details)?.groupValues?.get(1)
+    val versionCode = Regex("""versionCode=(\\d+)""").find(details)?.groupValues?.get(1)
+    val sizeKb = sizeOutput.lineSequence().mapNotNull { line ->
+        line.trim().split(Regex("\\s+")).firstOrNull()?.toLongOrNull()
+    }.sum().takeIf { it > 0L }
+    return TvInstalledApp(
+        packageName = packageName,
+        versionName = versionName,
+        versionCode = versionCode,
+        apkSizeBytes = sizeKb?.times(1024L)
+    )
+}
+
+private fun formatApkSize(bytes: Long?): String {
+    if (bytes == null || bytes <= 0L) return "Размер неизвестен"
+    val mb = bytes / (1024.0 * 1024.0)
+    return if (mb >= 1.0) String.format(java.util.Locale.getDefault(), "%.1f МБ", mb)
+    else "${bytes / 1024L} КБ"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +70,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf(emptyList<TvDevice>()) }
     var selectedDevice by remember { mutableStateOf<TvDevice?>(null) }
-    var packages by remember { mutableStateOf(emptyList<String>()) }
+    var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
     var pendingUninstall by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Найди телевизор с включённой ADB-отладкой по сети.") }
@@ -58,7 +86,17 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                         if (response.exitCode != 0) throw IllegalStateException(
                             response.allOutput.ifBlank { "Команда ADB завершилась с ошибкой ${response.exitCode}" }
                         )
-                        parseUserPackages(response.output)
+                        val packageNames = parseUserPackages(response.output)
+                        packageNames.mapIndexed { index, packageName ->
+                            withContext(Dispatchers.Main) {
+                                status = "Получаем сведения: ${index + 1}/${packageNames.size}"
+                            }
+                            val details = adb.shell("dumpsys package $packageName").output
+                            val sizes = adb.shell(
+                                "for p in $(pm path $packageName | sed 's/^package://'); do du -k \"$p\"; done"
+                            ).output
+                            parseInstalledApp(packageName, details, sizes)
+                        }
                     }
                 }
                 packages = result
@@ -118,7 +156,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 }
                 when (result) {
                     UninstallResult.Success -> {
-                        packages = packages.filterNot { it == packageName }
+                        packages = packages.filterNot { it.packageName == packageName }
                         status = "Приложение удалено: $packageName"
                     }
                     is UninstallResult.Failure -> status =
@@ -161,13 +199,19 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             if (selectedDevice != null && packages.isEmpty() && !busy) {
                 Text("Пользовательские приложения не найдены или список ещё не загружен.")
             }
-            packages.forEach { packageName ->
+            packages.forEach { app ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(packageName)
+                        Text(app.packageName, style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Версия: ${app.versionName ?: "неизвестна"}" +
+                                (app.versionCode?.let { " (код $it)" } ?: ""),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text("Размер APK: ${formatApkSize(app.apkSizeBytes)}", style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { launchApp(packageName) }, enabled = !busy) { Text("Запустить") }
-                            OutlinedButton(onClick = { pendingUninstall = packageName }, enabled = !busy) { Text("Удалить") }
+                            OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
+                            OutlinedButton(onClick = { pendingUninstall = app.packageName }, enabled = !busy) { Text("Удалить") }
                         }
                     }
                 }
