@@ -322,18 +322,34 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             Button(onClick = { searchDevices() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                 Text("Найти телевизоры")
             }
+            if (devices.isNotEmpty()) Text("Сохранённые телевизоры", style = MaterialTheme.typography.titleMedium)
             devices.forEach { device ->
-                OutlinedButton(
-                    onClick = { selectedDevice = device; packages = emptyList(); refreshPackages(device) },
-                    enabled = !busy, modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("${if (selectedDevice == device) "✓ " else ""}${device.name} — ${device.ip}:${device.port}")
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(device.name, style = MaterialTheme.typography.titleSmall)
+                        Text("IP-адрес: ${device.ip}:${device.port}", style = MaterialTheme.typography.bodyMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { selectedDevice = device; packages = emptyList(); deviceInfo = ""; refreshPackages(device) },
+                                enabled = !busy
+                            ) { Text(if (selectedDevice == device) "Подключить ещё раз" else "Подключиться") }
+                            TextButton(
+                                onClick = {
+                                    devices = mergeSavedTvAppsDevices(context, devices.filterNot { it.ip == device.ip && it.port == device.port })
+                                    if (selectedDevice == device) { selectedDevice = null; packages = emptyList(); deviceInfo = "" }
+                                },
+                                enabled = !busy
+                            ) { Text("Забыть") }
+                        }
+                    }
                 }
             }
             selectedDevice?.let { device ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Телевизор: ${device.name} (${device.ip})")
-                    TextButton(onClick = { refreshPackages(device) }, enabled = !busy) { Text("Обновить") }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Телевизор: ${device.name}")
+                    Text("IP-адрес: ${device.ip}:${device.port}")
+                    if (deviceInfo.isNotBlank()) Text(deviceInfo, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { refreshPackages(device) }, enabled = !busy) { Text("Проверить подключение / обновить") }
                 }
             }
             if (selectedDevice != null) {
