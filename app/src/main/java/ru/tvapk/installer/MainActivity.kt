@@ -1042,26 +1042,48 @@ private fun exportAppSettings(context: Context): String {
 private fun importAppSettings(context: Context, jsonText: String) {
     val root = JSONObject(jsonText)
     require(root.optInt("format") == 1) { "Неподдерживаемый формат резервной копии" }
-    val values = root.getJSONObject("preferences")
-    val editor = prefs(context).edit().clear()
+    val values = root.optJSONObject("preferences")
+        ?: throw Exception("В резервной копии отсутствует список настроек")
+    require(values.length() <= 2000) { "В резервной копии слишком много настроек" }
+
+    // Parse and validate the complete file before touching SharedPreferences.
+    // Merge rather than clear: keys introduced by newer app versions are preserved.
+    val parsed = linkedMapOf<String, Any>()
     val keys = values.keys()
     while (keys.hasNext()) {
         val key = keys.next()
-        val item = values.getJSONObject(key)
-        when (item.getString("type")) {
-            "string" -> editor.putString(key, item.getString("value"))
-            "boolean" -> editor.putBoolean(key, item.getBoolean("value"))
-            "int" -> editor.putInt(key, item.getInt("value"))
-            "long" -> editor.putLong(key, item.getLong("value"))
-            "float" -> editor.putFloat(key, item.getDouble("value").toFloat())
+        require(key.isNotBlank() && key.length <= 200) { "Некорректное имя настройки" }
+        val item = values.optJSONObject(key)
+            ?: throw Exception("Некорректная запись настройки: $key")
+        parsed[key] = when (item.getString("type")) {
+            "string" -> item.getString("value")
+            "boolean" -> item.getBoolean("value")
+            "int" -> item.getInt("value")
+            "long" -> item.getLong("value")
+            "float" -> item.getDouble("value").toFloat().also {
+                require(it.isFinite()) { "Некорректное числовое значение: $key" }
+            }
             "string_set" -> {
                 val array = item.getJSONArray("value")
-                editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+                require(array.length() <= 10000) { "Слишком много значений в настройке: $key" }
+                (0 until array.length()).map { array.getString(it) }.toSet()
             }
-            else -> throw Exception("Неизвестный тип настройки")
+            else -> throw Exception("Неизвестный тип настройки: $key")
         }
     }
-    editor.apply()
+
+    val editor = prefs(context).edit()
+    parsed.forEach { (key, value) ->
+        when (value) {
+            is String -> editor.putString(key, value)
+            is Boolean -> editor.putBoolean(key, value)
+            is Int -> editor.putInt(key, value)
+            is Long -> editor.putLong(key, value)
+            is Float -> editor.putFloat(key, value)
+            is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+        }
+    }
+    check(editor.commit()) { "Не удалось сохранить восстановленные настройки" }
 }
 
 private fun getAdbKey(context: Context): AdbKeyPair {
@@ -3899,56 +3921,71 @@ private fun changePackageStateVerified(adb: Dadb, packageName: String, enabled: 
 private fun createTvBackup(adb: Dadb, context: Context): File {
     val packages = readUserPackages(adb)
     val tempDir = File(context.cacheDir, "tv-backup-temp")
-    if (tempDir.exists()) tempDir.deleteRecursively()
+    if (tempDir.exists() && !tempDir.deleteRecursively()) {
+        throw Exception("Не удалось очистить временную папку резервной копии")
+    }
     if (!tempDir.mkdirs()) throw Exception("Не удалось создать временную папку резервной копии")
 
-    val backupDir = File(context.cacheDir, "backups")
-    if (!backupDir.exists() && !backupDir.mkdirs()) throw Exception("Не удалось создать папку резервных копий")
-    val archive = File(backupDir, "tv-backup-${System.currentTimeMillis()}.zip")
-    val failures = mutableListOf<String>()
-    var savedApks = 0
-
-    ZipOutputStream(FileOutputStream(archive)).use { zip ->
-        fun addText(name: String, value: String) {
-            zip.putNextEntry(ZipEntry(name))
-            zip.write(value.toByteArray(Charsets.UTF_8))
-            zip.closeEntry()
+    var archive: File? = null
+    try {
+        val backupDir = File(context.cacheDir, "backups")
+        if (!backupDir.exists() && !backupDir.mkdirs()) {
+            throw Exception("Не удалось создать папку резервных копий")
         }
+        val outputArchive = File(backupDir, "tv-backup-${System.currentTimeMillis()}.zip")
+        archive = outputArchive
+        val failures = mutableListOf<String>()
+        var savedApks = 0
 
-        addText("device-info.txt", readTvDetails(adb))
-        addText("applications.txt", packages.joinToString("\n"))
-        packages.forEach { pkg ->
-            try {
-                val paths = shellText(adb, "pm path $pkg").lineSequence()
-                    .map { it.removePrefix("package:").trim() }
-                    .filter { it.startsWith("/") }
-                    .toList()
-                if (paths.isEmpty()) throw Exception("Пути APK не найдены")
-                paths.forEachIndexed { index, remotePath ->
-                    val local = File(tempDir, "${pkg.replace('.', '_')}_${index}.apk")
-                    when (val pullResult = adb.pull(local, remotePath)) {
-                        is dadb.SyncResult.Success -> Unit
-                        is dadb.SyncResult.Failure -> throw Exception(pullResult.toString())
-                    }
-                    if (!local.exists() || local.length() == 0L) throw Exception("Пустой APK")
-                    zip.putNextEntry(ZipEntry("apks/$pkg/${local.name}"))
-                    local.inputStream().use { input -> input.copyTo(zip) }
-                    zip.closeEntry()
-                    savedApks++
-                    local.delete()
-                }
-            } catch (e: Exception) {
-                failures.add("$pkg: ${e.message ?: "ошибка копирования"}")
+        ZipOutputStream(FileOutputStream(outputArchive)).use { zip ->
+            fun addText(name: String, value: String) {
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(value.toByteArray(Charsets.UTF_8))
+                zip.closeEntry()
             }
+
+            addText("device-info.txt", readTvDetails(adb))
+            addText("applications.txt", packages.joinToString("\n"))
+            packages.forEach { pkg ->
+                try {
+                    val paths = shellText(adb, "pm path $pkg").lineSequence()
+                        .map { it.removePrefix("package:").trim() }
+                        .filter { it.startsWith("/") }
+                        .toList()
+                    if (paths.isEmpty()) throw Exception("Пути APK не найдены")
+                    paths.forEachIndexed { index, remotePath ->
+                        val local = File(tempDir, "${pkg.replace('.', '_')}_${index}.apk")
+                        when (val pullResult = adb.pull(local, remotePath)) {
+                            is dadb.SyncResult.Success -> Unit
+                            is dadb.SyncResult.Failure -> throw Exception(pullResult.toString())
+                        }
+                        if (!local.exists() || local.length() == 0L) throw Exception("Пустой APK")
+                        zip.putNextEntry(ZipEntry("apks/$pkg/${local.name}"))
+                        local.inputStream().use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                        savedApks++
+                        local.delete()
+                    }
+                } catch (e: Exception) {
+                    failures.add("$pkg: ${e.message ?: "ошибка копирования"}")
+                }
+            }
+            addText(
+                "backup-report.txt",
+                "Всего пользовательских приложений: ${packages.size}\nСохранено APK-файлов: $savedApks\nОшибок по приложениям: ${failures.size}\n\n" +
+                    if (failures.isEmpty()) "Ошибок нет" else failures.joinToString("\n")
+            )
         }
-        addText(
-            "backup-report.txt",
-            "Всего пользовательских приложений: ${packages.size}\nСохранено APK-файлов: $savedApks\nОшибок по приложениям: ${failures.size}\n\n" +
-                if (failures.isEmpty()) "Ошибок нет" else failures.joinToString("\\n")
-        )
+        require(savedApks > 0) {
+            "Не удалось сохранить ни одного APK. ZIP не создан; проверь разрешения ADB на телевизоре."
+        }
+        return outputArchive
+    } catch (error: Exception) {
+        archive?.delete()
+        throw error
+    } finally {
+        tempDir.deleteRecursively()
     }
-    tempDir.deleteRecursively()
-    return archive
 }
 
 private fun restoreTvBackup(adb: Dadb, context: Context, archive: File): String {
@@ -5501,11 +5538,34 @@ fun TvInstallerApp() {
                         createTvBackup(adb, context).absolutePath
                     }
                     val archive = File(archivePath)
-                    context.contentResolver.openOutputStream(destinationUri)?.use { output ->
-                        archive.inputStream().use { input -> input.copyTo(output) }
-                    } ?: throw Exception("Не удалось сохранить ZIP-файл")
-                    archive.delete()
-                    "Резервная копия сохранена. APK и список приложений упакованы в ZIP."
+                    try {
+                        val report = ZipInputStream(archive.inputStream().buffered()).use { zip ->
+                            var found: String? = null
+                            while (true) {
+                                val entry = zip.nextEntry ?: break
+                                if (entry.name == "backup-report.txt") {
+                                    found = zip.readBytes().toString(Charsets.UTF_8)
+                                    break
+                                }
+                            }
+                            found
+                        } ?: throw Exception("В ZIP отсутствует отчёт о резервной копии")
+                        context.contentResolver.openOutputStream(destinationUri)?.use { output ->
+                            archive.inputStream().use { input -> input.copyTo(output) }
+                        } ?: throw Exception("Не удалось сохранить ZIP-файл")
+
+                        val saved = Regex("Сохранено APK-файлов: (\\d+)").find(report)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        val failed = Regex("Ошибок по приложениям: (\\d+)").find(report)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        val total = Regex("Всего пользовательских приложений: (\\d+)").find(report)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                        if (failed == 0) {
+                            "Резервная копия сохранена полностью. Приложений: $total, APK-файлов: $saved."
+                        } else {
+                            val details = report.substringAfter("\n\n", "").take(1200)
+                            "Сохранена ЧАСТИЧНАЯ копия. Приложений: $total, APK-файлов: $saved, с ошибками: $failed. Проверь backup-report.txt в ZIP.\n$details"
+                        }
+                    } finally {
+                        archive.delete()
+                    }
                 })
             }
         }
