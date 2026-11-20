@@ -134,29 +134,29 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
         if (targets.isEmpty()) return
         scope.launch {
             busy = true
-            val manifest = StringBuilder("Clean Your TV — резервная копия APK\nТелевизор: \${device.name} (\${device.ip})\nДата: \${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
+            val manifest = StringBuilder("Clean Your TV — резервная копия APK\nТелевизор: ${device.name} (${device.ip})\nДата: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
             var saved = 0
             try {
                 withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
                         targets.forEachIndexed { index, app ->
-                            withContext(Dispatchers.Main) { status = "Копируем \${index + 1}/\${targets.size}: \${app.packageName}" }
-                            val pathsResponse = adb.shell("pm path \${app.packageName}")
-                            if (pathsResponse.exitCode != 0) throw IllegalStateException(pathsResponse.allOutput.ifBlank { "Не удалось получить APK для \${app.packageName}" })
+                            withContext(Dispatchers.Main) { status = "Копируем ${index + 1}/${targets.size}: ${app.packageName}" }
+                            val pathsResponse = adb.shell("pm path ${app.packageName}")
+                            if (pathsResponse.exitCode != 0) throw IllegalStateException(pathsResponse.allOutput.ifBlank { "Не удалось получить APK для ${app.packageName}" })
                             val remotePaths = pathsResponse.output.lineSequence().map { it.trim() }
                                 .filter { it.startsWith("package:") }
                                 .map { it.removePrefix("package:").trim() }
                                 .filter { it.startsWith("/") }.toList()
-                            if (remotePaths.isEmpty()) throw IllegalStateException("APK-файлы не найдены: \${app.packageName}")
+                            if (remotePaths.isEmpty()) throw IllegalStateException("APK-файлы не найдены: ${app.packageName}")
                             remotePaths.forEachIndexed { part, remotePath ->
-                                val local = File(context.cacheDir, "tv-backup-\${System.nanoTime()}.apk")
+                                val local = File(context.cacheDir, "tv-backup-${System.nanoTime()}.apk")
                                 try {
                                     when (val result = adb.pull(local, remotePath)) {
                                         SyncResult.Success -> Unit
                                         is SyncResult.Failure -> throw IllegalStateException(result.reason)
                                     }
                                     val base = remotePath.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
-                                    val name = "\${app.packageName}_\${part + 1}_$base"
+                                    val name = "${app.packageName}_${part + 1}_$base"
                                     val destination = DocumentsContract.createDocument(
                                         context.contentResolver, folder,
                                         "application/vnd.android.package-archive", name
@@ -165,7 +165,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                                         local.inputStream().use { input -> input.copyTo(output) }
                                     } ?: throw IllegalStateException("Не удалось записать $name")
                                     saved++
-                                    manifest.append("\${app.packageName}\t\${app.versionName ?: "?"}\t$name\n")
+                                    manifest.append("${app.packageName}\t${app.versionName ?: "?"}\t$name\n")
                                 } finally { local.delete() }
                             }
                         }
@@ -175,10 +175,10 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                     val manifestUri = DocumentsContract.createDocument(context.contentResolver, folder, "text/plain", "clean-your-tv-backup-manifest.txt")
                     if (manifestUri != null) context.contentResolver.openOutputStream(manifestUri, "w")?.use { it.write(manifest.toString().toByteArray(Charsets.UTF_8)) }
                 }
-                status = "Резервная копия готова: сохранено APK-файлов $saved для \${targets.size} приложений."
+                status = "Резервная копия готова: сохранено APK-файлов $saved для ${targets.size} приложений."
                 selectedPackages = emptySet()
             } catch (failure: Exception) {
-                status = "Ошибка резервного копирования: \${failure.message ?: failure.javaClass.simpleName}. Успело сохраниться файлов: $saved."
+                status = "Ошибка резервного копирования: ${failure.message ?: failure.javaClass.simpleName}. Успело сохраниться файлов: $saved."
             } finally { busy = false }
         }
     }
@@ -276,7 +276,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                     Text(if (backupFolder == null) "Выбрать папку для резервной копии" else "Изменить папку резервной копии")
                 }
                 Button(onClick = { backupSelectedApps() }, enabled = !busy && selectedPackages.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-                    Text("Сохранить APK (\${selectedPackages.size})")
+                    Text("Сохранить APK (${selectedPackages.size})")
                 }
             }
             Text(status)
@@ -292,7 +292,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                                 (app.versionCode?.let { " (код $it)" } ?: ""),
                             style = MaterialTheme.typography.bodySmall
                         )
-                        Text("Размер APK: \${formatApkSize(app.apkSizeBytes)}", style = MaterialTheme.typography.bodySmall)
+                        Text("Размер APK: ${formatApkSize(app.apkSizeBytes)}", style = MaterialTheme.typography.bodySmall)
                         Row {
                             Checkbox(
                                 checked = app.packageName in selectedPackages,
