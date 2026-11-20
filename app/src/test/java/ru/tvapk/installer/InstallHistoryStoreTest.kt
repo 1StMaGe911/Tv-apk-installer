@@ -12,7 +12,7 @@ import org.robolectric.RuntimeEnvironment
 class InstallHistoryStoreTest {
     @Test
     fun recordsNewestEntriesAndPersistsThem() = runBlocking {
-        val context = RuntimeEnvironment.getApplication<android.app.Application>()
+        val context = RuntimeEnvironment.getApplication()
         InstallHistoryStore.clear(context)
 
         val older = InstallHistoryEntry(
