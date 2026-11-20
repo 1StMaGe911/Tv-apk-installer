@@ -12,6 +12,8 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.ExistingWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -35,7 +37,20 @@ fun schedulePeriodicUpdateCheck(context: Context) {
         .setConstraints(constraints)
         .build()
 
-    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+    val workManager = WorkManager.getInstance(context)
+
+    // A launch-triggered check gives the user a timely result instead of waiting
+    // up to 24 hours for the first periodic execution.
+    val immediateRequest = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+        .setConstraints(constraints)
+        .build()
+    workManager.enqueueUniqueWork(
+        "${UPDATE_WORK_NAME}_on_launch",
+        ExistingWorkPolicy.KEEP,
+        immediateRequest
+    )
+
+    workManager.enqueueUniquePeriodicWork(
         UPDATE_WORK_NAME,
         ExistingPeriodicWorkPolicy.KEEP,
         request
