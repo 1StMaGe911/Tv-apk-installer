@@ -59,6 +59,28 @@ object CleanYourTvUpdater {
         }.start()
     }
 
+
+    /** Returns download percentage while Android DownloadManager is receiving the APK. */
+    fun downloadProgress(context: Context): Int? {
+        val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(DOWNLOAD_ID, -1L)
+        if (id < 0L) return null
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val cursor = dm.query(DownloadManager.Query().setFilterById(id)) ?: return null
+        return try {
+            if (!cursor.moveToFirst()) return null
+            val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            if (status != DownloadManager.STATUS_RUNNING && status != DownloadManager.STATUS_PENDING &&
+                status != DownloadManager.STATUS_PAUSED) return null
+            val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+            val downloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+            if (total <= 0L) 0 else ((downloaded * 100L) / total).toInt().coerceIn(0, 99)
+        } catch (_: Exception) {
+            null
+        } finally {
+            cursor.close()
+        }
+    }
+
     /** Opens Android's package installer only after DownloadManager confirms a complete download. */
     fun installLatest(context: Context) {
         val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(DOWNLOAD_ID, -1L)
