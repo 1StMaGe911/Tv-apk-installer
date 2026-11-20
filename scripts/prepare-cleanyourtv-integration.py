@@ -99,7 +99,7 @@ replace_once(
 replace_once(
     manage_screens,
     'onClick = { if (update is UpdateCheck.Available) onOpenRelease() else onIntent(AppSettingsIntent.CheckUpdates) })',
-    'onClick = { onIntent(AppSettingsIntent.CheckUpdates) })\\n                if (update is UpdateCheck.Available) {\\n                    PrimaryButton(when { updateDownloadProgress == null -> "Скачать обновление"; updateDownloadProgress >= 100 -> "Обновление загружено — 100%"; else -> "Скачивание обновления — $updateDownloadProgress%" }, onDownloadUpdate, Modifier.padding(top = 8.dp))\\n                    if (updateDownloadProgress != null) ProgressBar((updateDownloadProgress.coerceIn(0, 100)) / 100f, Modifier.padding(top = 8.dp))\\n                    TertiaryButton("Установить обновление", onInstallUpdate, Modifier.padding(top = 4.dp))\\n                }',
+    'onClick = { onIntent(AppSettingsIntent.CheckUpdates) })\n                if (update is UpdateCheck.Available) {\n                    PrimaryButton(when { updateDownloadProgress == null -> "Скачать обновление"; updateDownloadProgress >= 100 -> "Обновление загружено — 100%"; else -> "Скачивание обновления — $updateDownloadProgress%" }, onDownloadUpdate, Modifier.padding(top = 8.dp))\n                    if (updateDownloadProgress != null) ProgressBar((updateDownloadProgress.coerceIn(0, 100)) / 100f, Modifier.padding(top = 8.dp))\n                    TertiaryButton("Установить обновление", onInstallUpdate, Modifier.padding(top = 4.dp))\n                }',
 )
 manifest = upstream / "app" / "src" / "main" / "AndroidManifest.xml"
 replace_once(
