@@ -17,6 +17,7 @@ import dadb.AdbKeyPair
 import dadb.Dadb
 import dadb.UninstallResult
 import dadb.SyncResult
+import dadb.InstallResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -78,9 +79,15 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
     var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var backupFolder by remember { mutableStateOf<Uri?>(null) }
+    var restoreUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingUninstall by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Найди телевизор с включённой ADB-отладкой по сети.") }
+
+    val restorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        restoreUris = uris
+        if (uris.isNotEmpty()) status = "Выбрано APK-файлов для восстановления: ${uris.size}. Подключи телевизор и нажми «Восстановить»."
+    }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -183,6 +190,54 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
         }
     }
 
+    fun restoreSelectedApks() {
+        val device = selectedDevice ?: return
+        val uris = restoreUris
+        if (uris.isEmpty()) { restorePicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")); return }
+        scope.launch {
+            busy = true
+            var restored = 0
+            val tempFiles = mutableListOf<File>()
+            try {
+                val grouped = withContext(Dispatchers.IO) {
+                    uris.map { uri ->
+                        val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) cursor.getString(0) else null
+                        } ?: "backup-${System.nanoTime()}.apk"
+                        val match = Regex("^([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)_\\d+_").find(name)
+                            ?: throw IllegalArgumentException("Имя файла не распознано как резервная копия Clean Your TV: $name")
+                        val packageName = match.groupValues[1]
+                        val local = File(context.cacheDir, "restore-${System.nanoTime()}-$name")
+                        context.contentResolver.openInputStream(uri)?.use { input -> local.outputStream().use { output -> input.copyTo(output) } }
+                            ?: throw IllegalStateException("Не удалось прочитать $name")
+                        tempFiles.add(local)
+                        packageName to local
+                    }.groupBy({ it.first }, { it.second })
+                }
+                grouped.forEach { (packageName, files) ->
+                    withContext(Dispatchers.Main) { status = "Восстанавливаем $packageName (${files.size} APK)…" }
+                    val result = withContext(Dispatchers.IO) {
+                        Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
+                            if (files.size == 1) adb.install(files.first()) else adb.installMultiple(files)
+                        }
+                    }
+                    when (result) {
+                        InstallResult.Success -> restored++
+                        is InstallResult.Failure -> throw IllegalStateException("Не удалось восстановить $packageName: ${result.reason}")
+                    }
+                }
+                status = "Восстановление завершено: установлено приложений $restored."
+                restoreUris = emptyList()
+                refreshPackages(device)
+            } catch (failure: Exception) {
+                status = "Ошибка восстановления: ${failure.message ?: failure.javaClass.simpleName}. Установлено приложений: $restored."
+            } finally {
+                tempFiles.forEach { it.delete() }
+                busy = false
+            }
+        }
+    }
+
     fun searchDevices() {
         scope.launch {
             busy = true
@@ -272,6 +327,12 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 }
             }
             if (selectedDevice != null) {
+                OutlinedButton(onClick = { restorePicker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                    Text("Выбрать APK для восстановления (${restoreUris.size})")
+                }
+                Button(onClick = { restoreSelectedApks() }, enabled = !busy && restoreUris.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                    Text("Восстановить выбранные приложения")
+                }
                 OutlinedButton(onClick = { folderPicker.launch(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     Text(if (backupFolder == null) "Выбрать папку для резервной копии" else "Изменить папку резервной копии")
                 }
