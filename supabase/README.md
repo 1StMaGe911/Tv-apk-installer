@@ -14,6 +14,7 @@ Project URL: `https://ttrxesailsvsesfddnco.supabase.co`
    supabase functions deploy activate
    supabase functions deploy check-license
    supabase functions deploy admin-create-license
+   supabase functions deploy admin-manage-licenses
    ```
 3. The Supabase Edge Function environment provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Never place the service-role key in the Android app, GitHub source, or a public web page.
 4. In Authentication → Users, create the owner's admin account. Copy that user's UUID, then run this SQL in SQL Editor:
@@ -31,6 +32,7 @@ Project URL: `https://ttrxesailsvsesfddnco.supabase.co`
 - `POST /functions/v1/activate` with JSON `{"key":"CYTV-....","deviceId":"installation-uuid"}`
 - `POST /functions/v1/check-license` with the same JSON body
 - `POST /functions/v1/admin-create-license` with optional JSON `{"note":"customer/order note"}`, authenticated as an admin
+- `POST /functions/v1/admin-manage-licenses` with `{"action":"list"}`, `{"action":"revoke","id":"..."}`, or `{"action":"reset-device","id":"..."}`, authenticated as an admin
 
 Activation binds a key atomically to one device identifier. The database stores only a SHA-256 hash of the key and device identifier. Revoking a license is performed by changing its status to `revoked` in the private SQL editor:
 
