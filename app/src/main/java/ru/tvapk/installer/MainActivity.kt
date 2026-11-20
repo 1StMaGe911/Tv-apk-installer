@@ -4577,6 +4577,7 @@ fun TvInstallerApp() {
     var tvDetails by remember { mutableStateOf("Подключись к телевизору и выполни определение устройства.") }
     var tvCompatibilityReport by remember { mutableStateOf("") }
     var packageDisableSupported by remember { mutableStateOf(false) }
+    var diagnosticsCompatibility by remember { mutableStateOf("Совместимость ещё не проверялась.") }
     val matchedTvProfile = remember(tvDetails, tvModelProfiles) { matchTvModelProfile(tvDetails, tvModelProfiles, packageFacts) }
     var diagnostics by remember { mutableStateOf("Диагностика ещё не выполнялась.") }
     var automationReport by remember { mutableStateOf("") }
@@ -6869,6 +6870,63 @@ fun TvInstallerApp() {
                             if (ip.isBlank()) {
                                 Text("Сначала укажи IP-адрес телевизора в разделе Wi-Fi ADB.", color = Color(0xFFFFD98A), fontSize = 11.sp)
                             }
+                            HorizontalDivider(color = Color.DarkGray)
+                            Text("СОВМЕСТИМОСТЬ И БЕЗОПАСНЫЙ ПЛАН", color = GoldLight, style = MaterialTheme.typography.titleMedium)
+                            Text("Проверка модели, платформы, поддержки ADB и установленных пакетов. Никакие изменения не выполняются.", color = TextMuted, fontSize = 12.sp)
+                            OutlinedButton(
+                                enabled = !busy && ip.isNotBlank(),
+                                onClick = {
+                                    val host = ip.trim()
+                                    val adbPort = port.toIntOrNull() ?: 5555
+                                    runTask({
+                                        connectWithRetry(context, host, adbPort) { adb ->
+                                            val details = readTvDetails(adb)
+                                            val compatibility = readTvCompatibilityReport(adb)
+                                            val disableSupported = readPackageDisableCapability(adb)
+                                            val installed = readAllPackages(adb).toSet()
+                                            val disabled = readDisabledPackages(adb)
+                                            val match = matchTvModelProfile(details, tvModelProfiles, packageFacts)
+                                            val profile = match?.profile
+                                            val candidates = findCleanupCandidates(installed.toList(), packageFacts, profile).toSet()
+                                            val globalApprovals = packageFacts.values.asSequence()
+                                                .filter { it.category.equals("ads", true) || it.category.equals("tracking", true) }
+                                                .map { it.packageName }.toSet()
+                                            val approved = TvAutomationEngine.automaticallyApprovedPackages(
+                                                packageReviewFlags = profile?.packages?.mapValues { it.value.ask }.orEmpty(),
+                                                trustedProfile = profile?.automaticDisableTrusted == true,
+                                                knownGlobalPackages = globalApprovals
+                                            )
+                                            val protected = installed.filter { isProtectedSystemPackage(it) }.toSet()
+                                            val plan = TvAutomationEngine.buildPlan(
+                                                installedPackages = installed,
+                                                disabledPackages = disabled,
+                                                detectedCandidates = candidates,
+                                                profileApprovedPackages = approved,
+                                                protectedPackages = protected,
+                                                neverDisablePackages = profile?.neverDisable.orEmpty()
+                                            )
+                                            val identity = details.lineSequence().filter {
+                                                it.startsWith("Производитель:") || it.startsWith("Модель:") ||
+                                                    it.startsWith("Устройство:") || it.startsWith("Android:")
+                                            }.joinToString("\n")
+                                            buildString {
+                                                appendLine(if (profile == null) "Профиль модели: не найден — общий безопасный справочник." else "Профиль: \${tvProfileDisplayName(profile.id)} (\${match?.matchLabel ?: "совпадение"})")
+                                                appendLine("Автоматические рекомендации: \${if (profile?.automaticDisableTrusted == true) "доверенный встроенный профиль" else "не подтверждены; нужна ручная проверка"}")
+                                                appendLine("Отключение пакетов через ADB: \${if (disableSupported) "поддерживается" else "не подтверждено"}")
+                                                appendLine("Установлено пакетов: \${installed.size}")
+                                                appendLine("Кандидаты: \${plan.detectedCount}; безопасно рекомендованы: \${plan.approvedCount}; требуют проверки: \${plan.reviewCount}; защищены: \${plan.blockedCount}; уже отключены: \${plan.alreadyDisabledCount}")
+                                                appendLine("\nСведения об устройстве:\n$identity")
+                                                appendLine("\nСовместимость ADB:\n$compatibility")
+                                                append("\nПлан предварительный. Ничего не отключено и не удалено.")
+                                            }
+                                        }
+                                    }) { result ->
+                                        if (!result.startsWith("Ошибка")) diagnosticsCompatibility = result
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Проверить совместимость и составить план") }
+                            Text(diagnosticsCompatibility, color = TextMuted, fontSize = 11.sp)
                             Text(health.summary, color = if (health.warnings.isEmpty()) GoldLight else Color(0xFFFFD98A), style = MaterialTheme.typography.titleSmall)
                             health.memoryAvailablePercent?.let { value ->
                                 Text("Свободная оперативная память: $value%", color = TextMain, fontSize = 13.sp)
