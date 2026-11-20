@@ -143,7 +143,7 @@ class UpdateCheckWorker(
                     "Обновления приложения",
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply {
-                    description = "Уведомления о новых версиях TV APK Installer"
+                    description = "Уведомления о новых версиях Clean Your TV"
                 }
             )
         }
@@ -155,7 +155,7 @@ class UpdateCheckWorker(
         val openApp = PendingIntent.getActivity(
             applicationContext,
             1001,
-            Intent(applicationContext, MainActivity::class.java).apply {
+            Intent(applicationContext, tv.cleanyour.app.MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -163,11 +163,11 @@ class UpdateCheckWorker(
 
         val notification = NotificationCompat.Builder(applicationContext, UPDATE_CHANNEL_ID)
             .setSmallIcon(applicationContext.applicationInfo.icon)
-            .setContentTitle("Доступно обновление TV APK Installer")
+            .setContentTitle("Доступно обновление Clean Your TV")
             .setContentText("Вышла версия $version. Открой приложение, чтобы скачать обновление.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "Вышла версия $version. Открой TV APK Installer и проверь обновления."
+                    "Вышла версия $version. Открой Clean Your TV и проверь обновления."
                 )
             )
             .setContentIntent(openApp)
