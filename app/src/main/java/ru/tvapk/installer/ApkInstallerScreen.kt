@@ -153,10 +153,14 @@ fun ApkInstallerScreen(
             try {
                 files.forEachIndexed { index, picked ->
                     var prepared: PreparedUserApk? = null
+                    var installedPackageName: String? = null
+                    var installSucceeded = false
+                    var installError: String? = null
                     try {
                         status = "(${index + 1}/${files.size}) Проверяем APK…"
                         val apk = prepareUserApk(context, picked)
                         prepared = apk
+                        installedPackageName = apk.packageName
                         val discovered = selectedDiscovered
                         if (discovered != null) {
                             status = "(${index + 1}/${files.size}) Устанавливаем ${apk.packageName} по Wi-Fi…"
@@ -190,13 +194,26 @@ fun ApkInstallerScreen(
                                 AccessResult.Unknown -> throw IllegalStateException("Телевизор не найден")
                             }
                         }
+                        installSucceeded = true
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
-                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installErrorMessage(failure)}"
+                        installError = installErrorMessage(failure)
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installError}"
                     } finally {
                         prepared?.file?.delete()
                     }
+                    InstallHistoryStore.record(
+                        context,
+                        InstallHistoryEntry(
+                            apkName = names.getOrNull(index) ?: "APK-файл",
+                            packageName = installedPackageName,
+                            tvName = selectedDiscovered?.let { "${it.name} (${it.ip})" } ?: tv?.nickname ?: "Не указан",
+                            connection = "Wi-Fi",
+                            success = installSucceeded,
+                            error = installError
+                        )
+                    )
                     progress = (index + 1f) / files.size
                 }
                 status = formatInstallReport("Wi-Fi", results)
@@ -228,10 +245,14 @@ fun ApkInstallerScreen(
                 }
                 files.forEachIndexed { index, picked ->
                     var prepared: PreparedUserApk? = null
+                    var installedPackageName: String? = null
+                    var installSucceeded = false
+                    var installError: String? = null
                     try {
                         status = "(${index + 1}/${files.size}) Проверяем APK…"
                         val apk = prepareUserApk(context, picked)
                         prepared = apk
+                        installedPackageName = apk.packageName
                         status = "(${index + 1}/${files.size}) Устанавливаем ${apk.packageName} по USB…"
                         withContext(Dispatchers.IO) {
                             UsbDadb.connect(context, device, usbAdbKeyFile(context)).use { adb ->
@@ -242,13 +263,26 @@ fun ApkInstallerScreen(
                             }
                         }
                         results += "✓ ${apk.packageName}"
+                        installSucceeded = true
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (failure: Exception) {
-                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installErrorMessage(failure)}"
+                        installError = installErrorMessage(failure)
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installError}"
                     } finally {
                         prepared?.file?.delete()
                     }
+                    InstallHistoryStore.record(
+                        context,
+                        InstallHistoryEntry(
+                            apkName = names.getOrNull(index) ?: "APK-файл",
+                            packageName = installedPackageName,
+                            tvName = device.productName?.toString()?.takeIf { it.isNotBlank() } ?: device.deviceName,
+                            connection = "USB OTG",
+                            success = installSucceeded,
+                            error = installError
+                        )
+                    )
                     progress = (index + 1f) / files.size
                 }
                 status = formatInstallReport("USB", results)
