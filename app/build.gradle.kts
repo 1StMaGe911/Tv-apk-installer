@@ -10,6 +10,7 @@ android {
     defaultConfig {
         versionCode = 207
         versionName = "0.9.17"
+        // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
     flavorDimensions += "store"
