@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 215
-        versionName = "0.9.25" // restore backed-up APK files to TV
+        versionCode = 216
+        versionName = "0.9.26" // remember TVs and show IP/model connection details
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
