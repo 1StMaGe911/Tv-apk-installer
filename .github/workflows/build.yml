@@ -159,4 +159,4 @@ jobs:
           echo "Release $RELEASE_TAG contains the exact TV APK Installer APK."
           echo "SHA-256: $LOCAL_SHA"
 
-# CI trigger: validate Kotlin source registration and APK installer integration.
+# CI trigger: validate Kotlin source registration, APK installation, TV app management and update notification routing.
