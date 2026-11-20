@@ -74,13 +74,25 @@ jobs:
 
       - name: Собрать Clean Your TV
         env:
-          SIGNING_STORE_FILE: ${{ github.workspace }}/signing.jks
-          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-          SIGNING_KEY_ALIAS: tvapk
-          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          CYT_RELEASE_KEYSTORE: ${{ github.workspace }}/signing.jks
+          CYT_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          CYT_RELEASE_KEY_ALIAS: tvapk
+          CYT_RELEASE_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           GRADLE_OPTS: "-Dorg.gradle.internal.http.connectionTimeout=60000 -Dorg.gradle.internal.http.socketTimeout=120000"
         run: |
           gradle :app:assembleFullDebug --no-daemon
+
+      - name: Проверить подпись APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/full/debug/app-full-debug.apk"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signing-report.txt
+          if grep -qi "CN=Android Debug" signing-report.txt; then
+            echo "::error::APK is signed with the Android debug certificate."
+            exit 1
+          fi
 
       - name: Вычислить SHA-256 APK
         id: apk
