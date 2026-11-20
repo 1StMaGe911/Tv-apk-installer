@@ -111,9 +111,9 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                             withContext(Dispatchers.Main) {
                                 status = "Получаем сведения: ${index + 1}/${packageNames.size}"
                             }
-                            val details = adb.shell("dumpsys package \$packageName").output
+                            val details = adb.shell("dumpsys package $packageName").output
                             val sizes = adb.shell(
-                                "for p in $(pm path \$packageName | sed 's/^package://'); do du -k \"\$p\"; done"
+                                "for p in $(pm path $packageName | sed 's/^package://'); do du -k \"\$p\"; done"
                             ).output
                             parseInstalledApp(packageName, details, sizes)
                         }
@@ -203,14 +203,14 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
         val device = selectedDevice ?: return
         scope.launch {
             busy = true
-            status = "Запускаем \$packageName…"
+            status = "Запускаем $packageName…"
             try {
                 val response = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
-                        adb.shell("monkey -p \$packageName 1")
+                        adb.shell("monkey -p $packageName 1")
                     }
                 }
-                status = if (response.exitCode == 0) "Команда запуска отправлена: \$packageName"
+                status = if (response.exitCode == 0) "Команда запуска отправлена: $packageName"
                     else "Не удалось запустить: ${response.allOutput.take(240)}"
             } catch (failure: Exception) {
                 status = "Ошибка запуска: ${failure.message ?: failure.javaClass.simpleName}"
@@ -223,7 +223,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
         scope.launch {
             busy = true
             pendingUninstall = null
-            status = "Удаляем \$packageName…"
+            status = "Удаляем $packageName…"
             try {
                 val result = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
@@ -233,10 +233,10 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 when (result) {
                     UninstallResult.Success -> {
                         packages = packages.filterNot { it.packageName == packageName }
-                        status = "Приложение удалено: \$packageName"
+                        status = "Приложение удалено: $packageName"
                     }
                     is UninstallResult.Failure -> status =
-                        "Не удалось удалить \$packageName: ${result.reason.take(240)}"
+                        "Не удалось удалить $packageName: ${result.reason.take(240)}"
                 }
             } catch (failure: Exception) {
                 status = "Ошибка удаления: ${failure.message ?: failure.javaClass.simpleName}"
@@ -317,7 +317,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
         AlertDialog(
             onDismissRequest = { if (!busy) pendingUninstall = null },
             title = { Text("Удалить приложение?") },
-            text = { Text("Будет удалено приложение \$packageName с телевизора. Системные приложения в этом списке не отображаются.") },
+            text = { Text("Будет удалено приложение $packageName с телевизора. Системные приложения в этом списке не отображаются.") },
             confirmButton = { TextButton(onClick = { uninstallApp(packageName) }, enabled = !busy) { Text("Удалить") } },
             dismissButton = { TextButton(onClick = { pendingUninstall = null }, enabled = !busy) { Text("Отмена") } }
         )
