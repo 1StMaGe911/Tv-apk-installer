@@ -56,7 +56,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 private const val LICENSE_URL = "https://ttrxesailsvsesfddnco.supabase.co"
 private const val SUPABASE_PUBLISHABLE_KEY = "sb_publishable_KIErUnjR_auUzqK69fe4RQ_ls98eoo1"
-private const val LICENSE_GRACE_MS = 30L * 24L * 60L * 60L * 1000L
+private const val LICENSE_GRACE_MS = 24L * 60L * 60L * 1000L
 private const val LICENSE_PREFS = "cytv_license"
 
 @Composable
