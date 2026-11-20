@@ -136,7 +136,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 }
                 deviceInfo = result.first
                 packages = result.second
-                status = "Найдено пользовательских приложений: ${result.size}. Системные приложения скрыты."
+                status = "Найдено пользовательских приложений: ${result.second.size}. Системные приложения скрыты."
             } catch (failure: Exception) {
                 status = "Не удалось получить список: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
