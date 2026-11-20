@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 213
-        versionName = "0.9.23" // persistent APK installation history
+        versionCode = 214
+        versionName = "0.9.24" // TV APK backup to user-selected folder
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
