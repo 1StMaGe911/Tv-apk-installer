@@ -16,6 +16,7 @@ object CleanYourTvUpdater {
     private const val PREFS = "clean_your_tv_updates"
     private const val DOWNLOAD_ID = "download_id"
     private const val DOWNLOADED_FROM_VERSION = "downloaded_from_version"
+    private const val LAST_SEEN_VERSION = "last_seen_version"
 
     /** Checks GitHub and starts downloading the newest full APK. Installation is always user-initiated. */
     fun download(context: Context) {
@@ -91,23 +92,37 @@ object CleanYourTvUpdater {
      */
     fun cleanupIfUpdated(context: Context) {
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val downloadedFromVersion = preferences.getLong(DOWNLOADED_FROM_VERSION, -1L)
-        if (downloadedFromVersion < 0L || appVersionCode(context) <= downloadedFromVersion) return
+        val currentVersion = appVersionCode(context)
+        val lastSeenVersion = preferences.getLong(LAST_SEEN_VERSION, -1L)
+
+        // On first launch after installing this cleanup-capable build, remove leftovers
+        // from older builds. On later launches, clean only after the installed version changes.
+        val shouldCleanup = lastSeenVersion < 0L || currentVersion > lastSeenVersion
+        if (!shouldCleanup) return
 
         val id = preferences.getLong(DOWNLOAD_ID, -1L)
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val removedRows = if (id >= 0L) manager.remove(id) else 0
-        val apkFile = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?.resolve("clean-your-tv-update.apk")
-        val deletedFile = apkFile?.delete() == true
+        if (id >= 0L) manager.remove(id)
+
+        // DownloadManager may have created suffixed copies when the same destination
+        // filename was downloaded more than once. Remove every APK owned by this updater.
+        val downloadDirectory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        val deletedCount = downloadDirectory?.listFiles()
+            ?.filter { file ->
+                file.isFile &&
+                    file.name.startsWith("clean-your-tv-update", ignoreCase = true) &&
+                    file.name.endsWith(".apk", ignoreCase = true)
+            }
+            ?.count { it.delete() } ?: 0
 
         preferences.edit()
             .remove(DOWNLOAD_ID)
             .remove(DOWNLOADED_FROM_VERSION)
+            .putLong(LAST_SEEN_VERSION, currentVersion)
             .apply()
 
-        if (removedRows > 0 || deletedFile) {
-            toast(context, "Обновление установлено. Загруженный APK удалён.")
+        if (deletedCount > 0) {
+            toast(context, "Старые файлы обновления удалены: $deletedCount")
         }
     }
 
