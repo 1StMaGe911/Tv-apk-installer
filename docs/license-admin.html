@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean Your TV — управление лицензиями</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#10141c;color:#eef2f8}
+body{margin:0;padding:24px 14px;max-width:900px;margin-inline:auto}
+h1{font-size:1.5rem;margin:0 0 6px}p{color:#aeb9ca;line-height:1.5}
+.panel{background:#1a2230;border:1px solid #303c50;border-radius:14px;padding:16px;margin:16px 0}
+input,button{font:inherit;border-radius:9px;padding:11px;border:1px solid #40506a}
+input{background:#101722;color:#fff;width:100%;box-sizing:border-box;margin:6px 0 12px}
+button{background:#3569d4;color:white;border:0;font-weight:650;margin:5px 5px 5px 0}
+button.secondary{background:#3a4658}button.danger{background:#a63845}
+button:disabled{opacity:.5}
+small,.muted{color:#aeb9ca}
+.hidden{display:none}
+#status{white-space:pre-wrap;color:#c9d8f4}
+.key{font-family:ui-monospace,monospace;font-size:1.05rem;overflow-wrap:anywhere}
+.item{border-top:1px solid #344155;padding:13px 0}
+.item:first-child{border:0}
+.tag{font-size:.8rem;color:#b8c9e8}
+.actions{margin-top:8px}
+</style>
+</head>
+<body>
+<h1>Clean Your TV — лицензии</h1>
+<p>Вход администратора и управление лицензионными ключами.</p>
+<section class="panel" id="login">
+<h2>Вход</h2>
+<label>Email<input id="email" type="email" autocomplete="username" required></label>
+<label>Пароль<input id="password" type="password" autocomplete="current-password" required></label>
+<button id="signIn">Войти</button>
+</section>
+<section class="panel hidden" id="dashboard">
+<p id="who"></p>
+<button id="signOut" class="secondary">Выйти</button>
+<h2>Создать ключ</h2>
+<label>Примечание (необязательно)<input id="note" maxlength="300" placeholder="Например, заказ 123"></label>
+<button id="create">Создать лицензию</button>
+<div id="newKey" class="key"></div>
+<h2>Список лицензий</h2>
+<button id="refresh" class="secondary">Обновить список</button>
+<div id="licenses"></div>
+</section>
+<p id="status" role="status"></p>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+const SUPABASE_URL = 'https://ttrxesailsvsesfddnco.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_KIErUnjR_auUzqK69fe4RQ_ls98eoo1';
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const $ = (id) => document.getElementById(id);
+const status = (message) => $('status').textContent = message;
+const login = $('login'), dashboard = $('dashboard');
+async function renderSession(){
+ const {data:{session}} = await supabase.auth.getSession();
+ login.classList.toggle('hidden',!!session);
+ dashboard.classList.toggle('hidden',!session);
+ $('who').textContent = session ? 'Вошли как ' + session.user.email : '';
+ if(session) await loadLicenses();
+}
+async function invoke(name,body){
+ const {data,error} = await supabase.functions.invoke(name,{body});
+ if(error) throw error;
+ if(data?.error) throw new Error(data.error);
+ return data;
+}
+$('signIn').onclick = async()=>{
+ status('Выполняется вход…');
+ const {error}=await supabase.auth.signInWithPassword({email:$('email').value,password:$('password').value});
+ if(error){status('Ошибка входа: '+error.message);return;}
+ status('Вход выполнен.'); await renderSession();
+};
+$('signOut').onclick=async()=>{await supabase.auth.signOut();$('newKey').textContent='';status('Вы вышли.');await renderSession();};
+$('create').onclick=async()=>{
+ $('create').disabled=true; $('newKey').textContent=''; status('Создаём ключ…');
+ try{
+  const data=await invoke('admin-create-license',{note:$('note').value});
+  $('newKey').textContent=data.key || 'Ключ не получен';
+  $('note').value=''; status('Ключ создан. Скопируйте его сейчас: повторно он не показывается.');
+  await loadLicenses();
+ }catch(e){status('Не удалось создать ключ: '+e.message);}
+ finally{$('create').disabled=false;}
+};
+async function manage(action,id){
+ if(action==='revoke'&&!confirm('Отозвать эту лицензию?'))return;
+ if(action==='reset-device'&&!confirm('Сбросить привязку устройства? После этого ключ сможет активировать другое устройство.'))return;
+ try{await invoke('admin-manage-licenses',{action,id});status('Изменения сохранены.');await loadLicenses();}
+ catch(e){status('Ошибка операции: '+e.message);}
+}
+async function loadLicenses(){
+ $('licenses').textContent='Загрузка…';
+ try{
+  const data=await invoke('admin-manage-licenses',{action:'list'});
+  const items=data.licenses||[];
+  $('licenses').replaceChildren();
+  if(!items.length){$('licenses').textContent='Пока ключей нет.';return;}
+  for(const item of items){
+   const el=document.createElement('div');el.className='item';
+   const title=document.createElement('strong');title.textContent=item.status==='active'?'Активна':'Отозвана';
+   const details=document.createElement('div');details.className='tag';
+   details.textContent=(item.activated?'Устройство привязано':'Не активирована')+' · Создана: '+new Date(item.created_at).toLocaleString();
+   const note=document.createElement('div');note.textContent=item.note||'Без примечания';
+   el.append(title,details,note);
+   const actions=document.createElement('div');actions.className='actions';
+   if(item.status==='active'){
+    const revoke=document.createElement('button');revoke.className='danger';revoke.textContent='Отозвать';revoke.onclick=()=>manage('revoke',item.id);actions.append(revoke);
+   }
+   if(item.activated){
+    const reset=document.createElement('button');reset.className='secondary';reset.textContent='Сбросить привязку';reset.onclick=()=>manage('reset-device',item.id);actions.append(reset);
+   }
+   el.append(actions);$('licenses').append(el);
+  }
+ }catch(e){$('licenses').textContent='Не удалось загрузить список.';status('Ошибка списка: '+e.message);}
+}
+$('refresh').onclick=loadLicenses;
+supabase.auth.onAuthStateChange(()=>{void renderSession();});
+renderSession();
+</script>
+</body>
+</html>
