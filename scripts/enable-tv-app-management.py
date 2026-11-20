@@ -36,8 +36,8 @@ replace_once(
 )
 replace_once(
     app_root,
-    "                    ManageScreen(state, m::dispatch)",
-    '                    ManageScreen(state, m::dispatch, onTvApps = { go("tvapps") })',
+    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") })',
+    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { go("tvapps") })',
 )
 replace_once(
     app_root,
@@ -53,8 +53,8 @@ replace_once(
 
 replace_once(
     manage_screens,
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier) {",
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onTvApps: () -> Unit = {}) {",
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}) {",
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}, onTvApps: () -> Unit = {}) {",
 )
 replace_once(
     manage_screens,
