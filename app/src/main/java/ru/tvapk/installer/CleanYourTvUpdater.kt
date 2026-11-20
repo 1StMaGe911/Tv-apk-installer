@@ -1,7 +1,6 @@
 package ru.tvapk.installer
 
 import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -14,15 +13,19 @@ import java.net.URL
 object CleanYourTvUpdater {
     private const val API = "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest"
     private const val APK = "app-full-debug.apk"
+    private const val PREFS = "clean_your_tv_updates"
+    private const val DOWNLOAD_ID = "download_id"
 
+    /** Checks GitHub and starts downloading the newest full APK. Installation is always user-initiated. */
     fun download(context: Context) {
-        Toast.makeText(context, "Проверяем обновление…", Toast.LENGTH_SHORT).show()
+        toast(context, "Проверяем обновление…")
         Thread {
             try {
                 val c = URL(API).openConnection() as HttpURLConnection
                 c.connectTimeout = 15000
                 c.readTimeout = 20000
                 c.setRequestProperty("User-Agent", "Clean-Your-TV-Updater")
+                c.setRequestProperty("Accept", "application/vnd.github+json")
                 val json = try {
                     check(c.responseCode == 200) { "GitHub HTTP ${c.responseCode}" }
                     JSONObject(c.inputStream.bufferedReader().use { it.readText() })
@@ -30,9 +33,9 @@ object CleanYourTvUpdater {
                 val tag = json.optString("tag_name")
                 require(Regex("^v?\\d+(?:\\.\\d+){1,3}$").matches(tag)) { "Некорректная версия" }
                 val assets = json.optJSONArray("assets") ?: error("В релизе нет APK")
-                val url = (0 until assets.length()).map { assets.getJSONObject(it) }
-                    .firstOrNull { it.optString("name") == APK }
-                    ?.optString("browser_download_url") ?: error("APK не найден")
+                val asset = (0 until assets.length()).map { assets.getJSONObject(it) }
+                    .firstOrNull { it.optString("name") == APK } ?: error("APK не найден")
+                val url = asset.optString("browser_download_url")
                 val uri = Uri.parse(url)
                 require(uri.scheme == "https" && uri.host == "github.com" &&
                     uri.path?.startsWith("/1StMaGe911/Tv-apk-installer/releases/download/") == true) {
@@ -46,16 +49,41 @@ object CleanYourTvUpdater {
                     .setAllowedOverMetered(true)
                     .setAllowedOverRoaming(false)
                     .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "clean-your-tv-update.apk")
-                (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-                toast(context, "Загружаем Clean Your TV $tag")
+                val id = (context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putLong(DOWNLOAD_ID, id).apply()
+                toast(context, "Загрузка Clean Your TV $tag началась. После завершения нажмите «Установить обновление».")
             } catch (e: Exception) {
                 toast(context, "Ошибка обновления: ${e.message ?: "не удалось загрузить APK"}")
             }
         }.start()
     }
 
-    internal fun install(context: Context, id: Long) {
+    /** Opens Android's package installer only after DownloadManager confirms a complete download. */
+    fun installLatest(context: Context) {
+        val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(DOWNLOAD_ID, -1L)
+        if (id < 0L) {
+            toast(context, "Сначала нажмите «Скачать обновление»")
+            return
+        }
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val query = DownloadManager.Query().setFilterById(id)
+        val cursor = dm.query(query)
+        val status = try {
+            if (!cursor.moveToFirst()) DownloadManager.STATUS_FAILED
+            else cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+        } finally { cursor.close() }
+        when (status) {
+            DownloadManager.STATUS_PENDING, DownloadManager.STATUS_RUNNING, DownloadManager.STATUS_PAUSED -> {
+                toast(context, "Загрузка ещё не завершена. Дождитесь её окончания.")
+                return
+            }
+            DownloadManager.STATUS_SUCCESSFUL -> Unit
+            else -> {
+                toast(context, "Загрузка не удалась. Нажмите «Скачать обновление» ещё раз.")
+                return
+            }
+        }
         val uri = dm.getUriForDownloadedFile(id) ?: run {
             toast(context, "Не удалось получить загруженный APK")
             return
@@ -75,10 +103,7 @@ object CleanYourTvUpdater {
     }
 }
 
-class CleanYourTvUpdateReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
-        val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-        if (id >= 0) CleanYourTvUpdater.install(context, id)
-    }
+/** Kept registered for compatibility; download completion no longer launches the installer automatically. */
+class CleanYourTvUpdateReceiver : android.content.BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) = Unit
 }
