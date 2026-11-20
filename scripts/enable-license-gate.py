@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Base64
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -142,9 +143,7 @@ internal fun LicenseGate(content: @Composable () -> Unit) {
                     "@St_Mage",
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                androidx.compose.foundation.clickable(onClick = {
+                    modifier = Modifier.padding(top = 4.dp).clickable(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/St_Mage"))) }
                 })
             }
