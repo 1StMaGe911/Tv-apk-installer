@@ -31,6 +31,9 @@ jobs:
 
       - name: Добавить активацию лицензии
         run: python3 scripts/enable-license-gate.py
+ 
+      - name: Включить автоматическую проверку обновлений
+        run: python3 scripts/enable-automatic-updates.py
 
       - name: Определить версию Clean Your TV
         id: version
