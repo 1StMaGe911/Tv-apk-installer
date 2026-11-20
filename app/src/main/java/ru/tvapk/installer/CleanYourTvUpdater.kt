@@ -82,6 +82,35 @@ object CleanYourTvUpdater {
         }
     }
 
+    /**
+     * Called only after Android has replaced this application package.
+     * Removing the DownloadManager row also removes its downloaded APK file.
+     */
+    fun onPackageReplaced(context: Context, action: String?) {
+        if (action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val id = preferences.getLong(DOWNLOAD_ID, -1L)
+        if (id < 0L) return
+
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val cursor = manager.query(DownloadManager.Query().setFilterById(id)) ?: return
+        val installedUpdate = try {
+            cursor.moveToFirst() &&
+                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) ==
+                DownloadManager.STATUS_SUCCESSFUL
+        } catch (_: Exception) {
+            false
+        } finally {
+            cursor.close()
+        }
+
+        if (installedUpdate) {
+            manager.remove(id)
+            preferences.edit().remove(DOWNLOAD_ID).apply()
+            toast(context, "Обновление установлено. Загруженный APK удалён.")
+        }
+    }
+
     /** Opens Android's package installer only after DownloadManager confirms a complete download. */
     fun installLatest(context: Context) {
         val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(DOWNLOAD_ID, -1L)
@@ -126,7 +155,9 @@ object CleanYourTvUpdater {
     }
 }
 
-/** Kept registered for compatibility; download completion no longer launches the installer automatically. */
+/** Handles the package-replaced broadcast after Android has finished installing our update. */
 class CleanYourTvUpdateReceiver : android.content.BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = Unit
+    override fun onReceive(context: Context, intent: Intent) {
+        CleanYourTvUpdater.onPackageReplaced(context, intent.action)
+    }
 }
