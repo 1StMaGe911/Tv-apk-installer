@@ -79,6 +79,23 @@ replace_once(
     'onOpenRelease = { graph.store.releasePage?.let { url -> scope.launch { onManageEffect(ManageEffect.OpenUrl(url)) } } },',
     'onOpenRelease = { CleanYourTvUpdater.download(context) },',
 )
+
+# Replace the single-tap release link with an explicit check / download / install flow.
+replace_once(
+    app_root,
+    'onOpenRelease = { CleanYourTvUpdater.download(context) },',
+    'onDownloadUpdate = { CleanYourTvUpdater.download(context) },\n                        onInstallUpdate = { CleanYourTvUpdater.installLatest(context) },',
+)
+replace_once(
+    manage_screens,
+    'onOpenRelease: () -> Unit, modifier: Modifier = Modifier,',
+    'onDownloadUpdate: () -> Unit, onInstallUpdate: () -> Unit, modifier: Modifier = Modifier,',
+)
+replace_once(
+    manage_screens,
+    'onClick = { if (update is UpdateCheck.Available) onOpenRelease() else onIntent(AppSettingsIntent.CheckUpdates) })',
+    'onClick = { onIntent(AppSettingsIntent.CheckUpdates) })\n                if (update is UpdateCheck.Available) {\n                    PrimaryButton("Скачать обновление", onDownloadUpdate, Modifier.padding(top = 8.dp))\n                    TertiaryButton("Установить обновление", onInstallUpdate, Modifier.padding(top = 4.dp))\n                }',
+)
 manifest = upstream / "app" / "src" / "main" / "AndroidManifest.xml"
 replace_once(
     manifest,
