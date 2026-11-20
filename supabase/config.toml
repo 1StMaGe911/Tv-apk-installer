@@ -1,0 +1,10 @@
+project_id = "ttrxesailsvsesfddnco"
+
+[functions.activate]
+verify_jwt = false
+
+[functions.check-license]
+verify_jwt = false
+
+[functions.admin-create-license]
+verify_jwt = true
