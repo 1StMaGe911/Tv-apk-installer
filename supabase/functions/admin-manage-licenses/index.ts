@@ -83,7 +83,8 @@ Deno.serve(async (req) => {
     if (!data) return Response.json({ error: "license_not_found" }, { status: 404, headers: cors });
 
     return Response.json({ ok: true, license: data }, { headers: cors });
-  } catch (_error) {
+  } catch (error) {
+    console.error("admin-manage-licenses error:", error);
     return Response.json({ error: "server_error" }, { status: 500, headers: cors });
   }
 });
