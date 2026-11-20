@@ -67,14 +67,10 @@ object CleanYourTvUpdater {
                     "Некорректный размер APK в GitHub"
                 }
 
-                val digest = asset.optString("digest")
-                    .removePrefix("sha256:")
-                    .takeIf { it.matches(Regex("[0-9a-fA-F]{64}")) }
-                    ?: json.optString("body").let { body ->
-                        Regex("(?im)^SHA-256:\\s*([0-9a-f]{64})\\s*$")
-                            .find(body)?.groupValues?.getOrNull(1)
-                    }
-                    ?: error("GitHub не предоставил SHA-256 APK")
+                val digest = UpdateArtifactPolicy.sha256FromRelease(
+                    asset.optString("digest"),
+                    json.optString("body")
+                ) ?: error("GitHub не предоставил SHA-256 APK")
 
                 val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
