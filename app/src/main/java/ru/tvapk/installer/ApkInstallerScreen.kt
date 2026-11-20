@@ -136,12 +136,12 @@ fun ApkInstallerScreen(
                 files.forEachIndexed { index, picked ->
                     var prepared: PreparedUserApk? = null
                     try {
-                        status = "(\${index + 1}/\${files.size}) Проверяем APK…"
+                        status = "(${index + 1}/${files.size}) Проверяем APK…"
                         val apk = prepareUserApk(context, picked)
                         prepared = apk
                         val discovered = selectedDiscovered
                         if (discovered != null) {
-                            status = "(\${index + 1}/\${files.size}) Устанавливаем \${apk.packageName} по Wi-Fi…"
+                            status = "(${index + 1}/${files.size}) Устанавливаем ${apk.packageName} по Wi-Fi…"
                             withContext(Dispatchers.IO) {
                                 val privateKey = usbAdbKeyFile(context)
                                 val keyPair = AdbKeyPair.read(privateKey, File(privateKey.parentFile, "adbkey.pub"))
@@ -152,7 +152,7 @@ fun ApkInstallerScreen(
                                     }
                                 }
                             }
-                            results += "✓ \${apk.packageName}"
+                            results += "✓ ${apk.packageName}"
                         } else {
                             val targetTvId = selectedTvId?.let(::TvId)
                                 ?: throw IllegalStateException("Сначала выбери или найди телевизор")
@@ -163,17 +163,17 @@ fun ApkInstallerScreen(
                                             progress = ((index + sent.toFloat() / apk.size) / files.size).coerceIn(0f, 1f)
                                         }
                                     }) {
-                                        InstallOutcome.Installed -> results += "✓ \${apk.packageName}"
-                                        is InstallOutcome.Failed -> throw IllegalStateException("код \${result.code}: \${result.detail}")
+                                        InstallOutcome.Installed -> results += "✓ ${apk.packageName}"
+                                        is InstallOutcome.Failed -> throw IllegalStateException("код ${result.code}: ${result.detail}")
                                     }
                                 }
-                                is AccessResult.Failed -> throw IllegalStateException("Не удалось подключиться: \${access.error}")
+                                is AccessResult.Failed -> throw IllegalStateException("Не удалось подключиться: ${access.error}")
                                 AccessResult.Cancelled -> throw IllegalStateException("Подключение отменено")
                                 AccessResult.Unknown -> throw IllegalStateException("Телевизор не найден")
                             }
                         }
                     } catch (failure: Exception) {
-                        results += "✗ \${names.getOrNull(index) ?: "APK"}: \${failure.message ?: failure.javaClass.simpleName}"
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${failure.message ?: failure.javaClass.simpleName}"
                     } finally {
                         prepared?.file?.delete()
                     }
@@ -198,7 +198,7 @@ fun ApkInstallerScreen(
                 if (!manager.hasPermission(device)) {
                     val permissionIntent = PendingIntent.getBroadcast(
                         context, device.deviceId,
-                        Intent("\${context.packageName}.USB_PERMISSION").setPackage(context.packageName),
+                        Intent("${context.packageName}.USB_PERMISSION").setPackage(context.packageName),
                         PendingIntent.FLAG_UPDATE_CURRENT or
                             (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                     )
@@ -209,10 +209,10 @@ fun ApkInstallerScreen(
                 files.forEachIndexed { index, picked ->
                     var prepared: PreparedUserApk? = null
                     try {
-                        status = "(\${index + 1}/\${files.size}) Проверяем APK…"
+                        status = "(${index + 1}/${files.size}) Проверяем APK…"
                         val apk = prepareUserApk(context, picked)
                         prepared = apk
-                        status = "(\${index + 1}/\${files.size}) Устанавливаем \${apk.packageName} по USB…"
+                        status = "(${index + 1}/${files.size}) Устанавливаем ${apk.packageName} по USB…"
                         withContext(Dispatchers.IO) {
                             UsbDadb.connect(context, device, usbAdbKeyFile(context)).use { adb ->
                                 when (val result = adb.install(apk.file)) {
@@ -221,9 +221,9 @@ fun ApkInstallerScreen(
                                 }
                             }
                         }
-                        results += "✓ \${apk.packageName}"
+                        results += "✓ ${apk.packageName}"
                     } catch (failure: Exception) {
-                        results += "✗ \${names.getOrNull(index) ?: "APK"}: \${failure.message ?: failure.javaClass.simpleName}"
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${failure.message ?: failure.javaClass.simpleName}"
                     } finally {
                         prepared?.file?.delete()
                     }
