@@ -1,6 +1,10 @@
 package ru.tvapk.installer
 
 import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import dadb.AdbKeyPair
 import dadb.Dadb
 import dadb.UninstallResult
+import dadb.SyncResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -71,9 +76,24 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
     var devices by remember { mutableStateOf(emptyList<TvDevice>()) }
     var selectedDevice by remember { mutableStateOf<TvDevice?>(null) }
     var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
+    var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var backupFolder by remember { mutableStateOf<Uri?>(null) }
     var pendingUninstall by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Найди телевизор с включённой ADB-отладкой по сети.") }
+
+    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+            backupFolder = uri
+            status = "Папка для резервных копий выбрана. Теперь нажми «Сохранить APK»."
+        }
+    }
 
     fun refreshPackages(device: TvDevice) {
         scope.launch {
@@ -103,6 +123,62 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 status = "Найдено пользовательских приложений: ${result.size}. Системные приложения скрыты."
             } catch (failure: Exception) {
                 status = "Не удалось получить список: ${failure.message ?: failure.javaClass.simpleName}"
+            } finally { busy = false }
+        }
+    }
+
+    fun backupSelectedApps() {
+        val device = selectedDevice ?: return
+        val folder = backupFolder ?: run { folderPicker.launch(null); return }
+        val targets = packages.filter { it.packageName in selectedPackages }
+        if (targets.isEmpty()) return
+        scope.launch {
+            busy = true
+            val manifest = StringBuilder("Clean Your TV — резервная копия APK\nТелевизор: \${device.name} (\${device.ip})\nДата: \${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
+            var saved = 0
+            try {
+                withContext(Dispatchers.IO) {
+                    Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
+                        targets.forEachIndexed { index, app ->
+                            withContext(Dispatchers.Main) { status = "Копируем \${index + 1}/\${targets.size}: \${app.packageName}" }
+                            val pathsResponse = adb.shell("pm path \${app.packageName}")
+                            if (pathsResponse.exitCode != 0) throw IllegalStateException(pathsResponse.allOutput.ifBlank { "Не удалось получить APK для \${app.packageName}" })
+                            val remotePaths = pathsResponse.output.lineSequence().map { it.trim() }
+                                .filter { it.startsWith("package:") }
+                                .map { it.removePrefix("package:").trim() }
+                                .filter { it.startsWith("/") }.toList()
+                            if (remotePaths.isEmpty()) throw IllegalStateException("APK-файлы не найдены: \${app.packageName}")
+                            remotePaths.forEachIndexed { part, remotePath ->
+                                val local = File(context.cacheDir, "tv-backup-\${System.nanoTime()}.apk")
+                                try {
+                                    when (val result = adb.pull(local, remotePath)) {
+                                        SyncResult.Success -> Unit
+                                        is SyncResult.Failure -> throw IllegalStateException(result.reason)
+                                    }
+                                    val base = remotePath.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._-]"), "_")
+                                    val name = "\${app.packageName}_\${part + 1}_$base"
+                                    val destination = DocumentsContract.createDocument(
+                                        context.contentResolver, folder,
+                                        "application/vnd.android.package-archive", name
+                                    ) ?: throw IllegalStateException("Не удалось создать файл $name в выбранной папке")
+                                    context.contentResolver.openOutputStream(destination, "w")?.use { output ->
+                                        local.inputStream().use { input -> input.copyTo(output) }
+                                    } ?: throw IllegalStateException("Не удалось записать $name")
+                                    saved++
+                                    manifest.append("\${app.packageName}\t\${app.versionName ?: "?"}\t$name\n")
+                                } finally { local.delete() }
+                            }
+                        }
+                    }
+                }
+                withContext(Dispatchers.IO) {
+                    val manifestUri = DocumentsContract.createDocument(context.contentResolver, folder, "text/plain", "clean-your-tv-backup-manifest.txt")
+                    if (manifestUri != null) context.contentResolver.openOutputStream(manifestUri, "w")?.use { it.write(manifest.toString().toByteArray(Charsets.UTF_8)) }
+                }
+                status = "Резервная копия готова: сохранено APK-файлов $saved для \${targets.size} приложений."
+                selectedPackages = emptySet()
+            } catch (failure: Exception) {
+                status = "Ошибка резервного копирования: \${failure.message ?: failure.javaClass.simpleName}. Успело сохраниться файлов: $saved."
             } finally { busy = false }
         }
     }
@@ -195,6 +271,14 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                     TextButton(onClick = { refreshPackages(device) }, enabled = !busy) { Text("Обновить") }
                 }
             }
+            if (selectedDevice != null) {
+                OutlinedButton(onClick = { folderPicker.launch(null) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (backupFolder == null) "Выбрать папку для резервной копии" else "Изменить папку резервной копии")
+                }
+                Button(onClick = { backupSelectedApps() }, enabled = !busy && selectedPackages.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                    Text("Сохранить APK (\${selectedPackages.size})")
+                }
+            }
             Text(status)
             if (selectedDevice != null && packages.isEmpty() && !busy) {
                 Text("Пользовательские приложения не найдены или список ещё не загружен.")
@@ -208,7 +292,15 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                                 (app.versionCode?.let { " (код $it)" } ?: ""),
                             style = MaterialTheme.typography.bodySmall
                         )
-                        Text("Размер APK: ${formatApkSize(app.apkSizeBytes)}", style = MaterialTheme.typography.bodySmall)
+                        Text("Размер APK: \${formatApkSize(app.apkSizeBytes)}", style = MaterialTheme.typography.bodySmall)
+                        Row {
+                            Checkbox(
+                                checked = app.packageName in selectedPackages,
+                                onCheckedChange = { checked -> selectedPackages = if (checked) selectedPackages + app.packageName else selectedPackages - app.packageName },
+                                enabled = !busy
+                            )
+                            Text("Включить в резервную копию", modifier = Modifier.padding(top = 12.dp))
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
                             OutlinedButton(onClick = { pendingUninstall = app.packageName }, enabled = !busy) { Text("Удалить") }
