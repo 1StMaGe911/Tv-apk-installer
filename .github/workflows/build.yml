@@ -32,6 +32,9 @@ jobs:
       - name: Добавить управление приложениями телевизора
         run: python3 scripts/enable-tv-app-management.py
 
+      - name: Добавить историю установок APK
+        run: python3 scripts/enable-install-history.py
+
       - name: Добавить активацию лицензии
         run: python3 scripts/enable-license-gate.py
  
