@@ -2054,3 +2054,26 @@ for _module in _russian_modules:
     if _missing:
         raise SystemExit(f"Russian localization incomplete in {_module}: {', '.join(_missing)}")
     print(f"Russian localization verified: {_module} ({len(_base_keys)} resources)")
+
+
+# Show live APK download progress directly on the update button.
+replace_once(
+    app_root,
+    '                        onDownloadUpdate = { CleanYourTvUpdater.download(context) },',
+    '                        onDownloadUpdate = { if (updateDownloadProgress == null || updateDownloadProgress == 100) CleanYourTvUpdater.download(context) },',
+)
+replace_once(
+    app_root,
+    '                    ManageScreen(state, m::dispatch, onDownloadUpdate = { if (updateDownloadProgress == null || updateDownloadProgress == 100) CleanYourTvUpdater.download(context) },',
+    '                    var updateDownloadProgress by remember { mutableStateOf<Int?>(null) }\n                    LaunchedEffect(Unit) { while (true) { updateDownloadProgress = CleanYourTvUpdater.downloadProgress(context); kotlinx.coroutines.delay(500) } }\n                    ManageScreen(state, m::dispatch, updateDownloadProgress = updateDownloadProgress, onDownloadUpdate = { if (updateDownloadProgress == null || updateDownloadProgress == 100) CleanYourTvUpdater.download(context) },',
+)
+replace_once(
+    manage_screens,
+    'onDownloadUpdate: () -> Unit, onInstallUpdate: () -> Unit, modifier: Modifier = Modifier,',
+    'onDownloadUpdate: () -> Unit, onInstallUpdate: () -> Unit, updateDownloadProgress: Int? = null, modifier: Modifier = Modifier,',
+)
+replace_once(
+    manage_screens,
+    'PrimaryButton("Скачать обновление", onDownloadUpdate, Modifier.padding(top = 8.dp))',
+    'PrimaryButton(if (updateDownloadProgress == 100) "Обновление загружено — 100%" else if (updateDownloadProgress != null) "Скачивание обновления — $updateDownloadProgress%" else "Скачать обновление", onDownloadUpdate, Modifier.padding(top = 8.dp))\n                    if (updateDownloadProgress != null && updateDownloadProgress < 100) {\n                        LinearProgressIndicator(progress = { updateDownloadProgress / 100f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))\n                    }',
+)
