@@ -9,7 +9,7 @@ plugins {
 android {
     defaultConfig {
         versionCode = 208
-        versionName = "0.9.18"
+        versionName = "0.9.18" // Trigger CI for complete APK cleanup in 0.9.18
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
