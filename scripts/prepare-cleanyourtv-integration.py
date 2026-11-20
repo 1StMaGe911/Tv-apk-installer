@@ -105,7 +105,7 @@ manifest = upstream / "app" / "src" / "main" / "AndroidManifest.xml"
 replace_once(
     manifest,
     '        <receiver\n            android:name="androidx.profileinstaller.ProfileInstallReceiver"',
-    '        <receiver\n            android:name="ru.tvapk.installer.CleanYourTvUpdateReceiver"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />\n            </intent-filter>\n        </receiver>\n\n        <receiver\n            android:name="androidx.profileinstaller.ProfileInstallReceiver"',
+    '        <receiver\n            android:name="ru.tvapk.installer.CleanYourTvUpdateReceiver"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />\n            </intent-filter>\n            <intent-filter>\n                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />\n            </intent-filter>\n        </receiver>\n\n        <receiver\n            android:name="androidx.profileinstaller.ProfileInstallReceiver"',
 )
 
 replace_once(
