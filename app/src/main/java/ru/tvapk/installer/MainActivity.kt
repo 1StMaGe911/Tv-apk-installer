@@ -2124,6 +2124,33 @@ private fun cleanupStaleLauncherTemporaryFiles(context: Context) {
     }
 }
 
+private fun cleanupInstalledUpdateApk(context: Context) {
+    val apk = File(context.cacheDir, "updates/tv-apk-installer-update.apk")
+    if (!apk.isFile) return
+
+    try {
+        @Suppress("DEPRECATION")
+        val archive = context.packageManager.getPackageArchiveInfo(apk.absolutePath, 0) ?: return
+        if (archive.packageName != context.packageName) return
+
+        @Suppress("DEPRECATION")
+        val installed = context.packageManager.getPackageInfo(context.packageName, 0)
+        @Suppress("DEPRECATION")
+        val archiveVersion = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode
+            else archive.versionCode.toLong()
+        @Suppress("DEPRECATION")
+        val installedVersion = if (Build.VERSION.SDK_INT >= 28) installed.longVersionCode
+            else installed.versionCode.toLong()
+
+        // Delete only after Android has actually installed this APK (or a newer app version).
+        if (installedVersion >= archiveVersion) {
+            apk.delete()
+        }
+    } catch (_: Exception) {
+        // Keep the APK if installation cannot be confirmed safely.
+    }
+}
+
 private fun sha256BackupFile(file: File): ByteArray {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
     file.inputStream().buffered().use { input ->
@@ -4759,6 +4786,7 @@ fun TvInstallerApp() {
     LaunchedEffect(Unit) {
         Thread {
             runCatching { cleanupStaleLauncherTemporaryFiles(context) }
+            runCatching { cleanupInstalledUpdateApk(context) }
             val result = try {
                 checkLatestVersion()
             } catch (e: Exception) {
