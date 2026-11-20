@@ -53,16 +53,24 @@ jobs:
       - name: Проверить логику автоматизации
         run: gradle :app:testFullDebugUnitTest --no-daemon
 
-      - name: Подготовить ключ подписи
+      - name: Проверить и подготовить постоянный ключ подписи
         env:
           KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
-          if [ -n "${KEY_BASE64:-}" ]; then
-            echo "$KEY_BASE64" | base64 --decode > signing.jks
-          else
-            rm -f signing.jks
-            echo "Keystore secret is not configured; Gradle will use the debug signing key."
+          set -euo pipefail
+          if [ -z "${KEY_BASE64:-}" ]; then
+            echo "::error::SIGNING_KEYSTORE_BASE64 is missing. Refusing to build an APK with a temporary debug key."
+            exit 1
           fi
+          if [ -z "${STORE_PASSWORD:-}" ]; then
+            echo "::error::SIGNING_PASSWORD is missing."
+            exit 1
+          fi
+          printf '%s' "$KEY_BASE64" | base64 --decode > signing.jks
+          test -s signing.jks
+          keytool -list -keystore signing.jks -storepass "$STORE_PASSWORD" -alias tvapk >/dev/null
+          echo "Permanent signing keystore and tvapk alias verified."
 
       - name: Собрать Clean Your TV
         env:
