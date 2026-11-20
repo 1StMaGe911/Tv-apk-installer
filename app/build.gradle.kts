@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 216
-        versionName = "0.9.26" // remember TVs and show IP/model connection details
+        versionCode = 217
+        versionName = "0.9.27" // verify in-app update downloads and signatures before install
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
