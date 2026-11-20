@@ -69,7 +69,7 @@ jobs:
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:
-          name: TV-APK-Installer-0.9.139-full-debug
+          name: TV-APK-Installer-0.9.3-full-debug
           path: app/build/outputs/apk/full/debug/app-full-debug.apk
           if-no-files-found: error
           retention-days: 14
