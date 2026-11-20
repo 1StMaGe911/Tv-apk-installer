@@ -29,6 +29,9 @@ jobs:
       - name: Добавить установку APK в Clean Your TV
         run: python3 scripts/enable-apk-install.py
 
+      - name: Добавить управление приложениями телевизора
+        run: python3 scripts/enable-tv-app-management.py
+
       - name: Добавить активацию лицензии
         run: python3 scripts/enable-license-gate.py
  
