@@ -72,13 +72,18 @@ internal fun LicenseGate(content: @Composable () -> Unit) {
         val saved = LicenseStore.readKey(context) ?: return@withContext false
         val last = LicenseStore.lastCheck(context)
         val now = System.currentTimeMillis()
-        if (last > 0L && now >= last && now - last < LICENSE_GRACE_MS) return@withContext true
         try {
+            // Always ask the server on launch so revoked licenses are blocked promptly.
             val ok = LicenseApi.call("check-license", saved, LicenseStore.deviceId(context))
-            if (ok) LicenseStore.markChecked(context)
-            ok
+            if (ok) {
+                LicenseStore.markChecked(context)
+                true
+            } else {
+                false
+            }
         } catch (_: Exception) {
-            false
+            // Keep the app usable offline only within the 30-day grace period.
+            last > 0L && now >= last && now - last < LICENSE_GRACE_MS
         }
     }
 
@@ -165,8 +170,11 @@ private object LicenseApi {
             connection.setRequestProperty("Authorization", "Bearer $SUPABASE_PUBLISHABLE_KEY")
             val body = JSONObject().put("key", key).put("deviceId", deviceId).toString()
             connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-            val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader()?.use { it.readText() } ?: return false
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                throw java.io.IOException("License server HTTP $responseCode")
+            }
+            val response = connection.inputStream.bufferedReader().use { it.readText() }
             return JSONObject(response).optBoolean("ok", false)
         } finally {
             connection.disconnect()
