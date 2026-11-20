@@ -1834,7 +1834,7 @@ write_russian_strings(
     <string name="widgets_line_lunar">Лунная дата 13/9 · Год Лошади</string>
     <string name="widgets_stats_name">Состояние ТВ</string>
     <string name="widgets_stats_sub">Каждые 10 секунд</string>
-    <string name="widgets_line_stats">ЦП 14% · Свободно в памяти 1,2 ГБ · Свободно на накопителе 61%</string>
+    <string name="widgets_line_stats" formatted="false">ЦП 14% · Свободно в памяти 1,2 ГБ · Свободно на накопителе 61%</string>
     <string name="widgets_caption_name">Название изображения</string>
     <string name="widgets_caption_sub">Переключается ниже</string>
     <string name="widgets_line_caption">Название изображения</string>
