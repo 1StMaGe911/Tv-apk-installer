@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 209
-        versionName = "0.9.19" // Batch APK installation
+        versionCode = 210
+        versionName = "0.9.20" // Batch APK installation report and error handling
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
