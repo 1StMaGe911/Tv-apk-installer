@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,6 +40,23 @@ import java.security.MessageDigest
 
 private const val MAX_USER_APK_BYTES = 200L * 1024L * 1024L
 private data class PreparedUserApk(val file: File, val blob: BlobRef, val packageName: String, val size: Long)
+
+private fun formatInstallReport(connection: String, results: List<String>): String {
+    val succeeded = results.count { it.startsWith("✓ ") }
+    val failed = results.size - succeeded
+    return buildString {
+        append("Установка завершена (").append(connection).append(").\n")
+        append("Успешно: ").append(succeeded).append(" из ").append(results.size)
+        append("; с ошибками: ").append(failed).append(".")
+        if (results.isNotEmpty()) {
+            append("\n\n")
+            append(results.joinToString("\n"))
+        }
+    }
+}
+
+private fun installErrorMessage(failure: Exception): String =
+    (failure.message ?: failure.javaClass.simpleName).replace('\n', ' ').take(180)
 
 private suspend fun prepareUserApk(context: Context, uri: Uri): PreparedUserApk = withContext(Dispatchers.IO) {
     val file = File(context.cacheDir, "install-${System.nanoTime()}.apk")
@@ -172,14 +190,16 @@ fun ApkInstallerScreen(
                                 AccessResult.Unknown -> throw IllegalStateException("Телевизор не найден")
                             }
                         }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (failure: Exception) {
-                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${failure.message ?: failure.javaClass.simpleName}"
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installErrorMessage(failure)}"
                     } finally {
                         prepared?.file?.delete()
                     }
                     progress = (index + 1f) / files.size
                 }
-                status = "Установка завершена (Wi-Fi):\n" + results.joinToString("\n")
+                status = formatInstallReport("Wi-Fi", results)
             } finally {
                 busy = false
             }
@@ -222,14 +242,16 @@ fun ApkInstallerScreen(
                             }
                         }
                         results += "✓ ${apk.packageName}"
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
                     } catch (failure: Exception) {
-                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${failure.message ?: failure.javaClass.simpleName}"
+                        results += "✗ ${names.getOrNull(index) ?: "APK"}: ${installErrorMessage(failure)}"
                     } finally {
                         prepared?.file?.delete()
                     }
                     progress = (index + 1f) / files.size
                 }
-                status = "Установка завершена (USB):\n" + results.joinToString("\n")
+                status = formatInstallReport("USB", results)
             } finally {
                 busy = false
             }
