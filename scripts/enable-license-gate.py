@@ -145,7 +145,8 @@ internal fun LicenseGate(content: @Composable () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 4.dp).clickable(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/St_Mage"))) }
-                })
+                    })
+                )
             }
         }
     }
