@@ -108,89 +108,97 @@ fun ApkInstallerScreen(
     val tv = tvs.firstOrNull { it.id.value == selectedTvId }
 
     var mode by remember { mutableStateOf("wifi") }
-    var uri by remember { mutableStateOf<Uri?>(null) }
-    var name by remember { mutableStateOf("APK не выбран") }
+    var uris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Выбери APK-файл для установки на телевизор.") }
     var progress by remember { mutableStateOf(0f) }
     var usbDevices by remember { mutableStateOf(emptyList<UsbDevice>()) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
-        if (picked != null) {
-            uri = picked
-            name = documentName(context, picked)
-            status = "Файл выбран. Можно запускать установку."
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { picked ->
+        if (picked.isNotEmpty()) {
+            uris = picked.distinct()
+            names = uris.map { documentName(context, it) }
+            status = "Выбрано APK-файлов: ${uris.size}. Установка будет выполняться по очереди."
             progress = 0f
         }
     }
 
     fun installWifi() {
-        val picked = uri ?: return
+        val files = uris
+        if (files.isEmpty()) return
         scope.launch {
             busy = true
             progress = 0f
-            var prepared: PreparedUserApk? = null
+            val results = mutableListOf<String>()
             try {
-                status = "Проверяем APK-файл…"
-                val apk = prepareUserApk(context, picked)
-                prepared = apk
-                val discovered = selectedDiscovered
-                if (discovered != null) {
-                    status = "Подключаемся к найденному телевизору ${discovered.name} (${discovered.ip}:${discovered.port})…"
-                    status = withContext(Dispatchers.IO) {
-                        val privateKey = usbAdbKeyFile(context)
-                        val keyPair = AdbKeyPair.read(privateKey, File(privateKey.parentFile, "adbkey.pub"))
-                        Dadb.create(discovered.ip, discovered.port, keyPair).use { adb ->
-                            when (val result = adb.install(apk.file)) {
-                                is InstallResult.Success -> "Приложение успешно установлено по Wi-Fi: ${apk.packageName}"
-                                is InstallResult.Failure -> throw IllegalStateException("Телевизор отклонил установку: ${result.reason}")
-                            }
-                        }
-                    }
-                    progress = 1f
-                } else {
-                    status = "Подключаемся к сохранённому телевизору…"
-                    val targetTvId = selectedTvId?.let(::TvId) ?: throw IllegalStateException("Сначала выбери или найди телевизор")
-                    when (val access = tvAccess.session(targetTvId)) {
-                        is AccessResult.Ok -> {
-                            status = "Устанавливаем ${apk.packageName} по Wi-Fi…"
-                            when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
-                                mainHandler.post { progress = (sent.toFloat() / apk.size).coerceIn(0f, 1f) }
-                            }) {
-                                InstallOutcome.Installed -> {
-                                    progress = 1f
-                                    status = "Приложение успешно установлено по Wi-Fi: ${apk.packageName}"
+                files.forEachIndexed { index, picked ->
+                    var prepared: PreparedUserApk? = null
+                    try {
+                        status = "(\${index + 1}/\${files.size}) Проверяем APK…"
+                        val apk = prepareUserApk(context, picked)
+                        prepared = apk
+                        val discovered = selectedDiscovered
+                        if (discovered != null) {
+                            status = "(\${index + 1}/\${files.size}) Устанавливаем \${apk.packageName} по Wi-Fi…"
+                            withContext(Dispatchers.IO) {
+                                val privateKey = usbAdbKeyFile(context)
+                                val keyPair = AdbKeyPair.read(privateKey, File(privateKey.parentFile, "adbkey.pub"))
+                                Dadb.create(discovered.ip, discovered.port, keyPair).use { adb ->
+                                    when (val result = adb.install(apk.file)) {
+                                        is InstallResult.Success -> Unit
+                                        is InstallResult.Failure -> throw IllegalStateException(result.reason)
+                                    }
                                 }
-                                is InstallOutcome.Failed -> status = "Телевизор отклонил установку (${result.code}): ${result.detail}"
+                            }
+                            results += "✓ \${apk.packageName}"
+                        } else {
+                            val targetTvId = selectedTvId?.let(::TvId)
+                                ?: throw IllegalStateException("Сначала выбери или найди телевизор")
+                            when (val access = tvAccess.session(targetTvId)) {
+                                is AccessResult.Ok -> {
+                                    when (val result = access.session.installStream(apk.blob, apk.size) { sent ->
+                                        mainHandler.post {
+                                            progress = ((index + sent.toFloat() / apk.size) / files.size).coerceIn(0f, 1f)
+                                        }
+                                    }) {
+                                        InstallOutcome.Installed -> results += "✓ \${apk.packageName}"
+                                        is InstallOutcome.Failed -> throw IllegalStateException("код \${result.code}: \${result.detail}")
+                                    }
+                                }
+                                is AccessResult.Failed -> throw IllegalStateException("Не удалось подключиться: \${access.error}")
+                                AccessResult.Cancelled -> throw IllegalStateException("Подключение отменено")
+                                AccessResult.Unknown -> throw IllegalStateException("Телевизор не найден")
                             }
                         }
-                        is AccessResult.Failed -> status = "Не удалось подключиться к телевизору: ${access.error}"
-                        AccessResult.Cancelled -> status = "Подключение отменено."
-                        AccessResult.Unknown -> status = "Телевизор не найден в сохранённых устройствах. Найди его через поиск."
+                    } catch (failure: Exception) {
+                        results += "✗ \${names.getOrNull(index) ?: "APK"}: \${failure.message ?: failure.javaClass.simpleName}"
+                    } finally {
+                        prepared?.file?.delete()
                     }
+                    progress = (index + 1f) / files.size
                 }
-            } catch (failure: Exception) {
-                status = "Ошибка установки: ${failure.message ?: failure.javaClass.simpleName}"
+                status = "Установка завершена (Wi-Fi):\n" + results.joinToString("\n")
             } finally {
-                prepared?.file?.delete()
                 busy = false
             }
         }
     }
 
     fun installUsb(device: UsbDevice) {
-        val picked = uri ?: return
+        val files = uris
+        if (files.isEmpty()) return
         scope.launch {
             busy = true
             progress = 0f
-            var prepared: PreparedUserApk? = null
+            val results = mutableListOf<String>()
             try {
                 val manager = context.getSystemService(Context.USB_SERVICE) as UsbManager
                 if (!manager.hasPermission(device)) {
                     val permissionIntent = PendingIntent.getBroadcast(
                         context, device.deviceId,
-                        Intent("${context.packageName}.USB_PERMISSION").setPackage(context.packageName),
+                        Intent("\${context.packageName}.USB_PERMISSION").setPackage(context.packageName),
                         PendingIntent.FLAG_UPDATE_CURRENT or
                             (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
                     )
@@ -198,23 +206,31 @@ fun ApkInstallerScreen(
                     status = "Разреши доступ к USB в системном окне, затем снова нажми «Установить по USB»."
                     return@launch
                 }
-                status = "Проверяем APK-файл…"
-                val apk = prepareUserApk(context, picked)
-                prepared = apk
-                status = "Подключаемся к USB ADB и устанавливаем ${apk.packageName}…"
-                status = withContext(Dispatchers.IO) {
-                    UsbDadb.connect(context, device, usbAdbKeyFile(context)).use { adb ->
-                        when (val result = adb.install(apk.file)) {
-                            is InstallResult.Success -> "Приложение успешно установлено по USB: ${apk.packageName}"
-                            is InstallResult.Failure -> throw IllegalStateException("Телевизор отклонил установку: ${result.reason}")
+                files.forEachIndexed { index, picked ->
+                    var prepared: PreparedUserApk? = null
+                    try {
+                        status = "(\${index + 1}/\${files.size}) Проверяем APK…"
+                        val apk = prepareUserApk(context, picked)
+                        prepared = apk
+                        status = "(\${index + 1}/\${files.size}) Устанавливаем \${apk.packageName} по USB…"
+                        withContext(Dispatchers.IO) {
+                            UsbDadb.connect(context, device, usbAdbKeyFile(context)).use { adb ->
+                                when (val result = adb.install(apk.file)) {
+                                    is InstallResult.Success -> Unit
+                                    is InstallResult.Failure -> throw IllegalStateException(result.reason)
+                                }
+                            }
                         }
+                        results += "✓ \${apk.packageName}"
+                    } catch (failure: Exception) {
+                        results += "✗ \${names.getOrNull(index) ?: "APK"}: \${failure.message ?: failure.javaClass.simpleName}"
+                    } finally {
+                        prepared?.file?.delete()
                     }
+                    progress = (index + 1f) / files.size
                 }
-                progress = 1f
-            } catch (failure: Exception) {
-                status = "Ошибка USB-установки: ${failure.message ?: failure.javaClass.simpleName}"
+                status = "Установка завершена (USB):\n" + results.joinToString("\n")
             } finally {
-                prepared?.file?.delete()
                 busy = false
             }
         }
@@ -290,15 +306,15 @@ fun ApkInstallerScreen(
                 enabled = !busy,
                 onClick = { picker.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream")) },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text(if (uri == null) "Выбрать APK-файл" else "Выбрать другой APK") }
-            Text(name, style = MaterialTheme.typography.bodySmall)
+            ) { Text(if (uris.isEmpty()) "Выбрать APK-файлы" else "Выбрать ещё / заменить APK") }
+            Text(if (names.isEmpty()) "APK-файлы не выбраны" else "Выбрано файлов: ${names.size}\n" + names.joinToString("\n"), style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilterChip(selected = mode == "wifi", onClick = { mode = "wifi" }, label = { Text("Wi-Fi") }, enabled = !busy)
                 FilterChip(selected = mode == "usb", onClick = { mode = "usb" }, label = { Text("USB OTG") }, enabled = !busy)
             }
             if (mode == "wifi") {
                 Text("Установка на выбранный телевизор через уже настроенное ADB-подключение.", style = MaterialTheme.typography.bodySmall)
-                Button(enabled = uri != null && !busy && (tv != null || selectedDiscovered != null), onClick = { installWifi() }, modifier = Modifier.fillMaxWidth()) {
+                Button(enabled = uris.isNotEmpty() && !busy && (tv != null || selectedDiscovered != null), onClick = { installWifi() }, modifier = Modifier.fillMaxWidth()) {
                     Text(if (busy) "Выполняется…" else "Установить по Wi-Fi")
                 }
             } else {
@@ -320,7 +336,7 @@ fun ApkInstallerScreen(
                             val hasAdb = UsbDadb.hasAdbInterface(device)
                             Text(if (hasAdb) "ADB USB-интерфейс найден" else "ADB USB-интерфейс не найден",
                                 style = MaterialTheme.typography.bodySmall)
-                            Button(enabled = hasAdb && uri != null && !busy, onClick = { installUsb(device) }, modifier = Modifier.fillMaxWidth()) {
+                            Button(enabled = hasAdb && uris.isNotEmpty() && !busy, onClick = { installUsb(device) }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Установить по USB")
                             }
                         }
