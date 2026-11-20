@@ -69,6 +69,7 @@ object CleanYourTvUpdater {
         return try {
             if (!cursor.moveToFirst()) return null
             val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            if (status == DownloadManager.STATUS_SUCCESSFUL) return 100
             if (status != DownloadManager.STATUS_RUNNING && status != DownloadManager.STATUS_PENDING &&
                 status != DownloadManager.STATUS_PAUSED) return null
             val total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
