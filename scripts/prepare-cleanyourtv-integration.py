@@ -2057,6 +2057,12 @@ for _module in _russian_modules:
 
 
 
+replace_once(
+    manage_screens,
+    'import androidx.compose.material3.ExperimentalMaterial3Api',
+    'import androidx.compose.material3.ExperimentalMaterial3Api\\nimport androidx.compose.material3.LinearProgressIndicator',
+)
+
 # Poll Android DownloadManager and expose its live percentage on the app-settings update button.
 replace_once(
     app_root,
