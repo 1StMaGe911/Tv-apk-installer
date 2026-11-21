@@ -185,7 +185,7 @@ if row_new not in ui:
         raise SystemExit("Could not find the unique TV settings row for startup check")
     ui = ui.replace(row_anchor, row_new)
 
-dialog_anchor = "        ScreenTitle(stringResource(R.string.manage_title), titleTop)," + nl
+dialog_anchor = "        ScreenTitle(stringResource(R.string.manage_title), titleTop)" + nl
 dialog = """        if (startupDialogVisible) {
             AlertDialog(
                 onDismissRequest = { startupDialogVisible = false },
@@ -232,7 +232,7 @@ screens_ui.write_text(ui, encoding="utf-8")
 # Keep the app-settings shortcut visible across destinations, not only on the Manage home screen.
 app_root = root / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 once(app_root, "import androidx.compose.foundation.layout.Box" + nl,
-     "import androidx.compose.foundation.layout.Box" + nl + "import androidx.compose.foundation.layout.align" + nl)
+     "import androidx.compose.foundation.layout.Box" + nl + )
 once(app_root, "import tv.cleanyour.ui.design.theme.CytTheme" + nl,
      "import tv.cleanyour.ui.design.component.CytIconButton" + nl
      + "import tv.cleanyour.ui.design.icon.CytIcons" + nl
