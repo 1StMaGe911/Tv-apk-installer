@@ -26,13 +26,13 @@ replace_once(
 )
 replace_once(
     app_root,
-    "    @Serializable data object TvApps : Dest",
-    "    @Serializable data object InstallHistory : Dest\n    @Serializable data object TvApps : Dest",
+    "    @Serializable data class TvApps(val tvId: String) : Dest",
+    "    @Serializable data object InstallHistory : Dest\n    @Serializable data class TvApps(val tvId: String) : Dest",
 )
 replace_once(
     app_root,
-    '        "tvapps" -> Dest.TvApps',
-    '        "tvapps" -> Dest.TvApps\n        "installhistory" -> Dest.InstallHistory',
+    '        "tvapps" -> id?.let { Dest.TvApps(it) }',
+    '        "tvapps" -> id?.let { Dest.TvApps(it) }\n        "installhistory" -> Dest.InstallHistory',
 )
 replace_once(
     app_root,
