@@ -239,9 +239,9 @@ once(app_root, "import tv.cleanyour.feature.setup.SetupFlow" + nl,
      + "import tv.cleanyour.ui.design.icon.CytIcons" + nl)
 shortcut = """        if (backStack.lastOrNull() !is Dest.Manage) {
             Box(Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 16.dp)) {
-                CytIconButton(CytIcons.Settings, context.getString(tv.cleanyour.feature.manage.R.string.manage_settings_cd)) {
+                CytIconButton(CytIcons.Settings, context.getString(tv.cleanyour.feature.manage.R.string.manage_settings_cd), onClick = {
                     if (backStack.lastOrNull() != Dest.AppSettings) go("appsettings")
-                }
+                })
             }
         }
 """
