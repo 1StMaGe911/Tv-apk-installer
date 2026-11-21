@@ -36,6 +36,7 @@ private fun tvAppsKeyPair(context: Context): AdbKeyPair {
 
 data class TvInstalledApp(
     val packageName: String,
+    val appLabel: String = packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() },
     val versionName: String?,
     val versionCode: String?,
     val apkSizeBytes: Long?,
@@ -51,6 +52,9 @@ private fun parseUserPackages(output: String): List<String> =
         .distinct().sorted().toList()
 
 internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String, isSystem: Boolean = false): TvInstalledApp {
+    val appLabel = Regex("""(?m)^\s*application-label(?:-[^:]+)?:\s*['"]?(.*?)['"]?\s*$""").find(details)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+        ?: Regex("""nonLocalizedLabel=(?:'([^']*)'|"([^"]*)"|([^,}]+))""").find(details)?.let { it.groupValues.drop(1).firstOrNull(String::isNotBlank)?.trim() }?.takeIf { it.isNotBlank() }
+        ?: packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
     val versionName = Regex("""versionName=(\S+)""").find(details)?.groupValues?.get(1)
     val versionCode = Regex("""versionCode=(\d+)""").find(details)?.groupValues?.get(1)
     val sizeKb = sizeOutput.lineSequence().mapNotNull { line ->
@@ -58,6 +62,7 @@ internal fun parseInstalledApp(packageName: String, details: String, sizeOutput:
     }.sum().takeIf { it > 0L }
     return TvInstalledApp(
         packageName = packageName,
+        appLabel = appLabel,
         versionName = versionName,
         versionCode = versionCode,
         apkSizeBytes = sizeKb?.times(1024L),
@@ -407,12 +412,12 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                         else -> true
                     }
                     val query = appSearch.trim()
-                    matchesFilter && (query.isBlank() || app.packageName.contains(query, ignoreCase = true))
+                    matchesFilter && (query.isBlank() || app.appLabel.contains(query, ignoreCase = true) || app.packageName.contains(query, ignoreCase = true))
                 }.let { list ->
                     when (appSort) {
                         "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }
                         "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }
-                        else -> list.sortedBy { it.packageName.lowercase() }
+                        else -> list.sortedBy { it.appLabel.lowercase() }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
@@ -436,12 +441,13 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             val visibleApps = packages.filter { app ->
                 val matchesFilter = when (appFilter) { "Пользовательские" -> !app.isSystem; "Системные" -> app.isSystem; else -> true }
                 val query = appSearch.trim()
-                matchesFilter && (query.isBlank() || app.packageName.contains(query, ignoreCase = true))
-            }.let { list -> when (appSort) { "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }; "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }; else -> list.sortedBy { it.packageName.lowercase() } } }
+                matchesFilter && (query.isBlank() || app.appLabel.contains(query, ignoreCase = true) || app.packageName.contains(query, ignoreCase = true))
+            }.let { list -> when (appSort) { "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }; "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }; else -> list.sortedBy { it.appLabel.lowercase() } } }
             visibleApps.forEach { app ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(app.packageName, style = MaterialTheme.typography.titleSmall)
+                        Text(app.appLabel, style = MaterialTheme.typography.titleSmall)
+                        Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                         Text(if (app.isSystem) "Системное приложение" else "Пользовательское приложение", style = MaterialTheme.typography.labelSmall)
                         app.firstInstallTime?.let { Text("Установлено: $it", style = MaterialTheme.typography.bodySmall) }
                         Text(
