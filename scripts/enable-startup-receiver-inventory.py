@@ -158,18 +158,19 @@ print("Read-only startup receiver inventory integrated.")
 
 # Keep the startup inventory out of the Manage feature list: open it in its own dialog.
 screens_ui = root / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
-once(screens_ui, "import androidx.compose.material3.ExperimentalMaterial3Api\\n",
-     "import androidx.compose.material3.ExperimentalMaterial3Api\\n"
-     "import androidx.compose.material3.AlertDialog\\n"
-     "import androidx.compose.material3.LinearProgressIndicator\\n"
-     "import androidx.compose.material3.Text\\n"
-     "import androidx.compose.material3.TextButton\\n")
-once(screens_ui, "    val locale = LocalConfiguration.current.locales[0]\\n",
-     "    val locale = LocalConfiguration.current.locales[0]\\n"
-     "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\\n")
+nl = chr(10)
+once(screens_ui, "import androidx.compose.material3.ExperimentalMaterial3Api" + nl,
+     "import androidx.compose.material3.ExperimentalMaterial3Api" + nl
+     + "import androidx.compose.material3.AlertDialog" + nl
+     + "import androidx.compose.material3.LinearProgressIndicator" + nl
+     + "import androidx.compose.material3.Text" + nl
+     + "import androidx.compose.material3.TextButton" + nl)
+once(screens_ui, "    val locale = LocalConfiguration.current.locales[0]" + nl,
+     "    val locale = LocalConfiguration.current.locales[0]" + nl
+     + "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }" + nl)
 
 ui = screens_ui.read_text(encoding="utf-8")
-old_start = "        if (tv != null) {\\n            SecondaryButton(stringResource(R.string.manage_startup_check)"
+old_start = "        if (tv != null) {" + nl + "            SecondaryButton(stringResource(R.string.manage_startup_check)"
 if old_start in ui:
     start = ui.index(old_start)
     end = ui.index("        if (state.offline)", start)
@@ -178,13 +179,13 @@ elif "SecondaryButton(stringResource(R.string.manage_startup_check)" in ui:
     raise SystemExit("Startup UI changed unexpectedly; refusing unsafe rewrite")
 
 row_anchor = "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })"
-row_new = row_anchor + "\\n                ListDivider()\\n                ListRow(stringResource(R.string.manage_startup_check), subtitle = stringResource(R.string.manage_startup_title), onClick = { startupDialogVisible = true; onIntent(ManageIntent.CheckStartupReceivers) })"
+row_new = row_anchor + nl + "                ListDivider()" + nl + "                ListRow(stringResource(R.string.manage_startup_check), subtitle = stringResource(R.string.manage_startup_title), onClick = { startupDialogVisible = true; onIntent(ManageIntent.CheckStartupReceivers) })"
 if row_new not in ui:
     if ui.count(row_anchor) != 1:
         raise SystemExit("Could not find the unique TV settings row for startup check")
     ui = ui.replace(row_anchor, row_new)
 
-dialog_anchor = "        ScreenTitle(stringResource(R.string.manage_title), titleTop)\\n"
+dialog_anchor = "        ScreenTitle(stringResource(R.string.manage_title), titleTop)," + nl
 dialog = """        if (startupDialogVisible) {
             AlertDialog(
                 onDismissRequest = { startupDialogVisible = false },
@@ -230,13 +231,12 @@ screens_ui.write_text(ui, encoding="utf-8")
 
 # Keep the app-settings shortcut visible across destinations, not only on the Manage home screen.
 app_root = root / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
-once(app_root, "import androidx.compose.foundation.layout.Box\\n",
-     "import androidx.compose.foundation.layout.Box\\n"
-     "import androidx.compose.foundation.layout.align\\n")
-once(app_root, "import tv.cleanyour.ui.design.theme.CytTheme\\n",
-     "import tv.cleanyour.ui.design.component.CytIconButton\\n"
-     "import tv.cleanyour.ui.design.icon.CytIcons\\n"
-     "import tv.cleanyour.ui.design.theme.CytTheme\\n")
+once(app_root, "import androidx.compose.foundation.layout.Box" + nl,
+     "import androidx.compose.foundation.layout.Box" + nl + "import androidx.compose.foundation.layout.align" + nl)
+once(app_root, "import tv.cleanyour.ui.design.theme.CytTheme" + nl,
+     "import tv.cleanyour.ui.design.component.CytIconButton" + nl
+     + "import tv.cleanyour.ui.design.icon.CytIcons" + nl
+     + "import tv.cleanyour.ui.design.theme.CytTheme" + nl)
 shortcut = """        if (backStack.lastOrNull() !is Dest.Manage) {
             Box(Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 16.dp)) {
                 CytIconButton(CytIcons.Settings, context.getString(tv.cleanyour.feature.manage.R.string.manage_settings_cd)) {
