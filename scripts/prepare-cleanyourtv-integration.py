@@ -2156,4 +2156,25 @@ write_russian_strings(
     <string name="found_clean_only_action">Очистить телевизор</string>
 </resources>"""
 )
+
+# Ensure these entries exist in the actual Android resource XML (do not rely only on regex merge).
+import xml.etree.ElementTree as _ET
+_ru_file = upstream / "feature/setup/src/main/res/values-ru/strings.xml"
+_ru_file.parent.mkdir(parents=True, exist_ok=True)
+if _ru_file.exists():
+    _ru_tree = _ET.parse(_ru_file)
+    _ru_root = _ru_tree.getroot()
+else:
+    _ru_root = _ET.Element("resources")
+for _name, _value in (
+    ("found_clean_only", "Только очистка"),
+    ("found_full_setup", "Очистка и настройка лаунчера"),
+    ("found_clean_only_action", "Очистить телевизор"),
+):
+    _node = _ru_root.find(f"./string[@name='{_name}']")
+    if _node is None:
+        _node = _ET.SubElement(_ru_root, "string", {"name": _name})
+    _node.text = _value
+_ET.ElementTree(_ru_root).write(_ru_file, encoding="utf-8", xml_declaration=True)
+
 print("Clean-only setup mode patch applied.")
