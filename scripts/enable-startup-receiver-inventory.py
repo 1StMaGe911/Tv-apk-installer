@@ -232,7 +232,7 @@ screens_ui.write_text(ui, encoding="utf-8")
 # Keep the app-settings shortcut visible across destinations, not only on the Manage home screen.
 app_root = root / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 once(app_root, "import androidx.compose.foundation.layout.Box" + nl,
-     "import androidx.compose.foundation.layout.Box" + nl + )
+     "import androidx.compose.foundation.layout.Box" + nl)
 once(app_root, "import tv.cleanyour.ui.design.theme.CytTheme" + nl,
      "import tv.cleanyour.ui.design.component.CytIconButton" + nl
      + "import tv.cleanyour.ui.design.icon.CytIcons" + nl
