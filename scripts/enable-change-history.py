@@ -171,9 +171,9 @@ fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
                     localEntries.forEach { entry ->
                         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("${entry.action}: ${entry.packageName}", style = MaterialTheme.typography.titleSmall)
+                                Text("${entry.action}: ${entry.detail}", style = MaterialTheme.typography.titleSmall)
                                 Text(SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(entry.atMs)), style = MaterialTheme.typography.bodySmall)
-                                Text("Операция выполнена через управление приложениями телевизора", style = MaterialTheme.typography.bodySmall)
+                                Text("Запись выполнена приложением Clean Your TV", style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
