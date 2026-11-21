@@ -64,7 +64,7 @@ class UsbDadb private constructor(
     override fun supportsFeature(feature: String): Boolean = feature in features
 
     override fun open(destination: String): AdbStream {
-        check(!closed) { "USB ADB connection is closed" }
+        check(!closed) { "USB-подключение ADB закрыто" }
         val localId = nextLocalId++
         sendPacket(A_OPEN, localId, 0, (destination + "\u0000").toByteArray(Charsets.UTF_8))
         while (true) {
@@ -110,8 +110,8 @@ class UsbDadb private constructor(
     }
 
     private fun sendPacket(command: Int, arg0: Int, arg1: Int, data: ByteArray = ByteArray(0)) {
-        if (closed) throw IOException("USB ADB connection is closed")
-        require(data.size <= 1024 * 1024) { "ADB packet is too large" }
+        if (closed) throw IOException("USB-подключение ADB закрыто")
+        require(data.size <= 1024 * 1024) { "Пакет USB ADB превышает допустимый размер" }
         val header = ByteBuffer.allocate(HEADER_SIZE).order(ByteOrder.LITTLE_ENDIAN)
             .putInt(command).putInt(arg0).putInt(arg1).putInt(data.size)
             .putInt(checksum(data)).putInt(command.inv()).array()
