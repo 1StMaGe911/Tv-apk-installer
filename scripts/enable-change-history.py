@@ -128,6 +128,13 @@ private fun ChangeRecord.priorLine(): String? {
     return parts.takeIf { it.isNotEmpty() }?.joinToString("\\n")
 }
 
+private data class ChangeHistoryItem(
+    val atMs: Long,
+    val title: String,
+    val detail: String? = null,
+    val prior: String? = null
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
@@ -143,11 +150,11 @@ fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
         error = false
         try {
             entries = withContext(Dispatchers.IO) { ledger.changes(TvId(tvId)).sortedByDescending { it.atMs } }
-            localEntries = withContext(Dispatchers.IO) { TvAppsHistory.read(context, tvId) }
         } catch (_: Exception) {
             error = true
             entries = emptyList()
         }
+        localEntries = withContext(Dispatchers.IO) { TvAppsHistory.read(context, tvId) }
         loading = false
     }
 
@@ -162,34 +169,29 @@ fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Записей: ${entries.size + localEntries.size}", style = MaterialTheme.typography.titleSmall)
-            when {
-                loading -> Text("Загружаем журнал…")
-                error -> Text("Не удалось прочитать журнал. Попробуйте обновить.")
-                entries.isEmpty() && localEntries.isEmpty() -> Text("Изменений пока нет. Здесь появятся завершённые действия Clean Your TV на этом телевизоре.")
-                else -> {
-                    localEntries.forEach { entry ->
-                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text("${entry.action}: ${entry.detail}", style = MaterialTheme.typography.titleSmall)
-                                Text(SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(entry.atMs)), style = MaterialTheme.typography.bodySmall)
-                                Text("Запись выполнена приложением Clean Your TV", style = MaterialTheme.typography.bodySmall)
-                            }
-                        }
-                    }
-                    entries.forEach { entry ->
+            val timeline = (localEntries.map { entry ->
+                ChangeHistoryItem(entry.atMs, "${entry.action}: ${entry.detail}", "Запись выполнена приложением Clean Your TV")
+            } + entries.map { entry ->
+                ChangeHistoryItem(entry.atMs, entry.title(), "Шаг: ${entry.step + 1}", entry.priorLine())
+            }).sortedByDescending { it.atMs }
+            Text("Записей: ${timeline.size}", style = MaterialTheme.typography.titleSmall)
+            if (loading) {
+                Text("Загружаем журнал…")
+            } else {
+                if (error) Text("Часть журнала телевизора недоступна. Локальные события показаны, если они есть.")
+                if (timeline.isEmpty()) Text("Изменений пока нет. Здесь появятся завершённые действия Clean Your TV на этом телевизоре.")
+                timeline.forEach { item ->
                     Card(
                         Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(entry.title(), style = MaterialTheme.typography.titleSmall)
-                            Text(SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(entry.atMs)),
+                            Text(item.title, style = MaterialTheme.typography.titleSmall)
+                            Text(SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(item.atMs)),
                                 style = MaterialTheme.typography.bodySmall)
-                            Text("Шаг: ${entry.step + 1}", style = MaterialTheme.typography.bodySmall)
-                            entry.priorLine()?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            item.detail?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            item.prior?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         }
-                    }
                     }
                 }
             }
