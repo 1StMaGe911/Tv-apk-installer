@@ -249,4 +249,34 @@ anchor = "        SnackbarHost(snack, Modifier.align(Alignment.BottomCenter).pad
 if shortcut.strip() not in app_root.read_text(encoding="utf-8"):
     once(app_root, anchor, shortcut + anchor)
 
+
+# Record a completed startup receiver inventory read in the per-TV history.
+replace_once(app_root,
+'''import ru.tvapk.installer.TvAppsScreen''',
+'''import ru.tvapk.installer.TvAppsScreen
+import ru.tvapk.installer.TvAppsHistory''')
+replace_once(app_root,
+'''                entry<Dest.Manage> { key ->
+                    val m = rememberMachine("manage:${key.tvId}") { graph.manage(it, key.tvId?.let(::TvId)) }
+                    val state by m.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }''',
+'''                entry<Dest.Manage> { key ->
+                    val m = rememberMachine("manage:${key.tvId}") { graph.manage(it, key.tvId?.let(::TvId)) }
+                    val state by m.state.collectAsStateWithLifecycle()
+                    var startupCheckWasLoading by remember(key.tvId) { mutableStateOf(false) }
+                    LaunchedEffect(state.startupReceiversLoading, state.startupReceivers, state.startupReceiversError) {
+                        if (startupCheckWasLoading && !state.startupReceiversLoading &&
+                            state.startupReceivers != null && !state.startupReceiversError) {
+                            val selectedTvId = state.current?.id?.value ?: key.tvId
+                            val inventory = state.startupReceivers
+                            if (selectedTvId != null && inventory != null) {
+                                val boot = when (inventory.bootQuerySupported) { true -> "доступно"; false -> "не поддерживается"; null -> "неизвестно" }
+                                val locked = when (inventory.lockedBootQuerySupported) { true -> "доступно"; false -> "не поддерживается"; null -> "неизвестно" }
+                                TvAppsHistory.record(context, selectedTvId, "Проверен автозапуск",
+                                    "Найдено компонентов: ${inventory.receivers.size}; после загрузки: $boot; до разблокировки: $locked")
+                            }
+                        }
+                        startupCheckWasLoading = state.startupReceiversLoading
+                    }
+                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }''')
 print("Startup inventory now opens in a separate dialog; app settings shortcut is global.")
