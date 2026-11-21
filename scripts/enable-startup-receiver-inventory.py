@@ -251,11 +251,11 @@ if shortcut.strip() not in app_root.read_text(encoding="utf-8"):
 
 
 # Record a completed startup receiver inventory read in the per-TV history.
-replace_once(app_root,
+once(app_root,
 '''import ru.tvapk.installer.TvAppsScreen''',
 '''import ru.tvapk.installer.TvAppsScreen
 import ru.tvapk.installer.TvAppsHistory''')
-replace_once(app_root,
+once(app_root,
 '''                entry<Dest.Manage> { key ->
                     val m = rememberMachine("manage:${key.tvId}") { graph.manage(it, key.tvId?.let(::TvId)) }
                     val state by m.state.collectAsStateWithLifecycle()
