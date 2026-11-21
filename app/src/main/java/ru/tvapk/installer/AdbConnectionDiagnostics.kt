@@ -35,13 +35,23 @@ internal object AdbConnectionDiagnostics {
                 "Нет сетевого маршрута до ТВ. Проверь IP, одну Wi-Fi/LAN-сеть и настройки гостевой сети.")
         }
         return Diagnosis(Kind.UNKNOWN, false,
-            "Проверь, что ТВ включён, ADB-отладка активна, IP и порт верны. Подробности исходной ошибки приведены выше.")
+            "Проверь, что ТВ включён, ADB-отладка активна, IP и порт верны. Подробности исходной ошибки приведены ниже.")
+    }
+
+    private fun kindLabel(kind: Kind): String = when (kind) {
+        Kind.AUTHORIZATION -> "не подтверждена отладка ADB"
+        Kind.REFUSED -> "телевизор отклонил соединение"
+        Kind.TIMEOUT -> "истекло время ожидания ответа"
+        Kind.NETWORK_UNREACHABLE -> "телевизор недоступен по сети"
+        Kind.INVALID_ENDPOINT -> "неверный IP-адрес или порт"
+        Kind.UNKNOWN -> "не удалось определить причину"
     }
 
     fun format(host: String, port: Int, errorText: String): String {
         val diagnosis = classify(host, port, errorText)
-        return "Причина: ${diagnosis.kind}. ${diagnosis.guidance} Исходная ошибка: $errorText"
+        return "Причина: ${kindLabel(diagnosis.kind)}. ${diagnosis.guidance} Техническая ошибка: $errorText"
     }
+
     /** Exponential delay for retry number 1..N, capped to avoid long connection stalls. */
     internal fun retryDelayForAttempt(baseDelayMillis: Long, retryNumber: Int): Long {
         require(baseDelayMillis >= 0L) { "retry delay must not be negative" }
@@ -75,5 +85,4 @@ internal object AdbConnectionDiagnostics {
         }
         throw lastError ?: IllegalStateException("Connection failed without an error")
     }
-
 }
