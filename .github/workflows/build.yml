@@ -148,6 +148,8 @@ jobs:
             exit 1
           fi
           if [ -s previous-release.apk ]; then
+            APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+            test -x "$APKSIGNER"
             PREVIOUS_CERT=$("$APKSIGNER" verify --print-certs previous-release.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
             CURRENT_CERT=$(awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}' signing-report.txt)
             if [ -z "$PREVIOUS_CERT" ] || [ "$PREVIOUS_CERT" != "$CURRENT_CERT" ]; then
