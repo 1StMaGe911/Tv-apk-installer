@@ -206,6 +206,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                     val manifestUri = DocumentsContract.createDocument(context.contentResolver, folder, "text/plain", "clean-your-tv-backup-manifest.txt")
                     if (manifestUri != null) context.contentResolver.openOutputStream(manifestUri, "w")?.use { it.write(manifest.toString().toByteArray(Charsets.UTF_8)) }
                 }
+                TvAppsHistory.record(context, historyTvId, "Создана резервная копия APK", "Приложений: ${targets.size}; APK-файлов: $saved")
                 status = "Резервная копия готова: сохранено APK-файлов $saved для ${targets.size} приложений."
                 selectedPackages = emptySet()
             } catch (failure: Exception) {
@@ -290,8 +291,10 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                         adb.shell("monkey -p $packageName 1")
                     }
                 }
-                status = if (response.exitCode == 0) "Команда запуска отправлена: $packageName"
-                    else "Не удалось запустить: ${response.allOutput.take(240)}"
+                status = if (response.exitCode == 0) {
+                    TvAppsHistory.record(context, historyTvId, "Отправлена команда запуска приложения", packageName)
+                    "Команда запуска отправлена: $packageName"
+                } else "Не удалось запустить: ${response.allOutput.take(240)}"
             } catch (failure: Exception) {
                 status = "Ошибка запуска: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
