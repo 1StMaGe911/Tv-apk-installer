@@ -132,15 +132,18 @@ private fun ChangeRecord.priorLine(): String? {
 @Composable
 fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
     var entries by remember(tvId) { mutableStateOf<List<ChangeRecord>>(emptyList()) }
+    var localEntries by remember(tvId) { mutableStateOf<List<TvAppsHistoryEntry>>(emptyList()) }
     var loading by remember(tvId) { mutableStateOf(true) }
     var error by remember(tvId) { mutableStateOf(false) }
     var refresh by remember { mutableStateOf(0) }
 
+    val context = LocalContext.current
     LaunchedEffect(tvId, refresh) {
         loading = true
         error = false
         try {
             entries = withContext(Dispatchers.IO) { ledger.changes(TvId(tvId)).sortedByDescending { it.atMs } }
+            localEntries = withContext(Dispatchers.IO) { TvAppsHistory.read(context, tvId) }
         } catch (_: Exception) {
             error = true
             entries = emptyList()
@@ -159,12 +162,22 @@ fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Записей: ${entries.size}", style = MaterialTheme.typography.titleSmall)
+            Text("Записей: ${entries.size + localEntries.size}", style = MaterialTheme.typography.titleSmall)
             when {
                 loading -> Text("Загружаем журнал…")
                 error -> Text("Не удалось прочитать журнал. Попробуйте обновить.")
-                entries.isEmpty() -> Text("Изменений пока нет. Здесь появятся завершённые действия Clean Your TV на этом телевизоре.")
-                else -> entries.forEach { entry ->
+                entries.isEmpty() && localEntries.isEmpty() -> Text("Изменений пока нет. Здесь появятся завершённые действия Clean Your TV на этом телевизоре.")
+                else -> {
+                    localEntries.forEach { entry ->
+                        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("${entry.action}: ${entry.packageName}", style = MaterialTheme.typography.titleSmall)
+                                Text(SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(entry.atMs)), style = MaterialTheme.typography.bodySmall)
+                                Text("Операция выполнена через управление приложениями телевизора", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                    entries.forEach { entry ->
                     Card(
                         Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -176,6 +189,7 @@ fun ChangeHistoryScreen(tvId: String, ledger: RunLedger, onBack: () -> Unit) {
                             Text("Шаг: ${entry.step + 1}", style = MaterialTheme.typography.bodySmall)
                             entry.priorLine()?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         }
+                    }
                     }
                 }
             }
