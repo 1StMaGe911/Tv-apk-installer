@@ -80,7 +80,7 @@ private fun formatApkSize(bytes: Long?): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevice>) {
+fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevice>) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var devices by remember { mutableStateOf(loadSavedTvAppsDevices(context)) }
@@ -246,7 +246,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                         }
                     }
                     when (result) {
-                        InstallResult.Success -> restored++
+                        InstallResult.Success -> { restored++; TvAppsHistory.record(context, historyTvId, "Восстановлено приложение", packageName) }
                         is InstallResult.Failure -> throw IllegalStateException("Не удалось восстановить $packageName: ${result.reason}")
                     }
                 }
@@ -314,6 +314,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                     UninstallResult.Success -> {
                         packages = packages.filterNot { it.packageName == packageName }
                         selectedPackages = selectedPackages - packageName
+                        TvAppsHistory.record(context, historyTvId, "Удалено приложение", packageName)
                         status = "Приложение удалено: $packageName"
                     }
                     is UninstallResult.Failure -> status =
@@ -497,7 +498,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb -> adb.uninstall(app.packageName) }
                                 }
                                 when (result) {
-                                    UninstallResult.Success -> { removed++; packages = packages.filterNot { it.packageName == app.packageName } }
+                                    UninstallResult.Success -> { removed++; TvAppsHistory.record(context, historyTvId, "Удалено приложение", app.packageName); packages = packages.filterNot { it.packageName == app.packageName } }
                                     is UninstallResult.Failure -> failed += "${app.packageName}: ${result.reason.take(100)}"
                                 }
                             }
