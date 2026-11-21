@@ -2177,4 +2177,24 @@ for _name, _value in (
     _node.text = _value
 _ET.ElementTree(_ru_root).write(_ru_file, encoding="utf-8", xml_declaration=True)
 
+# Kotlin references R.string.* at compile time. Keep these IDs in the default
+# values resource set as well; values-ru alone may be filtered from some builds.
+_default_file = upstream / "feature/setup/src/main/res/values/strings.xml"
+_default_file.parent.mkdir(parents=True, exist_ok=True)
+if _default_file.exists():
+    _default_tree = _ET.parse(_default_file)
+    _default_root = _default_tree.getroot()
+else:
+    _default_root = _ET.Element("resources")
+for _name, _value in (
+    ("found_clean_only", "Только очистка"),
+    ("found_full_setup", "Очистка и настройка лаунчера"),
+    ("found_clean_only_action", "Очистить телевизор"),
+):
+    _node = _default_root.find(f"./string[@name='{_name}']")
+    if _node is None:
+        _node = _ET.SubElement(_default_root, "string", {"name": _name})
+    _node.text = _value
+_ET.ElementTree(_default_root).write(_default_file, encoding="utf-8", xml_declaration=True)
+
 print("Clean-only setup mode patch applied.")
