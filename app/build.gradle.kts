@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 221
-        versionName = "0.9.31" // 24-hour offline license grace period
+        versionCode = 222
+        versionName = "0.9.32" // 24-hour offline license grace period
         // Rebuild after adding startup cleanup for downloaded update APKs.
     }
 
