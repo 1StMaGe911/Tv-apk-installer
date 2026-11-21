@@ -233,10 +233,10 @@ screens_ui.write_text(ui, encoding="utf-8")
 app_root = root / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 once(app_root, "import androidx.compose.foundation.layout.Box" + nl,
      "import androidx.compose.foundation.layout.Box" + nl)
-once(app_root, "import tv.cleanyour.ui.design.theme.CytTheme" + nl,
-     "import tv.cleanyour.ui.design.component.CytIconButton" + nl
-     + "import tv.cleanyour.ui.design.icon.CytIcons" + nl
-     + "import tv.cleanyour.ui.design.theme.CytTheme" + nl)
+once(app_root, "import tv.cleanyour.feature.setup.SetupFlow" + nl,
+     "import tv.cleanyour.feature.setup.SetupFlow" + nl
+     + "import tv.cleanyour.ui.design.component.CytIconButton" + nl
+     + "import tv.cleanyour.ui.design.icon.CytIcons" + nl)
 shortcut = """        if (backStack.lastOrNull() !is Dest.Manage) {
             Box(Modifier.align(Alignment.TopEnd).padding(top = 52.dp, end = 16.dp)) {
                 CytIconButton(CytIcons.Settings, context.getString(tv.cleanyour.feature.manage.R.string.manage_settings_cd)) {
