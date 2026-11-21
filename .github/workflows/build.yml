@@ -147,6 +147,15 @@ jobs:
             echo "::error::APK is signed with the Android debug certificate."
             exit 1
           fi
+          if [ -s previous-release.apk ]; then
+            PREVIOUS_CERT=$("$APKSIGNER" verify --print-certs previous-release.apk | awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}')
+            CURRENT_CERT=$(awk -F': ' '/certificate SHA-256 digest/ {print $2; exit}' signing-report.txt)
+            if [ -z "$PREVIOUS_CERT" ] || [ "$PREVIOUS_CERT" != "$CURRENT_CERT" ]; then
+              echo "::error::Signing certificate does not match the latest published APK."
+              exit 1
+            fi
+            echo "Signing certificate matches the latest published APK."
+          fi
 
       - name: Вычислить SHA-256 APK
         id: apk
