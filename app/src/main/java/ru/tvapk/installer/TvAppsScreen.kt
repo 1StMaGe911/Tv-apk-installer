@@ -38,7 +38,9 @@ data class TvInstalledApp(
     val packageName: String,
     val versionName: String?,
     val versionCode: String?,
-    val apkSizeBytes: Long?
+    val apkSizeBytes: Long?,
+    val isSystem: Boolean = false,
+    val firstInstallTime: String? = null
 )
 
 private fun parseUserPackages(output: String): List<String> =
@@ -48,7 +50,7 @@ private fun parseUserPackages(output: String): List<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .distinct().sorted().toList()
 
-internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String): TvInstalledApp {
+internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String, isSystem: Boolean = false): TvInstalledApp {
     val versionName = Regex("""versionName=(\S+)""").find(details)?.groupValues?.get(1)
     val versionCode = Regex("""versionCode=(\d+)""").find(details)?.groupValues?.get(1)
     val sizeKb = sizeOutput.lineSequence().mapNotNull { line ->
@@ -58,7 +60,9 @@ internal fun parseInstalledApp(packageName: String, details: String, sizeOutput:
         packageName = packageName,
         versionName = versionName,
         versionCode = versionCode,
-        apkSizeBytes = sizeKb?.times(1024L)
+        apkSizeBytes = sizeKb?.times(1024L),
+        isSystem = isSystem,
+        firstInstallTime = Regex("""firstInstallTime=(.+)""").find(details)?.groupValues?.get(1)?.trim()
     )
 }
 
@@ -78,6 +82,10 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
     var deviceInfo by remember { mutableStateOf("") }
     var selectedDevice by remember { mutableStateOf<TvDevice?>(null) }
     var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
+    var appSearch by remember { mutableStateOf("") }
+    var appFilter by remember { mutableStateOf("Все") }
+    var appSort by remember { mutableStateOf("Имя") }
+    var showBulkUninstallConfirm by remember { mutableStateOf(false) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var backupFolder by remember { mutableStateOf<Uri?>(null) }
     var restoreUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -116,10 +124,12 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                         val sdk = adb.shell("getprop ro.build.version.sdk").output.trim()
                         val identity = listOf(manufacturer, model).filter { it.isNotBlank() }.distinct().joinToString(" ").ifBlank { device.name }
                         val info = listOf(identity, androidVersion.takeIf { it.isNotBlank() }?.let { "Android $it" }, sdk.takeIf { it.isNotBlank() }?.let { "SDK $it" }).filterNotNull().joinToString(" • ")
-                        val response = adb.shell("pm list packages -3")
+                        val response = adb.shell("pm list packages")
+                        val systemResponse = adb.shell("pm list packages -s")
                         if (response.exitCode != 0) throw IllegalStateException(
                             response.allOutput.ifBlank { "Команда ADB завершилась с ошибкой ${response.exitCode}" }
                         )
+                        val systemPackages = parseUserPackages(systemResponse.output).toSet()
                         val packageNames = parseUserPackages(response.output)
                         val installed = packageNames.mapIndexed { index, packageName ->
                             withContext(Dispatchers.Main) {
@@ -129,14 +139,14 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                             val sizes = adb.shell(
                                 "for p in $(pm path $packageName | sed 's/^package://'); do du -k \"\$p\"; done"
                             ).output
-                            parseInstalledApp(packageName, details, sizes)
+                            parseInstalledApp(packageName, details, sizes, packageName in systemPackages)
                         }
                         info to installed
                     }
                 }
                 deviceInfo = result.first
                 packages = result.second
-                status = "Найдено пользовательских приложений: ${result.second.size}. Системные приложения скрыты."
+                status = "Найдено приложений: ${result.second.size} (пользовательских: ${result.second.count { !it.isSystem }}, системных: ${result.second.count { it.isSystem }})."
             } catch (failure: Exception) {
                 status = "Не удалось получить список: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
@@ -298,6 +308,7 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 when (result) {
                     UninstallResult.Success -> {
                         packages = packages.filterNot { it.packageName == packageName }
+                        selectedPackages = selectedPackages - packageName
                         status = "Приложение удалено: $packageName"
                     }
                     is UninstallResult.Failure -> status =
@@ -367,13 +378,72 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                 }
             }
             Text(status)
+            if (selectedDevice != null && packages.isNotEmpty()) {
+                OutlinedTextField(
+                    value = appSearch,
+                    onValueChange = { appSearch = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Поиск приложения") },
+                    placeholder = { Text("Название или имя пакета") },
+                    singleLine = true,
+                    enabled = !busy
+                )
+                Text("Фильтр приложений", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Все", "Пользовательские", "Системные").forEach { option ->
+                        FilterChip(selected = appFilter == option, onClick = { appFilter = option }, label = { Text(option) }, enabled = !busy)
+                    }
+                }
+                Text("Сортировка", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Имя", "Размер", "Дата").forEach { option ->
+                        FilterChip(selected = appSort == option, onClick = { appSort = option }, label = { Text(option) }, enabled = !busy)
+                    }
+                }
+                val visibleApps = packages.filter { app ->
+                    val matchesFilter = when (appFilter) {
+                        "Пользовательские" -> !app.isSystem
+                        "Системные" -> app.isSystem
+                        else -> true
+                    }
+                    val query = appSearch.trim()
+                    matchesFilter && (query.isBlank() || app.packageName.contains(query, ignoreCase = true))
+                }.let { list ->
+                    when (appSort) {
+                        "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }
+                        "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }
+                        else -> list.sortedBy { it.packageName.lowercase() }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Показано: ${visibleApps.size}")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = {
+                        val eligible = visibleApps.filterNot { it.isSystem }.map { it.packageName }.toSet()
+                        selectedPackages = if (eligible.isNotEmpty() && eligible.all { it in selectedPackages }) selectedPackages - eligible else selectedPackages + eligible
+                    }, enabled = !busy && visibleApps.any { !it.isSystem }) { Text("Выбрать пользовательские") }
+                }
+                if (selectedPackages.isNotEmpty()) {
+                    Text("Выбрано для удаления: ${selectedPackages.size}")
+                    Button(onClick = { showBulkUninstallConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                        Text("Удалить выбранные (${selectedPackages.size})")
+                    }
+                }
+            }
             if (selectedDevice != null && packages.isEmpty() && !busy) {
                 Text("Пользовательские приложения не найдены или список ещё не загружен.")
             }
-            packages.forEach { app ->
+            val visibleApps = packages.filter { app ->
+                val matchesFilter = when (appFilter) { "Пользовательские" -> !app.isSystem; "Системные" -> app.isSystem; else -> true }
+                val query = appSearch.trim()
+                matchesFilter && (query.isBlank() || app.packageName.contains(query, ignoreCase = true))
+            }.let { list -> when (appSort) { "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }; "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }; else -> list.sortedBy { it.packageName.lowercase() } } }
+            visibleApps.forEach { app ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(app.packageName, style = MaterialTheme.typography.titleSmall)
+                        Text(if (app.isSystem) "Системное приложение" else "Пользовательское приложение", style = MaterialTheme.typography.labelSmall)
+                        app.firstInstallTime?.let { Text("Установлено: $it", style = MaterialTheme.typography.bodySmall) }
                         Text(
                             "Версия: ${app.versionName ?: "неизвестна"}" +
                                 (app.versionCode?.let { " (код $it)" } ?: ""),
@@ -384,9 +454,9 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
                             Checkbox(
                                 checked = app.packageName in selectedPackages,
                                 onCheckedChange = { checked -> selectedPackages = if (checked) selectedPackages + app.packageName else selectedPackages - app.packageName },
-                                enabled = !busy
+                                enabled = !busy && !app.isSystem
                             )
-                            Text("Включить в резервную копию", modifier = Modifier.padding(top = 12.dp))
+                            Text(if (app.isSystem) "Системное приложение" else "Выбрать для резервной копии / удаления", modifier = Modifier.padding(top = 12.dp))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
@@ -398,6 +468,43 @@ fun TvAppsScreen(onBack: () -> Unit, discoverDevices: suspend () -> List<TvDevic
             if (busy) Text("Выполняется…")
             Spacer(Modifier.height(8.dp))
         }
+    }
+
+    if (showBulkUninstallConfirm) {
+        val targets = packages.filter { it.packageName in selectedPackages && !it.isSystem }
+        AlertDialog(
+            onDismissRequest = { if (!busy) showBulkUninstallConfirm = false },
+            title = { Text("Массовое удаление") },
+            text = { Text("Удалить ${targets.size} выбранных пользовательских приложений? Системные приложения не будут затронуты. Это действие нельзя отменить.") },
+            confirmButton = { TextButton(onClick = {
+                showBulkUninstallConfirm = false
+                val device = selectedDevice
+                if (device != null && targets.isNotEmpty()) {
+                    scope.launch {
+                        busy = true
+                        var removed = 0
+                        val failed = mutableListOf<String>()
+                        try {
+                            targets.forEachIndexed { index, app ->
+                                status = "Удаляем ${index + 1}/${targets.size}: ${app.packageName}"
+                                val result = withContext(Dispatchers.IO) {
+                                    Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb -> adb.uninstall(app.packageName) }
+                                }
+                                when (result) {
+                                    UninstallResult.Success -> { removed++; packages = packages.filterNot { it.packageName == app.packageName } }
+                                    is UninstallResult.Failure -> failed += "${app.packageName}: ${result.reason.take(100)}"
+                                }
+                            }
+                            selectedPackages = emptySet()
+                            status = "Удалено: $removed из ${targets.size}." + if (failed.isNotEmpty()) " Не удалось: ${failed.joinToString("; ")}" else ""
+                        } catch (failure: Exception) {
+                            status = "Ошибка массового удаления: ${failure.message ?: failure.javaClass.simpleName}. Удалено: $removed."
+                        } finally { busy = false }
+                    }
+                }
+            }, enabled = !busy) { Text("Удалить") } },
+            dismissButton = { TextButton(onClick = { showBulkUninstallConfirm = false }) { Text("Отмена") } }
+        )
     }
 
     pendingUninstall?.let { packageName ->
