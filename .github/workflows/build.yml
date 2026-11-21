@@ -65,6 +65,43 @@ jobs:
           gradle-version: '9.6.0'
           cache-disabled: false
 
+      - name: Проверить versionCode относительно опубликованного APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CURRENT_CODE=$(grep -oP 'versionCode = \\K[0-9]+' app/build.gradle.kts)
+          CURRENT_NAME=$(grep -oP 'versionName = "\\K[^"]+' app/build.gradle.kts)
+          API="https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest"
+          if ! curl --fail --silent --show-error -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$API" -o latest-release.json; then
+            echo "No published release found; versionCode baseline check skipped."
+            exit 0
+          fi
+          LATEST_TAG=$(jq -r '.tag_name' latest-release.json)
+          APK_URL=$(jq -r '.assets[] | select(.name == "app-full-debug.apk") | .browser_download_url' latest-release.json)
+          if [ -z "$APK_URL" ] || [ "$APK_URL" = "null" ]; then
+            echo "::error::Latest release has no app-full-debug.apk; refusing an unverified update."
+            exit 1
+          fi
+          curl --fail --location --silent --show-error "$APK_URL" -o previous-release.apk
+          APK_ANALYZER=$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)
+          if [ -z "$APK_ANALYZER" ]; then
+            echo "::error::apkanalyzer was not found."
+            exit 1
+          fi
+          PREVIOUS_CODE=$("$APK_ANALYZER" manifest version-code previous-release.apk)
+          echo "Latest published: $LATEST_TAG (versionCode $PREVIOUS_CODE)"
+          echo "Candidate: v$CURRENT_NAME (versionCode $CURRENT_CODE)"
+          if [ "$LATEST_TAG" = "v$CURRENT_NAME" ]; then
+            if [ "$CURRENT_CODE" -ne "$PREVIOUS_CODE" ]; then
+              echo "::error::Rebuilding the same release must keep its versionCode unchanged."
+              exit 1
+            fi
+          elif [ "$CURRENT_CODE" -le "$PREVIOUS_CODE" ]; then
+            echo "::error::versionCode must be greater than the latest published APK."
+            exit 1
+          fi
+
       - name: Проверить логику автоматизации
         env:
           JAVA_TOOL_OPTIONS: "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED"
