@@ -41,6 +41,9 @@ jobs:
       - name: Включить автоматическую проверку обновлений
         run: python3 scripts/enable-automatic-updates.py
 
+      - name: Добавить проверку автозапуска телевизора
+        run: python3 scripts/enable-startup-receiver-inventory.py
+
       - name: Определить версию Clean Your TV
         id: version
         run: |
