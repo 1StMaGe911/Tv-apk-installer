@@ -20,6 +20,24 @@ class TvInstalledAppParserTest {
     }
 
     @Test
+    fun extractsLocalizedApplicationLabelForSearchAndSorting() {
+        val app = parseInstalledApp(
+            "com.example.player",
+            "Package [com.example.player] (abc):\n    application-label:'Media Player'\n    versionName=2.5.1",
+            ""
+        )
+
+        assertEquals("Media Player", app.appLabel)
+    }
+
+    @Test
+    fun fallsBackToPackageSuffixWhenNoApplicationLabelExists() {
+        val app = parseInstalledApp("com.example.video.player", "", "")
+
+        assertEquals("Player", app.appLabel)
+    }
+
+    @Test
     fun missingMetadataDoesNotBreakTheAppList() {
         val app = parseInstalledApp("com.example.unknown", "", "")
 
