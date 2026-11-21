@@ -2079,3 +2079,81 @@ replace_once(
     'onDownloadUpdate = { CleanYourTvUpdater.download(context) },',
     'onDownloadUpdate = { if (updateDownloadProgress == null || updateDownloadProgress == 100) CleanYourTvUpdater.download(context) },\n                        updateDownloadProgress = updateDownloadProgress,',
 )
+
+
+# 0.9.35: explicit clean-only setup mode. This is a machine-owned choice (not presentation
+# state): re-plan the signed action list with every launcher/HOME/helper action disabled.
+setup_machine = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "flows" / "SetupMachine.kt"
+flows_source = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "flows" / "Flows.kt"
+setup_screens = upstream / "feature" / "setup" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "setup" / "SetupScreens.kt"
+
+replace_once(
+    flows_source,
+    "data class HomeHelper(val on: Boolean) : SetupIntent   // RFC-HELPER-1 (test build): the Customise switch \"Home button helper\", on only after its consent",
+    "data class HomeHelper(val on: Boolean) : SetupIntent   // RFC-HELPER-1 (test build): the Customise switch \"Home button helper\", on only after its consent\n    data class CleanOnly(val on: Boolean) : SetupIntent   // 0.9.35: explicitly opt out of launcher and HOME changes",
+)
+replace_once(setup_machine, "    val helperOn: Boolean = false,", "    val helperOn: Boolean = false,\n    val cleanOnly: Boolean = false,")
+replace_once(setup_machine, "    private var tv: Tv? = null", "    private var tv: Tv? = null\n    private var cleanOnly = false")
+replace_once(
+    setup_machine,
+    "            is SetupIntent.HomeHelper -> if (deps.homeHelper) editDraft { it.copy(homeHelper = event.on) }",
+    "            is SetupIntent.HomeHelper -> if (deps.homeHelper) editDraft { it.copy(homeHelper = event.on) }\n            is SetupIntent.CleanOnly -> if (after is SetupState.Found && !mutableExtras.value.starting && cleanOnly != event.on) {\n                cleanOnly = event.on\n                mutableExtras.update { it.copy(cleanOnly = cleanOnly, helperOn = false, helperOffer = false) }\n                scope.launch { tv?.let { replan(it) } }\n            }",
+)
+replace_once(setup_machine, "        val helper = helperStock != null && draft.homeHelper", "        val helper = helperStock != null && draft.homeHelper && !cleanOnly")
+replace_once(
+    setup_machine,
+    "            installLauncher = possible || helper, takeover = possible, homeHelper = helper,",
+    "            installLauncher = !cleanOnly && (possible || helper), takeover = !cleanOnly && possible, homeHelper = !cleanOnly && helper,",
+)
+replace_once(
+    setup_machine,
+    "        setupHome = look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved, it.bytes) }",
+    "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved, it.bytes) }",
+)
+replace_once(setup_machine, "        val showOnTv = draft.level == Level.SIMPLE || draft.curtain", "        val showOnTv = !cleanOnly && (draft.level == Level.SIMPLE || draft.curtain)")
+replace_once(
+    setup_machine,
+    "PlanRequest.Setup(res, choices.copy(curtain = showOnTv), launcher, draft.level, look?.config, look?.wallpaper, curtain)",
+    "PlanRequest.Setup(res, choices.copy(curtain = showOnTv), launcher, draft.level, look?.config.takeUnless { cleanOnly }, look?.wallpaper.takeUnless { cleanOnly }, curtain)",
+)
+replace_once(
+    setup_machine,
+    "helperOffer = helperStock != null, helperOn = helper, helperWhyNot = helperWhyNot,",
+    "helperOffer = helperStock != null && !cleanOnly, helperOn = helper, helperWhyNot = helperWhyNot, cleanOnly = cleanOnly,",
+)
+
+# S3: expose the choice, and make the primary action say what this plan will actually do.
+replace_once(
+    setup_screens,
+    "    val kept = extras.homeKept as? HomeKept.Blocked ?: if (!summary.homeScreenPossible && extras.homePossible) HomeKept.Blocked(HomeBlock.NONE, extras.fireTv, extras.brand) else null",
+    "    val kept = if (extras.cleanOnly) null else extras.homeKept as? HomeKept.Blocked ?: if (!summary.homeScreenPossible && extras.homePossible) HomeKept.Blocked(HomeBlock.NONE, extras.fireTv, extras.brand) else null",
+)
+replace_once(
+    setup_screens,
+    "    val nothingToDo = kept != null && off == 0 && !extras.helperOn",
+    "    val nothingToDo = (extras.cleanOnly && off == 0) || (kept != null && off == 0 && !extras.helperOn)",
+)
+replace_once(
+    setup_screens,
+    "PrimaryButton(stringResource(if (off == 0) R.string.found_switch_home else R.string.found_make_clean), { actions.intent(SetupIntent.MakeItClean) }, loading = extras.starting)",
+    "PrimaryButton(stringResource(if (extras.cleanOnly) R.string.found_clean_only_action else if (off == 0) R.string.found_switch_home else R.string.found_make_clean), { actions.intent(SetupIntent.MakeItClean) }, loading = extras.starting)\n                        if (extras.homePossible || extras.cleanOnly) TertiaryButton(stringResource(if (extras.cleanOnly) R.string.found_full_setup else R.string.found_clean_only), { actions.intent(SetupIntent.CleanOnly(!extras.cleanOnly)) })",
+)
+replace_once(
+    setup_screens,
+    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+)
+replace_once(
+    setup_screens,
+    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+)
+write_russian_strings(
+    "feature/setup/src/main/res/values-ru/strings.xml",
+    """<resources>
+    <string name="found_clean_only">Только очистка</string>
+    <string name="found_full_setup">Очистка и настройка лаунчера</string>
+    <string name="found_clean_only_action">Очистить телевизор</string>
+</resources>"""
+)
+print("Clean-only setup mode patch applied.")
