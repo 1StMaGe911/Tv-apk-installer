@@ -36,8 +36,8 @@ replace_once(
 )
 replace_once(
     app_root,
-    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { go("tvapps") })',
-    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { go("tvapps") }, onInstallHistory = { go("installhistory") })',
+    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { go("tvapps/${it.value}") } })',
+    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { go("tvapps/${it.value}") } }, onInstallHistory = { go("installhistory") })',
 )
 replace_once(
     app_root,
