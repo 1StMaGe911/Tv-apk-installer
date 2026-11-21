@@ -27,23 +27,24 @@ replace_once(
 replace_once(
     app_root,
     "    @Serializable data object AppSettings : Dest",
-    "    @Serializable data object TvApps : Dest\n    @Serializable data object AppSettings : Dest",
+    "    @Serializable data class TvApps(val tvId: String) : Dest\n    @Serializable data object AppSettings : Dest",
 )
 replace_once(
     app_root,
     '        "tvsettings" -> id?.let { Dest.TvSettings(it) }',
-    '        "tvsettings" -> id?.let { Dest.TvSettings(it) }\n        "tvapps" -> Dest.TvApps',
+    '        "tvsettings" -> id?.let { Dest.TvSettings(it) }\n        "tvapps" -> id?.let { Dest.TvApps(it) }',
 )
 replace_once(
     app_root,
     '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") })',
-    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { go("tvapps") })',
+    '                    ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { go("tvapps/${it.value}") } })',
 )
 replace_once(
     app_root,
     "                entry<Dest.SwitchedOff> { key ->",
-    """                entry<Dest.TvApps> {
+    """                entry<Dest.TvApps> { key ->
                     TvAppsScreen(
+                        historyTvId = key.tvId,
                         onBack = { go("back") },
                         discoverDevices = { withContext(Dispatchers.IO) { discoverAdbDevices(context) } }
                     )
