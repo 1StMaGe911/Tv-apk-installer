@@ -165,8 +165,8 @@ once(screens_ui, "import androidx.compose.material3.ExperimentalMaterial3Api" + 
      + "import androidx.compose.material3.LinearProgressIndicator" + nl
      + "import androidx.compose.material3.Text" + nl
      + "import androidx.compose.material3.TextButton" + nl)
-once(screens_ui, "    val locale = LocalConfiguration.current.locales[0]" + nl,
-     "    val locale = LocalConfiguration.current.locales[0]" + nl
+once(screens_ui, "    val tv = state.current" + nl + "    val locale = LocalConfiguration.current.locales[0]" + nl,
+     "    val tv = state.current" + nl + "    val locale = LocalConfiguration.current.locales[0]" + nl
      + "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }" + nl)
 
 ui = screens_ui.read_text(encoding="utf-8")
