@@ -125,7 +125,7 @@ private fun ChangeRecord.priorLine(): String? {
         p.present?.let { add(if (it) "Файл существовал до изменения" else "Файла не было до изменения") }
         if (p.overlay != null) add("Предыдущая конфигурация сохранена")
     }
-    return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    return parts.takeIf { it.isNotEmpty() }?.joinToString("\\n")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
