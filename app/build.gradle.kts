@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 256
-        versionName = "0.9.66" // 24-hour offline license grace period
+        versionCode = 257
+        versionName = "0.9.67" // 24-hour offline license grace period
         // Back from a recovered TV operation returns to TV management.
     }
 
@@ -38,8 +38,7 @@ android {
             res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
         }
         getByName("play") {
-            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/play/kotlin")
-            res.srcDir("../vendor/cleanyourtv-app/app/src/play/res")
+            dimension
         }
         getByName("debug") {
             manifest.srcFile("../vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
