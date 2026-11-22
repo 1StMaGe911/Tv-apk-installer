@@ -8,9 +8,9 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 232
-        versionName = "0.9.42" // 24-hour offline license grace period
-        // Rebuild after localizing common APK installation and ADB discovery errors.
+        versionCode = 233
+        versionName = "0.9.43" // 24-hour offline license grace period
+        // Back from a recovered TV operation returns to TV management.
     }
 
     flavorDimensions += "store"
