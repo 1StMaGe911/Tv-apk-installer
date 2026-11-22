@@ -2257,3 +2257,44 @@ replace_once(
     "            ModulesIntent.Refresh -> if (addOns) scope.launch { attempt { d.registry.refresh() } }",
     "            ModulesIntent.Refresh -> if (addOns && refreshJob?.isActive != true) refreshJob = scope.launch { attempt { d.registry.refresh() } }",
 )
+
+
+# Make manual catalog refresh observable instead of silently leaving the screen unchanged.
+modules_machine = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "flows" / "ModulesMachine.kt"
+replace_once(
+    modules_machine,
+    "    private data class Step(val step: InstallStep?)",
+    "    private data class Step(val step: InstallStep?)\\n    private data class Refreshing(val value: Boolean)",
+)
+replace_once(
+    modules_machine,
+    "    val index: IndexView = IndexView.Loading,",
+    "    val index: IndexView = IndexView.Loading,\\n    val refreshing: Boolean = false,",
+)
+replace_once(
+    modules_machine,
+    "        is Step -> state.copy(install = event.step)",
+    "        is Step -> state.copy(install = event.step)\\n        is Refreshing -> state.copy(refreshing = event.value)",
+)
+replace_once(
+    modules_machine,
+    "            ModulesIntent.Refresh -> if (addOns && refreshJob?.isActive != true) refreshJob = scope.launch { attempt { d.registry.refresh() } }",
+    """            ModulesIntent.Refresh -> if (addOns && refreshJob?.isActive != true) {
+                send(Refreshing(true))
+                refreshJob = scope.launch {
+                    try { attempt { d.registry.refresh() } }
+                    finally { send(Refreshing(false)) }
+                }
+            }""",
+)
+modules_screens = upstream / "feature" / "modules" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "modules" / "ModulesScreens.kt"
+replace_once(
+    modules_screens,
+    "private fun IndexNotice(index: IndexView, onIntent: (ModulesIntent) -> Unit) {\\n    when (index) {",
+    "private fun IndexNotice(index: IndexView, refreshing: Boolean, onIntent: (ModulesIntent) -> Unit) {\\n    if (refreshing) LiveLine(stringResource(R.string.addmodule_loading)) else when (index) {",
+)
+replace_once(
+    modules_screens,
+    "IndexNotice(state.index, onIntent)",
+    "IndexNotice(state.index, state.refreshing, onIntent)",
+)
