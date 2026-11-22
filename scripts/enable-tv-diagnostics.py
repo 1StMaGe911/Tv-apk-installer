@@ -132,35 +132,43 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
     var status by remember { mutableStateOf("Подключись к телевизору, чтобы посмотреть его состояние.") }
     var diagnostic by remember { mutableStateOf<TvDiagnostic?>(null) }
     val scope = rememberCoroutineScope()
+    var monitorJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     fun refresh() {
         val host = ip.trim()
         val adbPort = port.toIntOrNull()
         if (host.isBlank() || adbPort == null || adbPort !in 1..65535) { status = "Проверь IP-адрес и порт ADB."; return }
-        scope.launch {
+        monitorJob?.cancel()
+        monitorJob = scope.launch {
             busy = true
-            status = "Собираем показатели телевизора…"
-            diagnostic = null
+            status = "Подключаемся к телевизору…"
             try {
-                val data = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
                     Dadb.create(host, adbPort, diagnosticsKeyPair(context)).use { adb ->
                         val model = (adb.shell("getprop ro.product.manufacturer").output.trim() + " " +
                             adb.shell("getprop ro.product.model").output.trim()).trim().ifBlank { "Android TV" }
                         val android = adb.shell("getprop ro.build.version.release").output.trim().ifBlank { "Неизвестно" }
-                        val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
-                        val storage = parseStorage(adb.shell("df -kP /data").output)
-                        val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
-                        val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
-                        val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
-                        TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, uptime, temperature)
+                        mergeSavedTvAppsDevices(context, saved + TvDevice("Android TV", host, adbPort))
+                        while (currentCoroutineContext().isActive) {
+                            val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
+                            val storage = parseStorage(adb.shell("df -kP /data").output)
+                            val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
+                            val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
+                            val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
+                            val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, uptime, temperature)
+                            withContext(Dispatchers.Main) {
+                                diagnostic = data
+                                status = "Обновляется автоматически каждые 3 секунды"
+                                busy = false
+                            }
+                            delay(3000)
+                        }
                     }
                 }
-                diagnostic = data
-                status = "Данные успешно обновлены"
-                mergeSavedTvAppsDevices(context, saved + TvDevice("Android TV", host, adbPort))
             } catch (e: Exception) {
-                status = "Не удалось подключиться. Проверь ADB и IP-адрес."
-            } finally { busy = false }
+                status = "Соединение прервано. Проверь ADB и IP-адрес."
+                busy = false
+            }
         }
     }
 
