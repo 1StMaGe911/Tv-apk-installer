@@ -115,18 +115,18 @@ once(common, "    val phoneNetwork: PhoneNetwork = PhoneNetwork { PhoneNetworkFa
 
 machine = root / "core/flows/src/main/kotlin/tv/cleanyour/core/flows/ManageMachine.kt"
 once(machine, "    val switchingHome: Boolean = false,   // 0.4.6: the wizard Home row's \"Switch it back on\" is running\n",
-     "    val switchingHome: Boolean = false,   // 0.4.6: the wizard Home row's \"Switch it back on\" is running\n    val startupReceiversLoading: Boolean = false,\n    val startupReceivers: tv.cleanyour.core.probe.StartupReceiverInventory? = null,\n    val startupReceiversError: Boolean = false,\n")
+     "    val switchingHome: Boolean = false,   // 0.4.6: the wizard Home row's \"Switch it back on\" is running\n    val startupReceiversLoading: Boolean = false,\n    val startupReceivers: tv.cleanyour.core.probe.StartupReceiverInventory? = null,\n    val startupReceiversError: Boolean = false,\n    val startupReceiversErrorDetail: String? = null,\n")
 once(machine, "    data object SwitchStockHomeOn : ManageIntent", "    data object SwitchStockHomeOn : ManageIntent\n    data object CheckStartupReceivers : ManageIntent")
 once(machine, "    private data class RestartsRead(val tvId: TvId, val tally: RestartTally)\n",
-     "    private data class RestartsRead(val tvId: TvId, val tally: RestartTally)\n    private data object StartupReceiversLoading\n    private data class StartupReceiversLoaded(val tvId: TvId, val inventory: tv.cleanyour.core.probe.StartupReceiverInventory)\n    private data class StartupReceiversFailed(val tvId: TvId)\n")
+     "    private data class RestartsRead(val tvId: TvId, val tally: RestartTally)\n    private data object StartupReceiversLoading\n    private data class StartupReceiversLoaded(val tvId: TvId, val inventory: tv.cleanyour.core.probe.StartupReceiverInventory)\n    private data class StartupReceiversFailed(val tvId: TvId, val reason: String)\n")
 once(machine, "        is ManageIntent.Select -> state.copy(selected = event.tvId)",
      "        is ManageIntent.Select -> state.copy(selected = event.tvId, startupReceiversLoading = false, startupReceivers = null, startupReceiversError = false)")
 once(machine, "        is RestartsRead -> state.copy(cards = state.cards.map { if (it.id == event.tvId) it.copy(restarts = event.tally) else it })\n",
-     "        is RestartsRead -> state.copy(cards = state.cards.map { if (it.id == event.tvId) it.copy(restarts = event.tally) else it })\n        StartupReceiversLoading -> state.copy(startupReceiversLoading = true, startupReceiversError = false)\n        is StartupReceiversLoaded -> if (state.current?.id == event.tvId) state.copy(startupReceiversLoading = false, startupReceivers = event.inventory, startupReceiversError = false) else state\n        is StartupReceiversFailed -> if (state.current?.id == event.tvId) state.copy(startupReceiversLoading = false, startupReceiversError = true) else state\n")
+     "        is RestartsRead -> state.copy(cards = state.cards.map { if (it.id == event.tvId) it.copy(restarts = event.tally) else it })\n        StartupReceiversLoading -> state.copy(startupReceiversLoading = true, startupReceiversError = false, startupReceiversErrorDetail = null)\n        is StartupReceiversLoaded -> if (state.current?.id == event.tvId) state.copy(startupReceiversLoading = false, startupReceivers = event.inventory, startupReceiversError = false) else state\n        is StartupReceiversFailed -> if (state.current?.id == event.tvId) state.copy(startupReceiversLoading = false, startupReceiversError = true, startupReceiversErrorDetail = event.reason) else state\n")
 once(machine, "            ManageIntent.RefreshThumbnail -> scope.launch { thumbnail() }\n",
      "            ManageIntent.RefreshThumbnail -> scope.launch { thumbnail() }\n            ManageIntent.CheckStartupReceivers -> if (id != null && !before.startupReceiversLoading) scope.launch { checkStartupReceivers(id) }\n")
 once(machine, "    // The card's thumbnail is the last screenshot; tapping refreshes it when the TV is connected.\n",
-     "    private suspend fun checkStartupReceivers(id: TvId) {\n        send(StartupReceiversLoading)\n        val session = d.access.live(id)\n        if (session == null) { send(StartupReceiversFailed(id)); return }\n        try { send(StartupReceiversLoaded(id, d.startupReceiverReader.read(session))) }\n        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }\n        catch (_: Exception) { send(StartupReceiversFailed(id)) }\n    }\n\n    // The card's thumbnail is the last screenshot; tapping refreshes it when the TV is connected.\n")
+     "    private suspend fun checkStartupReceivers(id: TvId) {\n        send(StartupReceiversLoading)\n        val session = d.access.live(id)\n        if (session == null) { send(StartupReceiversFailed(id, "Нет активного ADB-сеанса с телевизором")); return }\n        try { send(StartupReceiversLoaded(id, d.startupReceiverReader.read(session))) }\n        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }\n        catch (error: Exception) { send(StartupReceiversFailed(id, "${error::class.simpleName}: ${error.message ?: "без подробностей"}")) }\n    }\n\n    // The card's thumbnail is the last screenshot; tapping refreshes it when the TV is connected.\n")
 
 screens = root / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 once(screens, "        ScreenTitle(stringResource(R.string.manage_title), titleTop)\n",
@@ -206,7 +206,7 @@ dialog = """        if (startupDialogVisible) {
                 text = {
                     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                         if (state.startupReceiversLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                        if (state.startupReceiversError) Text(stringResource(R.string.manage_startup_error))
+                        if (state.startupReceiversError) Text(stringResource(R.string.manage_startup_error) + "\\n" + (state.startupReceiversErrorDetail ?: "Причина не определена"))
                         state.startupReceivers?.let { inventory ->
                             val available = stringResource(R.string.manage_startup_supported)
                             val unsupported = stringResource(R.string.manage_startup_unsupported)
