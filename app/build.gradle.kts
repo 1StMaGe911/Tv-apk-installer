@@ -38,7 +38,8 @@ android {
             res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
         }
         getByName("play") {
-            dimension
+            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/play/kotlin")
+            res.srcDir("../vendor/cleanyourtv-app/app/src/play/res")
         }
         getByName("debug") {
             manifest.srcFile("../vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
