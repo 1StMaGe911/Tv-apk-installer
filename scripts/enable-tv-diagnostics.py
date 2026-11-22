@@ -57,7 +57,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.currentCoroutineContext\nimport kotlinx.coroutines.isActive
 import java.io.File
 import java.util.Locale
 
@@ -235,7 +235,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                 Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Время работы", style = MaterialTheme.typography.labelLarge, color = textColor)
+                            Text("Время работы", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(d.uptime, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         }
                         Text("◷", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
@@ -256,7 +256,7 @@ private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, cap
     val valid = used != null && total != null && total > 0L
     val fraction = if (valid) (used!!.toFloat() / total!!).coerceIn(0f, 1f) else 0f
     val progressColor = when { fraction >= 0.9f -> MaterialTheme.colorScheme.error; fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary }
-    Card(modifier, shape = RoundedCornerShape(20.dp)) {
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant\n    val textColor = MaterialTheme.colorScheme.onSurfaceVariant\n    Card(modifier, shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, minLines = 2)
