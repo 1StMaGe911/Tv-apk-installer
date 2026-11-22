@@ -53,8 +53,8 @@ jobs:
       - name: Исправить возврат с экрана восстановления ТВ
         run: python3 scripts/fix-tv-resume-back.py
 
-      - name: Исправить кнопку Назад и добавить выбор телевизора
-        run: python3 scripts/enable-tv-picker-back.py
+      - name: Исправить выход из незавершённой настройки и выбор ТВ
+        run: python3 scripts/fix-setup-abandon-navigation.py
 
       - name: Определить версию Clean Your TV
         id: version
