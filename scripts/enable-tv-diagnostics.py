@@ -39,7 +39,7 @@ screen = root / "app/src/main/java/ru/tvapk/installer/TvDiagnosticsScreen.kt"
 screen.write_text("""
 package ru.tvapk.installer
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.background\nimport androidx.compose.foundation.Canvas\nimport androidx.compose.ui.graphics.StrokeCap\nimport androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -81,23 +81,24 @@ private fun parseMemory(raw: String): Pair<Long?, Long?> {
 }
 
 private fun parseStorage(raw: String): Pair<Long?, Long?> {
-    val row = raw.lines().lastOrNull { it.trim().startsWith("/") } ?: return null to null
-    val parts = row.trim().split(Regex("\\\\s+"))
-    if (parts.size < 4) return null to null
-    fun size(value: String): Long? {
-        val number = Regex("([0-9.]+)").find(value)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
-        val unit = value.lastOrNull()?.uppercaseChar()
-        val multiplier = when (unit) { 'K' -> 1.0; 'M' -> 1024.0; 'G' -> 1024.0 * 1024; 'T' -> 1024.0 * 1024 * 1024; else -> 1.0 }
-        return (number * multiplier).toLong()
-    }
-    return size(parts[2]) to size(parts[0])
+    val row = raw.lineSequence().map { it.trim().split(Regex("\\\\s+")) }
+        .lastOrNull { it.size >= 6 && it.last() == "/data" } ?: return null to null
+    val totalKb = row[1].toLongOrNull() ?: return null to null
+    val usedKb = row[2].toLongOrNull() ?: return null to null
+    if (totalKb <= 0L || usedKb < 0L) return null to null
+    return (usedKb / 1024L) to (totalKb / 1024L)
 }
 
 private fun parseCpu(raw: String): Int? {
-    val idle = Regex("(?i)([0-9]+(?:\\\\.[0-9]+)?)\\\\s*%?\\\\s*(?:id|idle)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
-    if (idle != null) return (100f - idle).toInt().coerceIn(0, 100)
-    val used = Regex("(?i)([0-9]+(?:\\\\.[0-9]+)?)\\\\s*%\\\\s*(?:usr|user)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
-    return used?.toInt()?.coerceIn(0, 100)
+    val samples = raw.lineSequence().filter { it.startsWith("cpu ") }.mapNotNull { line ->
+        val values = line.trim().split(Regex("\\\\s+")).drop(1).mapNotNull { it.toLongOrNull() }
+        if (values.size < 4) null else (values.sum() to (values[3] + (values.getOrNull(4) ?: 0L)))
+    }.toList()
+    if (samples.size < 2) return null
+    val total = samples.last().first - samples.first().first
+    val idle = samples.last().second - samples.first().second
+    if (total <= 0L) return null
+    return (((total - idle).coerceAtLeast(0L) * 100.0) / total).toInt().coerceIn(0, 100)
 }
 
 private fun formatMb(mb: Long?): String {
@@ -147,8 +148,8 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                             adb.shell("getprop ro.product.model").output.trim()).trim().ifBlank { "Android TV" }
                         val android = adb.shell("getprop ro.build.version.release").output.trim().ifBlank { "Неизвестно" }
                         val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
-                        val storage = parseStorage(adb.shell("df -k /data").output)
-                        val cpu = parseCpu(adb.shell("top -bn1").output)
+                        val storage = parseStorage(adb.shell("df -kP /data").output)
+                        val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
                         val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
                         val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
                         TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, uptime, temperature)
@@ -212,13 +213,11 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                 Text("РЕСУРСЫ", style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DiagnosticMetric("Оперативная память", formatMb(d.ramUsed), d.ramUsed, d.ramTotal, Modifier.weight(1f))
-                    DiagnosticMetric("Внутренняя память", formatMb(d.storageUsed), d.storageUsed, d.storageTotal, Modifier.weight(1f))
+                    DiagnosticRadialMetric("Оперативная память", d.ramUsed, d.ramTotal, "занято", Modifier.weight(1f))
+                    DiagnosticRadialMetric("Внутреннее хранилище", d.storageUsed, d.storageTotal, "занято", Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DiagnosticSimpleMetric("Процессор", d.cpu?.let { "$it%" } ?: "Нет данных",
-                        d.cpu?.let { if (it >= 85) "Высокая нагрузка" else if (it >= 60) "Средняя нагрузка" else "Низкая нагрузка" } ?: "Показатель недоступен",
-                        Modifier.weight(1f))
+                    DiagnosticRadialMetric("Процессор", d.cpu?.toLong(), 100L, "загрузка", Modifier.weight(1f))
                     DiagnosticSimpleMetric("Температура", d.temperature ?: "Нет данных",
                         if (d.temperature != null) "Данные датчика ТВ" else "Датчик не предоставлен",
                         Modifier.weight(1f))
@@ -243,24 +242,34 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DiagnosticMetric(title: String, value: String, used: Long?, total: Long?, modifier: Modifier = Modifier) {
-    val fraction = if (used != null && total != null && total > 0) (used.toFloat() / total).coerceIn(0f, 1f) else 0f
-    val available = used != null && total != null && total > 0
-    val color = when { fraction >= 0.9f -> MaterialTheme.colorScheme.error; fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary }
-    Card(modifier, shape = RoundedCornerShape(18.dp)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, minLines = 2)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            if (available) {
-                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), color = color)
-                Text((fraction * 100).toInt().toString() + "% занято", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else Text("Нет данных", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, caption: String, modifier: Modifier = Modifier) {
+    val valid = used != null && total != null && total > 0L
+    val fraction = if (valid) (used!!.toFloat() / total!!).coerceIn(0f, 1f) else 0f
+    val progressColor = when { fraction >= 0.9f -> MaterialTheme.colorScheme.error; fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary }
+    Card(modifier, shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, minLines = 2)
+            Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val stroke = 10.dp.toPx()
+                    drawArc(color = MaterialTheme.colorScheme.surfaceVariant, startAngle = -90f, sweepAngle = 360f,
+                        useCenter = false, style = Stroke(width = stroke, cap = StrokeCap.Round))
+                    if (valid) drawArc(color = progressColor, startAngle = -90f, sweepAngle = 360f * fraction,
+                        useCenter = false, style = Stroke(width = stroke, cap = StrokeCap.Round))
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(if (valid) "${(fraction * 100).toInt()}%" else "—",
+                        style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Text(if (valid) "${formatMb(used)} / ${formatMb(total)}" else "Нет данных",
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-@Composable
 private fun DiagnosticSimpleMetric(title: String, value: String, hint: String, modifier: Modifier = Modifier) {
     Card(modifier, shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
