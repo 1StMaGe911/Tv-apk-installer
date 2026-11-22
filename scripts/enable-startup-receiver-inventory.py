@@ -60,12 +60,21 @@ object StartupReceiverParser {
             val dump = stateBlocks[packageName] ?: return StartupComponentState.UNKNOWN
             val enabledHeader = Regex("(?m)^\\s*enabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
             val disabledHeader = Regex("(?m)^\\s*disabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
-            fun entries(start: Int, end: Int): Set<String> = dump.substring(start, end).lineSequence()
-                .map { it.trim().trim(',', '[', ']', '{', '}') }
-                .filter { it.startsWith(packageName + "/") }
-                .toSet()
-            val enabled = entries(enabledHeader.range.last + 1, disabledHeader.range.first)
-            val disabled = entries(disabledHeader.range.last + 1, dump.length)
+            fun entriesAfter(header: MatchResult): Set<String> {
+                val start = (header.range.last + 1).coerceIn(0, dump.length)
+                val nextHeader = Regex("(?m)^\\\\s*(?:enabledComponents|disabledComponents):\\\\s*$")
+                    .findAll(dump, start)
+                    .firstOrNull()
+                val end = (nextHeader?.range?.first ?: dump.length).coerceIn(start, dump.length)
+                return dump.substring(start, end).lineSequence()
+                    .map { it.trim().trim(',', '[', ']', '{', '}') }
+                    .filter { it.startsWith(packageName + "/") }
+                    .toSet()
+            }
+            // Some Android/vendor builds print these sections in the opposite order.
+            // Bound each section by the next header instead of assuming enabled comes first.
+            val enabled = entriesAfter(enabledHeader)
+            val disabled = entriesAfter(disabledHeader)
             return when {
                 componentName in enabled -> StartupComponentState.ENABLED
                 componentName in disabled -> StartupComponentState.DISABLED
