@@ -71,7 +71,7 @@ class AdbStartupReceiverReader {
     companion object {
         internal val SCRIPT = ShellLine(
             "echo '@@cyt-boot@@ user'; pm list packages -3 2>/dev/null; " +
-                "echo '@@cyt-boot@@ boot'; "
+                "echo '@@cyt-boot@@ boot'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
                 "echo '@@cyt-boot@@ locked'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi"
