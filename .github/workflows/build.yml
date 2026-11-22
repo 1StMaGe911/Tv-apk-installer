@@ -35,6 +35,9 @@ jobs:
       - name: Добавить историю установок APK
         run: python3 scripts/enable-install-history.py
 
+      - name: Добавить диагностику Android TV
+        run: python3 scripts/enable-tv-diagnostics.py
+
       - name: Добавить журнал изменений телевизора
         run: python3 scripts/enable-change-history.py
 
