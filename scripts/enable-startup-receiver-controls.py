@@ -89,7 +89,7 @@ once(probe,
     }
 
     companion object {
-        internal val SCRIPT = ShellLine('''))
+        internal val SCRIPT = ShellLine(''')
 once(probe,
     '''"echo '@@cyt-state@@' \\"\\$pkg\\"; dumpsys package \\"\\$pkg\\" 2>/dev/null | awk '/^[[:space:]]*enabledComponents:/ {p=1; print; next} /^[[:space:]]*disabledComponents:/ {p=2; print; next} /^[[:space:]]*[A-Za-z][A-Za-z0-9 _-]*:$/ {p=0} p {print}'; done"''',
     '''"echo '@@cyt-state@@' \\"\\$pkg\\"; dumpsys package \\"\\$pkg\\" 2>/dev/null | awk '/^[[:space:]]*enabledComponents:/ {p=1; print; next} /^[[:space:]]*disabledComponents:/ {p=2; print; next} /^[[:space:]]*[A-Za-z][A-Za-z0-9 _-]*:$/ {p=0} p {print}'; done; " +
