@@ -7,10 +7,10 @@ app_root = root / "vendor" / "cleanyourtv-app/app/src/main/kotlin/tv/cleanyour/a
 
 old = '                    BackHandler { if (!m.back()) { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) else onExit() } }'
 new = """                    BackHandler {
-                        if (!m.back()) {
-                            val stoppedTvId = (state as? SetupState.Stopped)?.tvId
-                            if (stoppedTvId != null) go("manage/\u0024{stoppedTvId.value}")
-                            else if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
+                        if (state is SetupState.OpenDoor || state is SetupState.Stopped) {
+                            go("manage")
+                        } else if (!m.back()) {
+                            if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
                             else onExit()
                         }
                     }"""
