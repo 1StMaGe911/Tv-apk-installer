@@ -80,7 +80,7 @@ private fun parseMemory(raw: String): Pair<Long?, Long?> {
     fun value(key: String) = Regex("(?m)^$key:\\\\s+(\\\\d+)\\\\s+kB").find(raw)?.groupValues?.get(1)?.toLongOrNull()
     val total = value("MemTotal")
     val available = value("MemAvailable") ?: listOfNotNull(value("MemFree"), value("Buffers"), value("Cached")).sum().takeIf { it > 0 }
-    return (if (total != null && available != null) (total - available).coerceAtLeast(0) else null) to total
+    // /proc/meminfo reports kB; convert both values to MB before display.\n    return (if (total != null && available != null) ((total - available).coerceAtLeast(0) / 1024L) else null) to\n        (total?.div(1024L))
 }
 
 private fun parseStorage(raw: String): Pair<Long?, Long?> {
