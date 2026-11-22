@@ -32,7 +32,11 @@ object StartupReceiverParser {
         var current: String? = null
         for (raw in stdout.lineSequence()) {
             val line = raw.trimEnd('\r')
-            if (line.startsWith("@@cyt-state@@ ")) {\n                current = null\n                continue\n            }\n            if (line.startsWith(MARK)) {
+            if (line.startsWith("@@cyt-state@@ ")) {
+                current = null
+                continue
+            }
+            if (line.startsWith(MARK)) {
                 val name = line.removePrefix(MARK)
                 if (name !in setOf("user", "boot", "locked") || name in sections) throw ProbeException(ProbeStage.PACKAGES, "unexpected boot receiver section")
                 current = name
