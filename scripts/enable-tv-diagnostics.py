@@ -133,7 +133,7 @@ private fun parseCpuFrequency(raw: String): String? {
     val khz = raw.lineSequence().mapNotNull { it.trim().toLongOrNull() }
         .filter { it in 100_000L..10_000_000L }.toList()
     val mhz = if (khz.isNotEmpty()) khz.average() / 1000.0 else {
-        Regex("(?m)^cpu MHz\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)")
+        Regex("(?m)^cpu MHz\\\\s*:\\\\s*([0-9]+(?:\\\\.[0-9]+)?)")
             .findAll(raw).mapNotNull { it.groupValues[1].toDoubleOrNull() }.toList()
             .takeIf { it.isNotEmpty() }?.average() ?: return null
     }
@@ -193,7 +193,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                             val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
                             val storage = parseStorage(adb.shell("df -kP /data 2>/dev/null; echo __DATA_FS__; stat -f -c '%S %b %a' /data 2>/dev/null").output)
                             val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
-                            val cpuFrequency = parseCpuFrequency(adb.shell("for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_cur_freq; do [ -r \"$f\" ] && cat \"$f\"; done; grep '^cpu MHz' /proc/cpuinfo 2>/dev/null").output)
+                            val cpuFrequency = parseCpuFrequency(adb.shell("cat /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_cur_freq 2>/dev/null; grep '^cpu MHz' /proc/cpuinfo 2>/dev/null").output)
                             val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
                             val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
                             val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, cpuFrequency, uptime, temperature)
