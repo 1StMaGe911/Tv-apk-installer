@@ -32,7 +32,7 @@ object StartupReceiverParser {
         var current: String? = null
         for (raw in stdout.lineSequence()) {
             val line = raw.trimEnd('\r')
-            if (line.startsWith(MARK)) {
+            if (line.startsWith("@@cyt-state@@ ")) {\n                current = null\n                continue\n            }\n            if (line.startsWith(MARK)) {
                 val name = line.removePrefix(MARK)
                 if (name !in setOf("user", "boot", "locked") || name in sections) throw ProbeException(ProbeStage.PACKAGES, "unexpected boot receiver section")
                 current = name
@@ -84,7 +84,7 @@ object StartupReceiverParser {
 @OptIn(RawShell::class)
 class AdbStartupReceiverReader {
     suspend fun read(session: TvSession): StartupReceiverInventory {
-        val result = session.exec(SCRIPT, ExecSpec(timeoutMs = 12_000, stdoutCap = 48 * 1024, retry = RetryClass.IDEMPOTENT_READ))
+        val result = session.exec(SCRIPT, ExecSpec(timeoutMs = 25_000, stdoutCap = 96 * 1024, retry = RetryClass.IDEMPOTENT_READ))
         if (result.truncated) throw ProbeException(ProbeStage.PACKAGES, "boot receiver output exceeded limit")
         return StartupReceiverParser.parse(result.stdout)
     }
@@ -95,7 +95,7 @@ class AdbStartupReceiverReader {
                 "if cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
                 "echo '@@cyt-boot@@ locked'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
-                "for pkg in $( { cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; } | sed -n 's#^\\([^/]*\\)/.*#\\1#p' | sort -u | head -n 80 ); do " +
+                "for pkg in $( { cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; } | sed -n 's#^\\([^/]*\\)/.*#\\1#p' | sort -u | head -n 30 ); do " +
                 "echo '@@cyt-state@@' \"$pkg\"; dumpsys package \"$pkg\" 2>/dev/null; done"
         )
     }
