@@ -211,6 +211,17 @@ new_receiver = """Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                         ) {
                                             Text(stringResource(if (canRestore) R.string.manage_startup_restore else R.string.manage_startup_disable))
                                         }
+                                    } else {
+                                        val unavailableReason = when {
+                                            !receiver.userInstalled -> "Системный компонент — только просмотр"
+                                            receiver.isProtected -> "Защищённый компонент — только просмотр"
+                                            receiver.enabledState == StartupComponentState.UNKNOWN -> "Не удалось определить исходное состояние — изменение заблокировано"
+                                            receiver.savedOriginalState != null -> "Для компонента уже сохранено исходное состояние"
+                                            else -> null
+                                        }
+                                        if (unavailableReason != null) {
+                                            Text(unavailableReason, Modifier.padding(top = 4.dp))
+                                        }
                                     }
                                 }"""
 ui = ui[:row_start] + new_receiver + ui[row_end:]
