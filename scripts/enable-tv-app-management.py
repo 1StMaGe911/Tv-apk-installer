@@ -61,7 +61,7 @@ replace_once(
     manage_screens,
     "        val others = state.cards.filter { it.id != tv?.id }",
     """        ListGroup(Modifier.padding(top = 12.dp)) {
-            ListRow("Приложения телевизора", subtitle = "Список, запуск и удаление установленных приложений", onClick = onTvApps)
+            ListRow("Приложения телевизора", subtitle = "Просмотр, запуск и остановка установленных приложений", onClick = onTvApps)
         }
         val others = state.cards.filter { it.id != tv?.id }""",
 )
