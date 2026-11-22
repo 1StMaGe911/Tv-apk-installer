@@ -143,7 +143,7 @@ once(screens, "        ScreenTitle(stringResource(R.string.manage_title), titleT
      "                else {\n"
      "                    val lockedLabel = stringResource(R.string.manage_startup_locked)\n"
      "                    val bootLabel = stringResource(R.string.manage_startup_boot)\n"
-     "                    Body(inventory.receivers.joinToString(\"\\n\") { receiver -> receiver.packageName + \" · \" + (if (receiver.lockedBoot) lockedLabel else bootLabel) + \"\\n\" + receiver.component + " · " + when (receiver.enabledState) { tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> "по умолчанию"; tv.cleanyour.core.probe.StartupComponentState.ENABLED -> "включён"; tv.cleanyour.core.probe.StartupComponentState.DISABLED -> "отключён"; tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> "состояние неизвестно" } }, Modifier.padding(top = 4.dp))\n"
+     "                    Body(inventory.receivers.joinToString(\"\\n\") { receiver -> receiver.packageName + \" · \" + (if (receiver.lockedBoot) lockedLabel else bootLabel) + \"\\n\" + receiver.component + \" · \" + when (receiver.enabledState) { tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> \"по умолчанию\"; tv.cleanyour.core.probe.StartupComponentState.ENABLED -> \"включён\"; tv.cleanyour.core.probe.StartupComponentState.DISABLED -> \"отключён\"; tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> \"состояние неизвестно\" } }, Modifier.padding(top = 4.dp))\n"
      "                }\n"
      "            }\n"
      "        }\n")
