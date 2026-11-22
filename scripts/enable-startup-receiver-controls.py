@@ -138,24 +138,32 @@ once(screens,
     "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n" +
     "    var pendingStartupComponent by rememberSaveable(tv?.id?.value) { mutableStateOf<String?>(null) }\n" +
     "    var pendingStartupEnabled by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n")
-old_receiver = '''                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\n" + receiver.component + "\n" + when (receiver.enabledState) {
-                                        StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
-                                        StartupComponentState.ENABLED -> "Состояние: включён"
-                                        StartupComponentState.DISABLED -> "Состояние: отключён"
-                                        StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
-                                    },
-                                    Modifier.padding(top = 8.dp))'''
-new_receiver = '''                                Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                                    Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) +
-                                        (if (receiver.protected) " · " + stringResource(R.string.manage_startup_protected) else "") +
-                                        " · " + receiver.packageName + " · " +
-                                        (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) +
-                                        "\n" + receiver.component + "\n" + when (receiver.enabledState) {
+ui = screens.read_text(encoding="utf-8")
+marker = "receiver.userInstalled"
+position = ui.find(marker)
+if position < 0:
+    raise SystemExit("Could not find startup receiver row in ManageScreens.kt")
+row_start = ui.rfind("Text(", 0, position)
+row_end_marker = "Modifier.padding(top = 8.dp))"
+row_end = ui.find(row_end_marker, position)
+if row_start < 0 or row_end < 0:
+    raise SystemExit("Could not find startup receiver text boundaries")
+row_end += len(row_end_marker)
+new_receiver = """Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                    Text(buildString {
+                                        append(if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app))
+                                        if (receiver.protected) append(" · " + stringResource(R.string.manage_startup_protected))
+                                        append(" · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)))
+                                        append(10.toChar())
+                                        append(receiver.component)
+                                        append(10.toChar())
+                                        append(when (receiver.enabledState) {
                                             StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                             StartupComponentState.ENABLED -> "Состояние: включён"
                                             StartupComponentState.DISABLED -> "Состояние: отключён"
                                             StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
                                         })
+                                    })
                                     val canDisable = receiver.userInstalled && !receiver.protected &&
                                         (receiver.enabledState == StartupComponentState.DEFAULT || receiver.enabledState == StartupComponentState.ENABLED) &&
                                         receiver.savedOriginalState == null
@@ -172,8 +180,9 @@ new_receiver = '''                                Column(Modifier.fillMaxWidth()
                                             Text(stringResource(if (canRestore) R.string.manage_startup_restore else R.string.manage_startup_disable))
                                         }
                                     }
-                                }'''
-once(screens, old_receiver, new_receiver)
+                                }"""
+ui = ui[:row_start] + new_receiver + ui[row_end:]
+screens.write_text(ui, encoding="utf-8")
 
 confirmation = '''        if (pendingStartupComponent != null) {
             AlertDialog(
