@@ -12,7 +12,7 @@ for import_line, anchor in (
     ("import androidx.compose.material3.TextButton", "import androidx.compose.material3.SnackbarHost"),
 ):
     if import_line not in data:
-        data = data.replace(anchor, anchor + "\\n" + import_line, 1)
+        data = data.replace(anchor, anchor + chr(10) + import_line, 1)
 
 replacements = [
     (
