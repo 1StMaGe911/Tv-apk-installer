@@ -55,8 +55,33 @@ private fun formatInstallReport(connection: String, results: List<String>): Stri
     }
 }
 
-private fun installErrorMessage(failure: Exception): String =
-    (failure.message ?: failure.javaClass.simpleName).replace('\n', ' ').take(180)
+private fun installErrorMessage(failure: Exception): String {
+    val technical = (failure.message ?: failure.javaClass.simpleName)
+        .replace('\n', ' ')
+        .take(220)
+    val message = technical.lowercase()
+    val guidance = when {
+        message.contains("unauthorized") || message.contains("not authorized") ||
+            message.contains("authentication") || message.contains("adb key") ||
+            message.contains("auth failed") ->
+            "Телевизор не подтвердил ADB-доступ. Подтверди запрос отладки на экране ТВ."
+        message.contains("connection refused") || message.contains("econnrefused") ->
+            "Телевизор отклонил подключение. Проверь сетевую ADB-отладку и порт."
+        message.contains("timeout") || message.contains("timed out") ->
+            "Телевизор не ответил вовремя. Проверь Wi-Fi и доступность ТВ."
+        message.contains("no route to host") || message.contains("network is unreachable") ||
+            message.contains("host is unreachable") ->
+            "Телевизор недоступен по сети. Проверь IP-адрес и подключение к одной сети."
+        message.contains("install_failed_update_incompatible") ->
+            "Не совпадает подпись установленного приложения. Удаление старой версии может привести к потере её данных."
+        message.contains("install_failed_version_downgrade") ->
+            "На телевизоре уже установлена более новая версия приложения."
+        message.contains("install_failed_insufficient_storage") ->
+            "На телевизоре недостаточно свободной памяти."
+        else -> null
+    }
+    return if (guidance == null) technical else "$guidance\nТехническая ошибка: $technical"
+}
 
 private suspend fun prepareUserApk(context: Context, uri: Uri): PreparedUserApk = withContext(Dispatchers.IO) {
     val file = File(context.cacheDir, "install-${System.nanoTime()}.apk")
@@ -330,7 +355,7 @@ fun ApkInstallerScreen(
                                 "Найдено ADB-устройств: ${discoveredDevices.size}. Выбери телевизор ниже."
                             }
                         } catch (failure: Exception) {
-                            status = "Ошибка поиска: ${failure.message ?: failure.javaClass.simpleName}"
+                            status = "Ошибка поиска: ${installErrorMessage(failure)}"
                         } finally {
                             searching = false
                         }
