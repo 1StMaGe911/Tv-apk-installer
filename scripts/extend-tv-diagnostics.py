@@ -70,7 +70,12 @@ private fun parseTemperature(raw: String): String? {'''
 
 replace_once(
 '''                            val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
-                            val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, uptime, temperature)''',
+                            val route = adb.shell("ip route 2>/dev/null").output
+                            val addresses = adb.shell("ip -o -4 addr show scope global 2>/dev/null").output
+                            val ping = adb.shell("ping -c 1 -W 2 1.1.1.1 2>/dev/null").output
+                            val network = parseNetwork(route, addresses, ping)
+                            val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, cpuFrequency, uptime, temperature,
+                                network.type, network.ip, network.internet, network.latencyMs)''',
 '''                            val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
                             val route = adb.shell("ip route 2>/dev/null").output
                             val addresses = adb.shell("ip -o -4 addr show scope global 2>/dev/null").output
