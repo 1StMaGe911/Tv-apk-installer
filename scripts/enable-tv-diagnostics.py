@@ -96,14 +96,14 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                         val cpu = adb.shell("top -bn1").output
                         val thermal = adb.shell("dumpsys thermalservice").output
                         listOf("Телевизор: " + model.trim(), "Android: " + android,
-                            "ОПЕРАТИВНАЯ ПАМЯТЬ\n" + mem,
-                            "ВНУТРЕННЯЯ ПАМЯТЬ\n" + disk,
-                            "ЗАГРУЗКА CPU\n" + cpu,
-                            "ВРЕМЯ РАБОТЫ\n" + uptime,
-                            "ТЕМПЕРАТУРНЫЕ ДАТЧИКИ\n" + thermal)
+                            "ОПЕРАТИВНАЯ ПАМЯТЬ\\n" + mem,
+                            "ВНУТРЕННЯЯ ПАМЯТЬ\\n" + disk,
+                            "ЗАГРУЗКА CPU\\n" + cpu,
+                            "ВРЕМЯ РАБОТЫ\\n" + uptime,
+                            "ТЕМПЕРАТУРНЫЕ ДАТЧИКИ\\n" + thermal)
                     }
                 }
-                report = data.joinToString("\n\n")
+                report = data.joinToString("\\n\\n")
                 status = "Диагностика получена."
                 mergeSavedTvAppsDevices(context, saved + TvDevice("Android TV", host, adbPort))
             } catch (e: Exception) {
