@@ -214,11 +214,27 @@ jobs:
             release.json >/dev/null
 
           APK_URL=$(jq -r '.assets[] | select(.name == "app-full-debug.apk") | .browser_download_url' release.json)
-          curl --fail --location --silent --show-error "$APK_URL" -o published.apk
 
           LOCAL_SHA=$(sha256sum "$LOCAL_APK" | cut -d' ' -f1)
-          PUBLISHED_SHA=$(sha256sum published.apk | cut -d' ' -f1)
-          test "$LOCAL_SHA" = "$PUBLISHED_SHA"
+          PUBLISHED_SHA=""
+          for attempt in 1 2 3 4 5; do
+            # GitHub's release API can update before the asset CDN finishes propagating an overwritten file.
+            if curl --fail --location --silent --show-error \
+              "${APK_URL}?verify=${GITHUB_RUN_ID}-${attempt}" -o published.apk; then
+              PUBLISHED_SHA=$(sha256sum published.apk | cut -d' ' -f1)
+              if [ "$LOCAL_SHA" = "$PUBLISHED_SHA" ]; then
+                break
+              fi
+            fi
+            echo "Published APK is not yet synchronized (attempt $attempt/5); retrying..."
+            sleep 5
+          done
+          if [ "$LOCAL_SHA" != "$PUBLISHED_SHA" ]; then
+            echo "::error::Published APK SHA-256 does not match the build after 5 attempts."
+            echo "Build: $LOCAL_SHA"
+            echo "Published: $PUBLISHED_SHA"
+            exit 1
+          fi
           echo "Release $RELEASE_TAG contains the exact TV APK Installer APK."
           echo "SHA-256: $LOCAL_SHA"
 
