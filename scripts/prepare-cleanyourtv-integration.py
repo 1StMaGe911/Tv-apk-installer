@@ -141,6 +141,42 @@ replace_once(
     "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\n                ListDivider()\n                ListRow(\"TV APK Installer — дополнительные инструменты\", subtitle = \"ADB, очистка, резервные копии и управление лаунчером\", onClick = onLegacyInstaller)",
 )
 
+# Add a dedicated, non-destructive installed-apps screen to the main Manage flow.
+replace_once(app_root,
+    "import ru.tvapk.installer.TvInstallerApp",
+    "import ru.tvapk.installer.TvInstallerApp\nimport ru.tvapk.installer.TvAppsScreen\nimport ru.tvapk.installer.discoverAdbDevices",
+)
+
+replace_once(app_root,
+    "@Serializable data object LegacyInstaller : Dest",
+    "@Serializable data object LegacyInstaller : Dest\n    @Serializable data class TvApps(val tvId: String) : Dest",
+)
+
+replace_once(app_root,
+    "\"legacyinstaller\" -> Dest.LegacyInstaller",
+    "\"legacyinstaller\" -> Dest.LegacyInstaller\n        \"tvapps\" -> id?.let { Dest.TvApps(it) }",
+)
+
+replace_once(app_root,
+    "                entry<Dest.LegacyInstaller> { TvInstallerApp() }",
+    "                entry<Dest.LegacyInstaller> { TvInstallerApp() }\n                entry<Dest.TvApps> { key ->\n                    TvAppsScreen(\n                        historyTvId = key.tvId,\n                        onBack = { go(\"back\") },\n                        discoverDevices = { withContext(Dispatchers.IO) { discoverAdbDevices(context) } },\n                    )\n                }",
+)
+
+replace_once(app_root,
+    "                    ManageScreen(state, m::dispatch, onLegacyInstaller = { go(\"legacyinstaller\") })",
+    "                    ManageScreen(state, m::dispatch, onLegacyInstaller = { go(\"legacyinstaller\") }, onTvApps = { key.tvId?.let { go(\"tvapps/$it\") } })",
+)
+
+replace_once(manage_screens,
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}, onTvApps: () -> Unit = {}) {",
+)
+
+replace_once(manage_screens,
+    "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\n                ListDivider()\n                ListRow(\"TV APK Installer — дополнительные инструменты\", subtitle = \"ADB, очистка, резервные копии и управление лаунчером\", onClick = onLegacyInstaller)",
+    "                ListRow(stringResource(R.string.manage_row_tvsettings), onClick = { onIntent(ManageIntent.Open(ManageSection.TV_SETTINGS)) })\n                ListDivider()\n                ListRow(\"Установленные приложения\", subtitle = \"Просмотр, запуск и остановка приложений через ADB\", onClick = onTvApps)\n                ListDivider()\n                ListRow(\"TV APK Installer — дополнительные инструменты\", subtitle = \"ADB, очистка, резервные копии и управление лаунчером\", onClick = onLegacyInstaller)",
+)
+
 # Keep the original installer usable if the new Clean Your TV dependency graph fails at startup.
 # This is a guarded fallback, not a silent success: the failure is retained and logged.
 cyt_application = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "CytApplication.kt"
