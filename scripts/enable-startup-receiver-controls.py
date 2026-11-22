@@ -138,7 +138,7 @@ once(screens,
     "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n" +
     "    var pendingStartupComponent by rememberSaveable(tv?.id?.value) { mutableStateOf<String?>(null) }\n" +
     "    var pendingStartupEnabled by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n")
-old_receiver = '''                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
+old_receiver = '''                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\n" + receiver.component + "\n" + when (receiver.enabledState) {
                                         StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                         StartupComponentState.ENABLED -> "Состояние: включён"
                                         StartupComponentState.DISABLED -> "Состояние: отключён"
@@ -150,7 +150,7 @@ new_receiver = '''                                Column(Modifier.fillMaxWidth()
                                         (if (receiver.protected) " · " + stringResource(R.string.manage_startup_protected) else "") +
                                         " · " + receiver.packageName + " · " +
                                         (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) +
-                                        "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
+                                        "\n" + receiver.component + "\n" + when (receiver.enabledState) {
                                             StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                             StartupComponentState.ENABLED -> "Состояние: включён"
                                             StartupComponentState.DISABLED -> "Состояние: отключён"
