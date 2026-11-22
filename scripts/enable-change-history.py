@@ -23,7 +23,7 @@ replace_once(flows,
 '''    RESTORE_POINT("restore"), TV_SETTINGS("tvsettings"), CHANGE_HISTORY("changehistory"),''')
 
 replace_once(manage,
-'''onTvApps: () -> Unit = {}, onInstallHistory: () -> Unit = {}, onTvDiagnostics: () -> Unit = {}) {''',
+'''onTvApps: () -> Unit = {}, onInstallHistory: () -> Unit = {}, onTvDiagnostics: () -> Unit = {}, onChangeHistory: () -> Unit = {}) {''',
 '''onTvApps: () -> Unit = {}, onInstallHistory: () -> Unit = {}, onChangeHistory: () -> Unit = {}) {''')
 
 replace_once(manage,
