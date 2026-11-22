@@ -21,11 +21,15 @@ internal object AdbConnectionDiagnostics {
             return Diagnosis(Kind.AUTHORIZATION, false,
                 "На экране ТВ подтверди запрос ADB/RSA. Если запрос не появляется, отзови старые разрешения отладки и подключись заново.")
         }
-        if (listOf("connection refused", "econnrefused", "actively refused").any { message.contains(it) }) {
+        if (listOf(
+                "connection refused", "econnrefused", "actively refused",
+                "connection reset", "econnreset", "broken pipe", "failed to connect"
+            ).any { message.contains(it) }) {
             return Diagnosis(Kind.REFUSED, true,
                 "Телевизор отклонил соединение. Включи сетевую ADB-отладку и проверь порт; после включения подожди несколько секунд.")
         }
-        if (listOf("timeout", "timed out", "sockettimeoutexception").any { message.contains(it) }) {
+        if (listOf("timeout", "timed out", "sockettimeoutexception", "connection timed out")
+                .any { message.contains(it) }) {
             return Diagnosis(Kind.TIMEOUT, true,
                 "Телевизор не ответил вовремя. Проверь Wi-Fi, расстояние до роутера и отсутствие изоляции клиентов.")
         }
