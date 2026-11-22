@@ -2264,17 +2264,17 @@ modules_machine = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv"
 replace_once(
     modules_machine,
     "    private data class Step(val step: InstallStep?)",
-    "    private data class Step(val step: InstallStep?)\\n    private data class Refreshing(val value: Boolean)",
+    "    private data class Step(val step: InstallStep?)\n    private data class Refreshing(val value: Boolean)",
 )
 replace_once(
     modules_machine,
     "    val index: IndexView = IndexView.Loading,",
-    "    val index: IndexView = IndexView.Loading,\\n    val refreshing: Boolean = false,",
+    "    val index: IndexView = IndexView.Loading,\n    val refreshing: Boolean = false,",
 )
 replace_once(
     modules_machine,
     "        is Step -> state.copy(install = event.step)",
-    "        is Step -> state.copy(install = event.step)\\n        is Refreshing -> state.copy(refreshing = event.value)",
+    "        is Step -> state.copy(install = event.step)\n        is Refreshing -> state.copy(refreshing = event.value)",
 )
 replace_once(
     modules_machine,
@@ -2290,8 +2290,8 @@ replace_once(
 modules_screens = upstream / "feature" / "modules" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "modules" / "ModulesScreens.kt"
 replace_once(
     modules_screens,
-    "private fun IndexNotice(index: IndexView, onIntent: (ModulesIntent) -> Unit) {\\n    when (index) {",
-    "private fun IndexNotice(index: IndexView, refreshing: Boolean, onIntent: (ModulesIntent) -> Unit) {\\n    if (refreshing) LiveLine(stringResource(R.string.addmodule_loading)) else when (index) {",
+    "private fun IndexNotice(index: IndexView, onIntent: (ModulesIntent) -> Unit) {\n    when (index) {",
+    "private fun IndexNotice(index: IndexView, refreshing: Boolean, onIntent: (ModulesIntent) -> Unit) {\n    if (refreshing) LiveLine(stringResource(R.string.addmodule_loading)) else when (index) {",
 )
 replace_once(
     modules_screens,
