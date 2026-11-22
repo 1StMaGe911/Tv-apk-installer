@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 250
-        versionName = "0.9.60" // 24-hour offline license grace period
+        versionCode = 251
+        versionName = "0.9.61" // 24-hour offline license grace period
         // Back from a recovered TV operation returns to TV management.
     }
 
