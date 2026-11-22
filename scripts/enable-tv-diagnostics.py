@@ -74,7 +74,7 @@ private data class TvDiagnostic(
 )
 
 private fun parseMemory(raw: String): Pair<Long?, Long?> {
-    fun value(key: String) = Regex("(?m)^$key:\\s+(\\d+)\\s+kB").find(raw)?.groupValues?.get(1)?.toLongOrNull()
+    fun value(key: String) = Regex("(?m)^$key:\\\\s+(\\\\d+)\\\\s+kB").find(raw)?.groupValues?.get(1)?.toLongOrNull()
     val total = value("MemTotal")
     val available = value("MemAvailable") ?: listOfNotNull(value("MemFree"), value("Buffers"), value("Cached")).sum().takeIf { it > 0 }
     return (if (total != null && available != null) (total - available).coerceAtLeast(0) else null) to total
@@ -82,7 +82,7 @@ private fun parseMemory(raw: String): Pair<Long?, Long?> {
 
 private fun parseStorage(raw: String): Pair<Long?, Long?> {
     val row = raw.lines().lastOrNull { it.trim().startsWith("/") } ?: return null to null
-    val parts = row.trim().split(Regex("\\s+"))
+    val parts = row.trim().split(Regex("\\\\s+"))
     if (parts.size < 4) return null to null
     fun size(value: String): Long? {
         val number = Regex("([0-9.]+)").find(value)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
@@ -94,9 +94,9 @@ private fun parseStorage(raw: String): Pair<Long?, Long?> {
 }
 
 private fun parseCpu(raw: String): Int? {
-    val idle = Regex("(?i)([0-9]+(?:\\.[0-9]+)?)\\s*%?\\s*(?:id|idle)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
+    val idle = Regex("(?i)([0-9]+(?:\\\\.[0-9]+)?)\\\\s*%?\\\\s*(?:id|idle)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
     if (idle != null) return (100f - idle).toInt().coerceIn(0, 100)
-    val used = Regex("(?i)([0-9]+(?:\\.[0-9]+)?)\\s*%\\s*(?:usr|user)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
+    val used = Regex("(?i)([0-9]+(?:\\\\.[0-9]+)?)\\\\s*%\\\\s*(?:usr|user)").find(raw)?.groupValues?.get(1)?.toFloatOrNull()
     return used?.toInt()?.coerceIn(0, 100)
 }
 
@@ -114,7 +114,7 @@ private fun formatUptime(raw: String): String {
 }
 
 private fun parseTemperature(raw: String): String? {
-    val values = Regex("(?i)(?:mValue=|temp(?:erature)?\\s*[:=]\\s*)(-?[0-9]+(?:\\.[0-9]+)?)")
+    val values = Regex("(?i)(?:mValue=|temp(?:erature)?\\\\s*[:=]\\\\s*)(-?[0-9]+(?:\\\\.[0-9]+)?)")
         .findAll(raw).mapNotNull { it.groupValues[1].toFloatOrNull() }.filter { it in 0f..150f }.toList()
     val max = values.maxOrNull() ?: return null
     return String.format(Locale.getDefault(), "%.1f °C", max)
