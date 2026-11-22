@@ -15,7 +15,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dadb.AdbKeyPair
 import dadb.Dadb
-import dadb.UninstallResult
 import dadb.SyncResult
 import dadb.InstallResult
 import kotlinx.coroutines.Dispatchers
@@ -427,7 +426,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                     }, enabled = !busy && visibleApps.any { !it.isSystem }) { Text("Выбрать пользовательские") }
                 }
                 if (selectedPackages.isNotEmpty()) {
-                    Text("Выбрано для удаления: ${selectedPackages.size}")
+                    Text("Выбрано для резервной копии: ${selectedPackages.size}")
                 }
             }
             if (selectedDevice != null && packages.isEmpty() && !busy) {
