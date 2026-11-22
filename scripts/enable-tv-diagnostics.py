@@ -235,7 +235,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                 Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Время работы", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Время работы", style = MaterialTheme.typography.labelLarge, color = textColor)
                             Text(d.uptime, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                         }
                         Text("◷", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
@@ -263,7 +263,7 @@ private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, cap
             Box(Modifier.size(116.dp), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
                     val stroke = 10.dp.toPx()
-                    drawArc(color = MaterialTheme.colorScheme.surfaceVariant, startAngle = -90f, sweepAngle = 360f,
+                    drawArc(color = trackColor, startAngle = -90f, sweepAngle = 360f,
                         useCenter = false, style = Stroke(width = stroke, cap = StrokeCap.Round))
                     if (valid) drawArc(color = progressColor, startAngle = -90f, sweepAngle = 360f * fraction,
                         useCenter = false, style = Stroke(width = stroke, cap = StrokeCap.Round))
