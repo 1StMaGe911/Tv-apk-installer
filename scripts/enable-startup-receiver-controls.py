@@ -48,7 +48,7 @@ once(probe,
     '''    suspend fun setEnabled(session: TvSession, receiver: StartupReceiver, enabled: Boolean) {
         if (!receiver.userInstalled) throw IllegalArgumentException("System-app receivers are view-only")
         if (receiver.protected) throw IllegalArgumentException("This app provides a protected TV function")
-        if (!component.matches(receiver.component)) throw IllegalArgumentException("Invalid receiver component")
+        if (!Regex("^[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+$").matches(receiver.component)) throw IllegalArgumentException("Invalid receiver component")
         val key = java.security.MessageDigest.getInstance("SHA-256")
             .digest(receiver.component.toByteArray())
             .joinToString("") { byte -> "%02x".format(byte) }
@@ -66,8 +66,7 @@ once(probe,
                 "if ! pm disable-user --user 0 '$comp'; then rm -f '$file'; exit 1; fi; " +
                 "echo '__cyt_changed__'"
         } else {
-            val original = receiver.savedOriginalState
-                ?: throw IllegalStateException("No original state is saved for this receiver")
+            if (receiver.savedOriginalState == null) throw IllegalStateException("No original state is saved for this receiver")
             if (receiver.enabledState != StartupComponentState.DISABLED) {
                 throw IllegalStateException("Receiver is not disabled")
             }
@@ -139,7 +138,7 @@ once(screens,
     "    var startupDialogVisible by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n" +
     "    var pendingStartupComponent by rememberSaveable(tv?.id?.value) { mutableStateOf<String?>(null) }\n" +
     "    var pendingStartupEnabled by rememberSaveable(tv?.id?.value) { mutableStateOf(false) }\n")
-old_receiver = '''                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\\\n" + receiver.component + "\\\\n" + when (receiver.enabledState) {
+old_receiver = '''                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
                                         StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                         StartupComponentState.ENABLED -> "Состояние: включён"
                                         StartupComponentState.DISABLED -> "Состояние: отключён"
@@ -151,7 +150,7 @@ new_receiver = '''                                Column(Modifier.fillMaxWidth()
                                         (if (receiver.protected) " · " + stringResource(R.string.manage_startup_protected) else "") +
                                         " · " + receiver.packageName + " · " +
                                         (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) +
-                                        "\\\\n" + receiver.component + "\\\\n" + when (receiver.enabledState) {
+                                        "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
                                             StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                             StartupComponentState.ENABLED -> "Состояние: включён"
                                             StartupComponentState.DISABLED -> "Состояние: отключён"
