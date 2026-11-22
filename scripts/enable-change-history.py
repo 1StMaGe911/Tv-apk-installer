@@ -44,7 +44,7 @@ replace_once(app,
 '''        "installhistory" -> Dest.InstallHistory
         "changehistory" -> id?.let { Dest.ChangeHistory(it) }''')
 replace_once(app,
-'''ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { backStack.add(Dest.TvApps(it.value)) } }, onInstallHistory = { go("installhistory") }, onTvDiagnostics = { go("tvdiagnostics") }, onChangeHistory = { state.current?.id?.let { go("changehistory/${it.value}") } })''',
+'''ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { backStack.add(Dest.TvApps(it.value)) } }, onInstallHistory = { go("installhistory") }, onTvDiagnostics = { go("tvdiagnostics") })''',
 '''ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { state.current?.id?.let { backStack.add(Dest.TvApps(it.value)) } }, onInstallHistory = { go("installhistory") }, onTvDiagnostics = { go("tvdiagnostics") }, onChangeHistory = { state.current?.id?.let { go("changehistory/${it.value}") } })''')
 replace_once(app,
 '''                entry<Dest.InstallHistory> {''',
