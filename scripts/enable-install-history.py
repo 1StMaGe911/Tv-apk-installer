@@ -54,7 +54,7 @@ replace_once(
 )
 replace_once(
     manage_screens,
-    '            ListRow("Приложения телевизора", subtitle = "Список, запуск и удаление установленных приложений", onClick = onTvApps)',
+    '            ListRow("Приложения телевизора", subtitle = "Просмотр, запуск и остановка установленных приложений", onClick = onTvApps)',
     '            ListRow("Приложения телевизора", subtitle = "Список, запуск и удаление установленных приложений", onClick = onTvApps)\n            ListRow("История установок", subtitle = "Результаты установки APK, дата, телевизор и ошибки", onClick = onInstallHistory)',
 )
 print("Clean Your TV: persistent APK installation history is integrated.")
