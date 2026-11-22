@@ -53,6 +53,9 @@ jobs:
       - name: Добавить проверку автозапуска телевизора
         run: python3 scripts/enable-startup-receiver-inventory.py
 
+      - name: Добавить управление компонентами автозапуска
+        run: python3 scripts/enable-startup-receiver-controls.py
+
       - name: Исправить возврат с экрана восстановления ТВ
         run: python3 scripts/fix-tv-resume-back.py
 
