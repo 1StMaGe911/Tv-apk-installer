@@ -56,6 +56,8 @@ import dadb.Dadb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import java.io.File
 import java.util.Locale
 
@@ -278,6 +280,7 @@ private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, cap
     }
 }
 
+@Composable
 private fun DiagnosticSimpleMetric(title: String, value: String, hint: String, modifier: Modifier = Modifier) {
     Card(modifier, shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
