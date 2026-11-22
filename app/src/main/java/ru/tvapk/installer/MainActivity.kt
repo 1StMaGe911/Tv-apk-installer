@@ -6899,7 +6899,44 @@ fun TvInstallerApp() {
                                 } else {
                                     settings.edit().putString("ip", host).putString("port", p.toString()).apply()
                                     runTask(action = {
-                                        connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
+                                        try {
+                                            connectWithRetry(context, host, p) { "ADB подключён: $host:$p" }
+                                        } catch (firstError: Exception) {
+                                            val rawError = errorText(firstError)
+                                            val diagnosis = AdbConnectionDiagnostics.classify(host, p, rawError)
+                                            if (!diagnosis.retryable) throw firstError
+
+                                            // The saved IP may have changed after DHCP renewal.
+                                            // Discover only devices that advertise ADB via local DNS-SD.
+                                            val found = discoverAdbDevices(context)
+                                            val target = TvAutomationEngine.uniqueDiscoveredDevice(found)
+                                            if (target == null) {
+                                                if (found.size > 1) {
+                                                    activity.runOnUiThread { discoveredDevices = found }
+                                                    throw Exception(
+                                                        "Сохранённый адрес $host:$p недоступен. Найдено несколько ADB-телевизоров. Выбери нужный по IP в списке ниже."
+                                                    )
+                                                }
+                                                throw Exception(
+                                                    AdbConnectionDiagnostics.format(host, p, rawError) +
+                                                        " Автопоиск в локальной сети не обнаружил телевизор. Проверь, что ТВ включён и отладка по сети активна."
+                                                )
+                                            }
+
+                                            val connected = connectWithRetry(context, target.ip, target.port) {
+                                                "ADB подключён после автопоиска: ${target.name} — ${target.ip}:${target.port}"
+                                            }
+                                            activity.runOnUiThread {
+                                                tvName = target.name
+                                                ip = target.ip
+                                                port = target.port.toString()
+                                                settings.edit()
+                                                    .putString("ip", target.ip)
+                                                    .putString("port", target.port.toString())
+                                                    .apply()
+                                            }
+                                            connected
+                                        }
                                     }, onFinished = { result ->
                                         if (!result.startsWith("Ошибка")) {
                                             if (section == "clean") showCleanYourTv = true
