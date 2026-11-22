@@ -21,6 +21,25 @@ class AdbConnectionDiagnosticsTest {
     }
 
     @Test
+    fun transientConnectionResetsAndBrokenPipesCanBeRetried() {
+        assertTrue(
+            AdbConnectionDiagnostics.classify(
+                "192.168.1.20", 5555, "java.net.SocketException: Connection reset by peer"
+            ).retryable
+        )
+        assertTrue(
+            AdbConnectionDiagnostics.classify(
+                "192.168.1.20", 5555, "java.io.IOException: Broken pipe"
+            ).retryable
+        )
+        assertTrue(
+            AdbConnectionDiagnostics.classify(
+                "192.168.1.20", 5555, "java.net.ConnectException: Failed to connect"
+            ).retryable
+        )
+    }
+
+    @Test
     fun timeoutsAndUnreachableNetworksCanBeRetried() {
         assertTrue(AdbConnectionDiagnostics.classify("192.168.1.20", 5555, "SocketTimeoutException").retryable)
         assertEquals(
