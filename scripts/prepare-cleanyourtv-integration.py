@@ -87,29 +87,7 @@ replace_once(
     'onDownloadUpdate = { CleanYourTvUpdater.download(context) },\n                        onInstallUpdate = { CleanYourTvUpdater.installLatest(context) },',
 )
 
-# Poll the DownloadManager from the Settings screen so the real transfer percentage is visible.
-# The APK is still verified by CleanYourTvUpdater before Android's package installer is opened.
-replace_once(
-    app_root,
-    """                    AppSettingsScreen(state, m::dispatch, onBack = { go("back") },
-                        onDownloadUpdate = { CleanYourTvUpdater.download(context) },
-                        onInstallUpdate = { CleanYourTvUpdater.installLatest(context) },
-                        details = details, onDetails = { collectDetails(it) })""",
-    """                    var updateDownloadProgress by remember { mutableStateOf<Int?>(null) }
-                    LaunchedEffect(Unit) {
-                        while (true) {
-                            updateDownloadProgress = withContext(Dispatchers.IO) {
-                                runCatching { CleanYourTvUpdater.downloadProgress(context) }.getOrNull()
-                            }
-                            kotlinx.coroutines.delay(1000)
-                        }
-                    }
-                    AppSettingsScreen(state, m::dispatch, onBack = { go("back") },
-                        onDownloadUpdate = { CleanYourTvUpdater.download(context) },
-                        onInstallUpdate = { CleanYourTvUpdater.installLatest(context) },
-                        details = details, onDetails = { collectDetails(it) },
-                        updateDownloadProgress = updateDownloadProgress)""",
-)
+# Progress polling is added once below, next to the settings state collection.
 replace_once(
     manage_screens,
     'onOpenRelease: () -> Unit, modifier: Modifier = Modifier,',
