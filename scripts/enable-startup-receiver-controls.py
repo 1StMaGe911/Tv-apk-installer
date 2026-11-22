@@ -72,7 +72,7 @@ once(probe,
             }
             "set -e; [ -f '$file' ] || { echo '__cyt_no_backup__'; exit 1; }; " +
                 "SAVED=$(cut -d'|' -f2 '$file'); " +
-                "case \\"$SAVED\\" in " +
+                "case \\"\\$SAVED\\" in " +
                 "DEFAULT) pm default-state --user 0 '$comp' ;; " +
                 "ENABLED) pm enable --user 0 '$comp' ;; " +
                 "*) echo '__cyt_bad_backup__'; exit 1 ;; esac; " +
