@@ -2200,3 +2200,60 @@ for _name, _value in (
 _ET.ElementTree(_default_root).write(_default_file, encoding="utf-8", xml_declaration=True)
 
 print("Clean-only setup mode patch applied.")
+
+
+# Enable online refresh of the signed add-on catalog. The bundled index remains the
+# offline seed; every downloaded generation still passes the compiled minisign root,
+# active-key signature, expiry and anti-rollback checks in :core:trust/:core:registry.
+app_graph = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "app" / "AppGraph.kt"
+replace_once(
+    app_graph,
+    "import tv.cleanyour.core.registry.IndexRegistry",
+    "import tv.cleanyour.core.registry.IndexRegistry\\nimport tv.cleanyour.core.registry.IndexSources",
+)
+replace_once(
+    app_graph,
+    "sources = null, TrustRoots.indexVerifier()",
+    'sources = IndexSources.under("https://raw.githubusercontent.com/udhaykumarbala/cleanyourtv-app/main/android/platform/src/main/assets/bundled"), TrustRoots.indexVerifier()',
+)
+
+# The raw GitHub host is used only for the four signed catalog documents. The
+# fetcher still validates HTTPS and every redirect hop against this exact allowlist.
+download_hosts = upstream / "core" / "trust" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "trust" / "DownloadHosts.kt"
+replace_once(
+    download_hosts,
+    '        "api.github.com",',
+    '        "api.github.com",\\n        "raw.githubusercontent.com",',
+)
+full_network_config = upstream / "app" / "src" / "full" / "res" / "xml" / "network_security_config.xml"
+replace_once(
+    full_network_config,
+    '        <domain includeSubdomains="false">api.github.com</domain>',
+    '        <domain includeSubdomains="false">api.github.com</domain>\\n        <domain includeSubdomains="false">raw.githubusercontent.com</domain>',
+)
+
+# Keep a manual refresh action visible even while the current signed index is fresh.
+# A failed refresh never replaces the last verified catalog; installs remain gated by
+# the registry's installableIndex() policy.
+modules_screens = upstream / "feature" / "modules" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "modules" / "ModulesScreens.kt"
+replace_once(
+    modules_screens,
+    '''        is IndexView.Ready -> if (index.stale) Banner(stringResource(R.string.index_stale_warning), BannerTone.WARNING, Modifier.padding(top = 16.dp),
+            actionLabel = stringResource(R.string.addmodule_refresh), onAction = { onIntent(ModulesIntent.Refresh) })''',
+    '''        is IndexView.Ready -> if (index.stale) Banner(stringResource(R.string.index_stale_warning), BannerTone.WARNING, Modifier.padding(top = 16.dp),
+            actionLabel = stringResource(R.string.addmodule_refresh), onAction = { onIntent(ModulesIntent.Refresh) })
+            else TertiaryButton(stringResource(R.string.addmodule_refresh), { onIntent(ModulesIntent.Refresh) }, Modifier.padding(top = 16.dp))''',
+)
+
+# Avoid queuing multiple refresh requests when the user taps repeatedly.
+modules_machine = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "flows" / "ModulesMachine.kt"
+replace_once(
+    modules_machine,
+    "    private var detectJob: Job? = null",
+    "    private var detectJob: Job? = null\\n    private var refreshJob: Job? = null",
+)
+replace_once(
+    modules_machine,
+    "            ModulesIntent.Refresh -> if (addOns) scope.launch { attempt { d.registry.refresh() } }",
+    "            ModulesIntent.Refresh -> if (addOns && refreshJob?.isActive != true) refreshJob = scope.launch { attempt { d.registry.refresh() } }",
+)
