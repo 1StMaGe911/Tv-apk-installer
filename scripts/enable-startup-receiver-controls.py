@@ -40,26 +40,34 @@ once(probe,
         }.toSet() + setOf("android", "com.android.systemui", "ru.tvapk.installer")
         val receivers = linkedMapOf<String, StartupReceiver>()''')
 once(probe,
-    '''            val enabledHeader = Regex("(?m)^\\\\s*enabledComponents:\\\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
-            val disabledHeader = Regex("(?m)^\\\\s*disabledComponents:\\\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
+    r'''            val enabledHeader = Regex("(?m)^\\s*enabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
+            val disabledHeader = Regex("(?m)^\\s*disabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
             fun entriesAfter(header: MatchResult): Set<String> {
                 val start = (header.range.last + 1).coerceIn(0, dump.length)
                 val nextHeader = Regex("(?m)^\\\\s*(?:enabledComponents|disabledComponents):\\\\s*$")
-                    .findAll(dump, start).firstOrNull()
+                    .findAll(dump, start)
+                    .firstOrNull()
                 val end = (nextHeader?.range?.first ?: dump.length).coerceIn(start, dump.length)
-                return dump.substring(start, end).lineSequence().map { it.trim().trim(',', '[', ']', '{', '}') }
-                    .filter { it.startsWith(packageName + "/") }.toSet()
+                return dump.substring(start, end).lineSequence()
+                    .map { it.trim().trim(',', '[', ']', '{', '}') }
+                    .filter { it.startsWith(packageName + "/") }
+                    .toSet()
             }
+            // Some Android/vendor builds print these sections in the opposite order.
+            // Bound each section by the next header instead of assuming enabled comes first.
             val enabled = entriesAfter(enabledHeader)
             val disabled = entriesAfter(disabledHeader)''',
-    '''            fun entriesAfter(name: String): Set<String> {
-                val header = Regex("(?m)^\\\\s*$name:\\\\s*$").find(dump) ?: return emptySet()
+    r'''            fun entriesAfter(name: String): Set<String> {
+                val header = Regex("(?m)^\\s*$name:\\s*$").find(dump) ?: return emptySet()
                 val start = (header.range.last + 1).coerceIn(0, dump.length)
-                val nextHeader = Regex("(?m)^\\\\s*(?:enabledComponents|disabledComponents):\\\\s*$")
-                    .findAll(dump, start).firstOrNull()
+                val nextHeader = Regex("(?m)^\\s*(?:enabledComponents|disabledComponents):\\s*$")
+                    .findAll(dump, start)
+                    .firstOrNull()
                 val end = (nextHeader?.range?.first ?: dump.length).coerceIn(start, dump.length)
-                return dump.substring(start, end).lineSequence().map { it.trim().trim(',', '[', ']', '{', '}') }
-                    .filter { it.startsWith(packageName + "/") }.toSet()
+                return dump.substring(start, end).lineSequence()
+                    .map { it.trim().trim(',', '[', ']', '{', '}') }
+                    .filter { it.startsWith(packageName + "/") }
+                    .toSet()
             }
             val enabled = entriesAfter("enabledComponents")
             val disabled = entriesAfter("disabledComponents")''')
