@@ -313,9 +313,12 @@ private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, cap
                     Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text(footer ?: if (valid) {
-                if (title == "Оперативная память") "${used} МБ / ${total} МБ" else "${formatMb(used)} / ${formatMb(total)}"
-            } else "Нет данных",
+            Text(footer ?: when {
+                title == "Процессор" -> "Частота недоступна"
+                valid && title == "Оперативная память" -> "${used} МБ / ${total} МБ"
+                valid -> "${formatMb(used)} / ${formatMb(total)}"
+                else -> "Нет данных"
+            },
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
