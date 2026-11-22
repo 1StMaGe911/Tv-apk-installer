@@ -19,7 +19,7 @@ import tv.cleanyour.core.session.ExecSpec
 import tv.cleanyour.core.session.RetryClass
 import tv.cleanyour.core.session.TvSession
 
-data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean)
+data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean)
 data class StartupReceiverInventory(val receivers: List<StartupReceiver>, val bootQuerySupported: Boolean?, val lockedBootQuerySupported: Boolean?)
 
 object StartupReceiverParser {
@@ -33,12 +33,12 @@ object StartupReceiverParser {
             val line = raw.trimEnd('\r')
             if (line.startsWith(MARK)) {
                 val name = line.removePrefix(MARK)
-                if (name !in setOf("boot", "locked") || name in sections) throw ProbeException(ProbeStage.PACKAGES, "unexpected boot receiver section")
+                if (name !in setOf("user", "boot", "locked") || name in sections) throw ProbeException(ProbeStage.PACKAGES, "unexpected boot receiver section")
                 current = name
                 sections[name] = mutableListOf()
             } else current?.let { sections.getValue(it) += line }
         }
-        if (!sections.keys.containsAll(listOf("boot", "locked"))) throw ProbeException(ProbeStage.PACKAGES, "boot receiver output is incomplete")
+        if (!sections.keys.containsAll(listOf("user", "boot", "locked"))) throw ProbeException(ProbeStage.PACKAGES, "boot receiver output is incomplete")
         fun supported(name: String): Boolean? {
             val lines = sections.getValue(name)
             return when {
@@ -48,12 +48,13 @@ object StartupReceiverParser {
                 else -> null
             }
         }
+        val userPackages = sections.getValue("user").mapNotNull { line -> line.trim().removePrefix("package:").takeIf { it != line.trim() && it.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")) } }.toSet()
         val receivers = linkedMapOf<String, StartupReceiver>()
         for ((name, locked) in listOf("boot" to false, "locked" to true)) {
             for (line in sections.getValue(name)) {
                 val value = line.trim()
                 val match = component.matchEntire(value) ?: continue
-                receivers.putIfAbsent(value, StartupReceiver(value, match.groupValues[1], locked))
+                receivers.putIfAbsent(value, StartupReceiver(value, match.groupValues[1], locked, match.groupValues[1] in userPackages))
             }
         }
         return StartupReceiverInventory(receivers.values.take(300), supported("boot"), supported("locked"))
@@ -69,7 +70,8 @@ class AdbStartupReceiverReader {
     }
     companion object {
         internal val SCRIPT = ShellLine(
-            "echo '@@cyt-boot@@ boot'; " +
+            "echo '@@cyt-boot@@ user'; pm list packages -3 2>/dev/null; " +
+                "echo '@@cyt-boot@@ boot'; "
                 "if cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
                 "echo '@@cyt-boot@@ locked'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi"
@@ -151,7 +153,9 @@ merge(root / "feature/manage/src/main/res/values-ru/strings.xml", """<string nam
 <string name="manage_startup_unknown">Неизвестно</string>
 <string name="manage_startup_empty">Список пуст. Это не доказывает, что приложения не запускаются автоматически.</string>
 <string name="manage_startup_boot">После загрузки</string>
-<string name="manage_startup_locked">До разблокировки</string>""")
+<string name="manage_startup_locked">До разблокировки</string>
+<string name="manage_startup_user_app">Пользовательское приложение</string>
+<string name="manage_startup_system_app">Системное приложение · только просмотр</string>""")
 
 print("Read-only startup receiver inventory integrated.")
 
@@ -204,7 +208,7 @@ dialog = """        if (startupDialogVisible) {
                             Text(stringResource(R.string.manage_startup_locked) + ": " + locked)
                             if (inventory.receivers.isEmpty()) Text(stringResource(R.string.manage_startup_empty), Modifier.padding(top = 8.dp))
                             else inventory.receivers.forEach { receiver ->
-                                Text(receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component,
+                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component,
                                     Modifier.padding(top = 8.dp))
                             }
                         }
