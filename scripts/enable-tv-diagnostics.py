@@ -72,7 +72,7 @@ private fun diagnosticsKeyPair(context: android.content.Context): AdbKeyPair {
 
 private data class TvDiagnostic(
     val model: String, val android: String, val ramUsed: Long?, val ramTotal: Long?,
-    val storageUsed: Long?, val storageTotal: Long?, val cpu: Int?, val uptime: String,
+    val storageUsed: Long?, val storageTotal: Long?, val cpu: Int?, val cpuFrequency: String?, val uptime: String,
     val temperature: String?
 )
 
@@ -129,6 +129,18 @@ private fun parseCpu(raw: String): Int? {
     return (((total - idle).coerceAtLeast(0L) * 100.0) / total).toInt().coerceIn(0, 100)
 }
 
+private fun parseCpuFrequency(raw: String): String? {
+    val khz = raw.lineSequence().mapNotNull { it.trim().toLongOrNull() }
+        .filter { it in 100_000L..10_000_000L }.toList()
+    val mhz = if (khz.isNotEmpty()) khz.average() / 1000.0 else {
+        Regex("(?m)^cpu MHz\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)")
+            .findAll(raw).mapNotNull { it.groupValues[1].toDoubleOrNull() }.toList()
+            .takeIf { it.isNotEmpty() }?.average() ?: return null
+    }
+    return if (mhz >= 1000.0) String.format(Locale.getDefault(), "%.2f ГГц", mhz / 1000.0)
+        else String.format(Locale.getDefault(), "%.0f МГц", mhz)
+}
+
 private fun formatMb(mb: Long?): String {
     if (mb == null) return "—"
     return if (mb >= 1024) String.format(Locale.getDefault(), "%.1f ГБ", mb / 1024.0) else "$mb МБ"
@@ -181,9 +193,10 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                             val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
                             val storage = parseStorage(adb.shell("df -kP /data 2>/dev/null; echo __DATA_FS__; stat -f -c '%S %b %a' /data 2>/dev/null").output)
                             val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
+                            val cpuFrequency = parseCpuFrequency(adb.shell("for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq /sys/devices/system/cpu/cpu[0-9]*/cpufreq/cpuinfo_cur_freq; do [ -r \"$f\" ] && cat \"$f\"; done; grep '^cpu MHz' /proc/cpuinfo 2>/dev/null").output)
                             val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
                             val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
-                            val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, uptime, temperature)
+                            val data = TvDiagnostic(model, android, memory.first, memory.second, storage.first, storage.second, cpu, cpuFrequency, uptime, temperature)
                             withContext(Dispatchers.Main) {
                                 diagnostic = data
                                 status = "Обновляется автоматически каждые 3 секунды"
@@ -253,7 +266,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                     DiagnosticRadialMetric("Внутреннее хранилище", d.storageUsed, d.storageTotal, "занято", Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    DiagnosticRadialMetric("Процессор", d.cpu?.toLong(), 100L, "загрузка", Modifier.weight(1f))
+                    DiagnosticRadialMetric("Процессор", d.cpu?.toLong(), 100L, "загрузка", Modifier.weight(1f), d.cpuFrequency)
                     DiagnosticSimpleMetric("Температура", d.temperature ?: "Нет данных",
                         if (d.temperature != null) "Данные датчика ТВ" else "Датчик не предоставлен",
                         Modifier.weight(1f))
@@ -278,7 +291,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, caption: String, modifier: Modifier = Modifier) {
+private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, caption: String, modifier: Modifier = Modifier, footer: String? = null) {
     val valid = used != null && total != null && total > 0L
     val fraction = if (valid) (used!!.toFloat() / total!!).coerceIn(0f, 1f) else 0f
     val progressColor = Color(0xFF20B8B0)
@@ -300,7 +313,7 @@ private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, cap
                     Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Text(if (valid) {
+            Text(footer ?: if (valid) {
                 if (title == "Оперативная память") "${used} МБ / ${total} МБ" else "${formatMb(used)} / ${formatMb(total)}"
             } else "Нет данных",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
