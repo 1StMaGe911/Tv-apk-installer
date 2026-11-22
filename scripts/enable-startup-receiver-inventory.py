@@ -19,7 +19,8 @@ import tv.cleanyour.core.session.ExecSpec
 import tv.cleanyour.core.session.RetryClass
 import tv.cleanyour.core.session.TvSession
 
-data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean)
+enum class StartupComponentState { DEFAULT, ENABLED, DISABLED, UNKNOWN }
+data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean, val enabledState: StartupComponentState = StartupComponentState.UNKNOWN)
 data class StartupReceiverInventory(val receivers: List<StartupReceiver>, val bootQuerySupported: Boolean?, val lockedBootQuerySupported: Boolean?)
 
 object StartupReceiverParser {
@@ -49,12 +50,31 @@ object StartupReceiverParser {
             }
         }
         val userPackages = sections.getValue("user").mapNotNull { line -> line.trim().removePrefix("package:").takeIf { it != line.trim() && it.matches(Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")) } }.toSet()
+        val stateBlocks = Regex("(?ms)^@@cyt-state@@ ([A-Za-z0-9_.]+)\\s*\\n(.*?)(?=^@@cyt-state@@ |\\z)")
+            .findAll(stdout).associate { it.groupValues[1] to it.groupValues[2] }
+        fun componentState(packageName: String, componentName: String): StartupComponentState {
+            val dump = stateBlocks[packageName] ?: return StartupComponentState.UNKNOWN
+            val enabledHeader = Regex("(?m)^\\s*enabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
+            val disabledHeader = Regex("(?m)^\\s*disabledComponents:\\s*$").find(dump) ?: return StartupComponentState.UNKNOWN
+            fun entries(start: Int, end: Int): Set<String> = dump.substring(start, end).lineSequence()
+                .map { it.trim().trim(',', '[', ']', '{', '}') }
+                .filter { it.startsWith(packageName + "/") }
+                .toSet()
+            val enabled = entries(enabledHeader.range.last + 1, disabledHeader.range.first)
+            val disabled = entries(disabledHeader.range.last + 1, dump.length)
+            return when {
+                componentName in enabled -> StartupComponentState.ENABLED
+                componentName in disabled -> StartupComponentState.DISABLED
+                else -> StartupComponentState.DEFAULT
+            }
+        }
         val receivers = linkedMapOf<String, StartupReceiver>()
         for ((name, locked) in listOf("boot" to false, "locked" to true)) {
             for (line in sections.getValue(name)) {
                 val value = line.trim()
                 val match = component.matchEntire(value) ?: continue
-                receivers.putIfAbsent(value, StartupReceiver(value, match.groupValues[1], locked, match.groupValues[1] in userPackages))
+                val pkg = match.groupValues[1]
+                receivers.putIfAbsent(value, StartupReceiver(value, pkg, locked, pkg in userPackages, componentState(pkg, value)))
             }
         }
         return StartupReceiverInventory(receivers.values.take(300), supported("boot"), supported("locked"))
@@ -74,7 +94,9 @@ class AdbStartupReceiverReader {
                 "echo '@@cyt-boot@@ boot'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
                 "echo '@@cyt-boot@@ locked'; " +
-                "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi"
+                "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
+                "for pkg in $( { cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; } | sed -n 's#^\\([^/]*\\)/.*#\\1#p' | sort -u | head -n 80 ); do " +
+                "echo '@@cyt-state@@' \"$pkg\"; dumpsys package \"$pkg\" 2>/dev/null; done"
         )
     }
 }
@@ -121,7 +143,7 @@ once(screens, "        ScreenTitle(stringResource(R.string.manage_title), titleT
      "                else {\n"
      "                    val lockedLabel = stringResource(R.string.manage_startup_locked)\n"
      "                    val bootLabel = stringResource(R.string.manage_startup_boot)\n"
-     "                    Body(inventory.receivers.joinToString(\"\\n\") { receiver -> receiver.packageName + \" · \" + (if (receiver.lockedBoot) lockedLabel else bootLabel) + \"\\n\" + receiver.component }, Modifier.padding(top = 4.dp))\n"
+     "                    Body(inventory.receivers.joinToString(\"\\n\") { receiver -> receiver.packageName + \" · \" + (if (receiver.lockedBoot) lockedLabel else bootLabel) + \"\\n\" + receiver.component + " · " + when (receiver.enabledState) { tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> "по умолчанию"; tv.cleanyour.core.probe.StartupComponentState.ENABLED -> "включён"; tv.cleanyour.core.probe.StartupComponentState.DISABLED -> "отключён"; tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> "состояние неизвестно" } }, Modifier.padding(top = 4.dp))\n"
      "                }\n"
      "            }\n"
      "        }\n")
@@ -210,7 +232,12 @@ dialog = """        if (startupDialogVisible) {
                             Text(stringResource(R.string.manage_startup_locked) + ": " + locked)
                             if (inventory.receivers.isEmpty()) Text(stringResource(R.string.manage_startup_empty), Modifier.padding(top = 8.dp))
                             else inventory.receivers.forEach { receiver ->
-                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component,
+                                Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
+                                        tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
+                                        tv.cleanyour.core.probe.StartupComponentState.ENABLED -> "Состояние: включён"
+                                        tv.cleanyour.core.probe.StartupComponentState.DISABLED -> "Состояние: отключён"
+                                        tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
+                                    },
                                     Modifier.padding(top = 8.dp))
                             }
                         }
