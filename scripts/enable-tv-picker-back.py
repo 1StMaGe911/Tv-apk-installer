@@ -50,9 +50,18 @@ replacements = [
 
 for old, new, label in replacements:
     count = data.count(old)
-    if count != 1:
-        raise SystemExit(f"{label}: expected exactly one match, found {count}")
-    data = data.replace(old, new, 1)
+    if count == 0 and label == "Manage screen Back handler and TV picker":
+        import re
+        match = re.search(r"(?m)^(\\s*)ManageScreen\\(state, m::dispatch\\)\\s*$", data)
+        if not match:
+            raise SystemExit("Could not locate ManageScreen call for Back handler")
+        indent = match.group(1)
+        replacement = new.replace("                    ", indent)
+        data = data[:match.start()] + replacement.rstrip() + data[match.end():]
+    else:
+        if count != 1:
+            raise SystemExit(f"{label}: expected exactly one match, found {count}")
+        data = data.replace(old, new, 1)
 
 app_root.write_text(data, encoding="utf-8")
 print("Back on the main TV screen now opens a saved-TV picker; selecting a TV switches to it.")
