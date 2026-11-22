@@ -90,11 +90,9 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
     var appSearch by remember { mutableStateOf("") }
     var appFilter by remember { mutableStateOf("Все") }
     var appSort by remember { mutableStateOf("Имя") }
-    var showBulkUninstallConfirm by remember { mutableStateOf(false) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var backupFolder by remember { mutableStateOf<Uri?>(null) }
     var restoreUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
-    var pendingUninstall by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Найди телевизор с включённой ADB-отладкой по сети.") }
 
@@ -301,30 +299,26 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
         }
     }
 
-    fun uninstallApp(packageName: String) {
+    fun stopApp(packageName: String) {
+        if (!packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) return
+        val app = packages.firstOrNull { it.packageName == packageName } ?: return
+        if (app.isSystem) return
         val device = selectedDevice ?: return
         scope.launch {
             busy = true
-            pendingUninstall = null
-            status = "Удаляем $packageName…"
+            status = "Останавливаем $packageName…"
             try {
-                val result = withContext(Dispatchers.IO) {
+                val response = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
-                        adb.uninstall(packageName)
+                        adb.shell("am force-stop --user 0 $packageName")
                     }
                 }
-                when (result) {
-                    UninstallResult.Success -> {
-                        packages = packages.filterNot { it.packageName == packageName }
-                        selectedPackages = selectedPackages - packageName
-                        TvAppsHistory.record(context, historyTvId, "Удалено приложение", packageName)
-                        status = "Приложение удалено: $packageName"
-                    }
-                    is UninstallResult.Failure -> status =
-                        "Не удалось удалить $packageName: ${result.reason.take(240)}"
-                }
+                status = if (response.exitCode == 0) {
+                    TvAppsHistory.record(context, historyTvId, "Остановлено приложение", packageName)
+                    "Команда остановки отправлена: $packageName"
+                } else "Не удалось остановить: ${response.allOutput.take(240)}"
             } catch (failure: Exception) {
-                status = "Ошибка удаления: ${failure.message ?: failure.javaClass.simpleName}"
+                status = "Ошибка остановки: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
         }
     }
@@ -434,9 +428,6 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                 }
                 if (selectedPackages.isNotEmpty()) {
                     Text("Выбрано для удаления: ${selectedPackages.size}")
-                    Button(onClick = { showBulkUninstallConfirm = true }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-                        Text("Удалить выбранные (${selectedPackages.size})")
-                    }
                 }
             }
             if (selectedDevice != null && packages.isEmpty() && !busy) {
@@ -466,11 +457,11 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                                 onCheckedChange = { checked -> selectedPackages = if (checked) selectedPackages + app.packageName else selectedPackages - app.packageName },
                                 enabled = !busy && !app.isSystem
                             )
-                            Text(if (app.isSystem) "Системное приложение" else "Выбрать для резервной копии / удаления", modifier = Modifier.padding(top = 12.dp))
+                            Text(if (app.isSystem) "Системное приложение" else "Выбрать для резервной копии", modifier = Modifier.padding(top = 12.dp))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
-                            OutlinedButton(onClick = { pendingUninstall = app.packageName }, enabled = !busy) { Text("Удалить") }
+                            OutlinedButton(onClick = { stopApp(app.packageName) }, enabled = !busy && !app.isSystem) { Text("Остановить") }
                         }
                     }
                 }
@@ -480,50 +471,5 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
         }
     }
 
-    if (showBulkUninstallConfirm) {
-        val targets = packages.filter { it.packageName in selectedPackages && !it.isSystem }
-        AlertDialog(
-            onDismissRequest = { if (!busy) showBulkUninstallConfirm = false },
-            title = { Text("Массовое удаление") },
-            text = { Text("Удалить ${targets.size} выбранных пользовательских приложений? Системные приложения не будут затронуты. Это действие нельзя отменить.") },
-            confirmButton = { TextButton(onClick = {
-                showBulkUninstallConfirm = false
-                val device = selectedDevice
-                if (device != null && targets.isNotEmpty()) {
-                    scope.launch {
-                        busy = true
-                        var removed = 0
-                        val failed = mutableListOf<String>()
-                        try {
-                            targets.forEachIndexed { index, app ->
-                                status = "Удаляем ${index + 1}/${targets.size}: ${app.packageName}"
-                                val result = withContext(Dispatchers.IO) {
-                                    Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb -> adb.uninstall(app.packageName) }
-                                }
-                                when (result) {
-                                    UninstallResult.Success -> { removed++; TvAppsHistory.record(context, historyTvId, "Удалено приложение", app.packageName); packages = packages.filterNot { it.packageName == app.packageName } }
-                                    is UninstallResult.Failure -> failed += "${app.packageName}: ${result.reason.take(100)}"
-                                }
-                            }
-                            selectedPackages = emptySet()
-                            status = "Удалено: $removed из ${targets.size}." + if (failed.isNotEmpty()) " Не удалось: ${failed.joinToString("; ")}" else ""
-                        } catch (failure: Exception) {
-                            status = "Ошибка массового удаления: ${failure.message ?: failure.javaClass.simpleName}. Удалено: $removed."
-                        } finally { busy = false }
-                    }
-                }
-            }, enabled = !busy) { Text("Удалить") } },
-            dismissButton = { TextButton(onClick = { showBulkUninstallConfirm = false }) { Text("Отмена") } }
-        )
-    }
 
-    pendingUninstall?.let { packageName ->
-        AlertDialog(
-            onDismissRequest = { if (!busy) pendingUninstall = null },
-            title = { Text("Удалить приложение?") },
-            text = { Text("Будет удалено приложение $packageName с телевизора. Системные приложения в этом списке не отображаются.") },
-            confirmButton = { TextButton(onClick = { uninstallApp(packageName) }, enabled = !busy) { Text("Удалить") } },
-            dismissButton = { TextButton(onClick = { pendingUninstall = null }, enabled = !busy) { Text("Отмена") } }
-        )
-    }
 }
