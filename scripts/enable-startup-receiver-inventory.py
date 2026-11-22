@@ -219,9 +219,9 @@ dialog = """        if (startupDialogVisible) {
                             else inventory.receivers.forEach { receiver ->
                                 Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
                                         StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
-                                        tv.cleanyour.core.probe.StartupComponentState.ENABLED -> "Состояние: включён"
-                                        tv.cleanyour.core.probe.StartupComponentState.DISABLED -> "Состояние: отключён"
-                                        tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
+                                        StartupComponentState.ENABLED -> "Состояние: включён"
+                                        StartupComponentState.DISABLED -> "Состояние: отключён"
+                                        StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
                                     },
                                     Modifier.padding(top = 8.dp))
                             }
