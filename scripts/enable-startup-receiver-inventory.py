@@ -130,27 +130,7 @@ once(machine, "    // The card's thumbnail is the last screenshot; tapping refre
 
 screens = root / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 once(screens, "        ScreenTitle(stringResource(R.string.manage_title), titleTop)\n",
-     "        ScreenTitle(stringResource(R.string.manage_title), titleTop)\n"
-     "        if (tv != null) {\n"
-     "            SecondaryButton(stringResource(R.string.manage_startup_check), { onIntent(ManageIntent.CheckStartupReceivers) }, Modifier.padding(top = 12.dp))\n"
-     "            if (state.startupReceiversLoading) LiveLine(stringResource(R.string.manage_startup_reading))\n"
-     "            if (state.startupReceiversError) Banner(stringResource(R.string.manage_startup_error), BannerTone.WARNING, Modifier.padding(top = 8.dp))\n"
-     "            state.startupReceivers?.let { inventory ->\n"
-     "                SectionLabel(stringResource(R.string.manage_startup_title))\n"
-     "                val available = stringResource(R.string.manage_startup_supported)\n"
-     "                val unsupported = stringResource(R.string.manage_startup_unsupported)\n"
-     "                val unknown = stringResource(R.string.manage_startup_unknown)\n"
-     "                val boot = when (inventory.bootQuerySupported) { true -> available; false -> unsupported; null -> unknown }\n"
-     "                val locked = when (inventory.lockedBootQuerySupported) { true -> available; false -> unsupported; null -> unknown }\n"
-     "                Body(stringResource(R.string.manage_startup_boot) + \": \" + boot + \"\\n\" + stringResource(R.string.manage_startup_locked) + \": \" + locked, Modifier.padding(top = 4.dp))\n"
-     "                if (inventory.receivers.isEmpty()) Body(stringResource(R.string.manage_startup_empty), Modifier.padding(top = 4.dp))\n"
-     "                else {\n"
-     "                    val lockedLabel = stringResource(R.string.manage_startup_locked)\n"
-     "                    val bootLabel = stringResource(R.string.manage_startup_boot)\n"
-     "                    Body(inventory.receivers.joinToString(\"\\n\") { receiver -> receiver.packageName + \" · \" + (if (receiver.lockedBoot) lockedLabel else bootLabel) + \"\\n\" + receiver.component + \" · \" + when (receiver.enabledState) { tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> \"по умолчанию\"; tv.cleanyour.core.probe.StartupComponentState.ENABLED -> \"включён\"; tv.cleanyour.core.probe.StartupComponentState.DISABLED -> \"отключён\"; tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> \"состояние неизвестно\" } }, Modifier.padding(top = 4.dp))\n"
-     "                }\n"
-     "            }\n"
-     "        }\n")
+     "        ScreenTitle(stringResource(R.string.manage_title), titleTop)\n")
 
 def merge(path, entries):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,6 +171,7 @@ print("Read-only startup receiver inventory integrated.")
 # Keep the startup inventory out of the Manage feature list: open it in its own dialog.
 screens_ui = root / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 nl = chr(10)
+once(screens_ui, "import tv.cleanyour.core.probe.Prober" + nl, "import tv.cleanyour.core.probe.Prober" + nl + "import tv.cleanyour.core.probe.StartupComponentState" + nl)
 once(screens_ui, "import androidx.compose.material3.ExperimentalMaterial3Api" + nl,
      "import androidx.compose.material3.ExperimentalMaterial3Api" + nl
      + "import androidx.compose.material3.AlertDialog" + nl
@@ -237,7 +218,7 @@ dialog = """        if (startupDialogVisible) {
                             if (inventory.receivers.isEmpty()) Text(stringResource(R.string.manage_startup_empty), Modifier.padding(top = 8.dp))
                             else inventory.receivers.forEach { receiver ->
                                 Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
-                                        tv.cleanyour.core.probe.StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
+                                        StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                         tv.cleanyour.core.probe.StartupComponentState.ENABLED -> "Состояние: включён"
                                         tv.cleanyour.core.probe.StartupComponentState.DISABLED -> "Состояние: отключён"
                                         tv.cleanyour.core.probe.StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
