@@ -19,14 +19,14 @@ def replace_once(path: Path, old: str, new: str) -> None:
 app_root = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 manage_screens = upstream / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 
-replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen\nimport ru.tvapk.installer.discoverAdbDevices")
+replace_once(app_root, "import ru.tvapk.installer.TvInstallerApp", "import ru.tvapk.installer.ApkInstallerScreen")
 replace_once(app_root, "@Serializable data object LegacyInstaller : Dest", "@Serializable data object InstallApk : Dest")
 replace_once(app_root, '"legacyinstaller" -> Dest.LegacyInstaller', '"installapk" -> Dest.InstallApk')
 replace_once(app_root, "entry<Dest.LegacyInstaller> { TvInstallerApp() }", 'entry<Dest.InstallApk> { ApkInstallerScreen(graph.tvs, graph.access, null, onBack = { go("back") }, discoverDevices = { withContext(Dispatchers.IO) { discoverAdbDevices(context) } }) }')
-replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") })')
+replace_once(app_root, 'ManageScreen(state, m::dispatch, onLegacyInstaller = { go("legacyinstaller") }, onTvApps = { key.tvId?.let { go("tvapps/$it") } })', 'ManageScreen(state, m::dispatch, onInstallApk = { go("installapk") }, onTvApps = { key.tvId?.let { go("tvapps/$it") } })')
 replace_once(manage_screens,
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}) {",
-    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}) {")
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onLegacyInstaller: () -> Unit = {}, onTvApps: () -> Unit = {}) {",
+    "fun ManageScreen(state: ManageState, onIntent: (ManageIntent) -> Unit, modifier: Modifier = Modifier, onInstallApk: () -> Unit = {}, onTvApps: () -> Unit = {}) {")
 replace_once(manage_screens,
     '                ListRow("TV APK Installer — дополнительные инструменты", subtitle = "ADB, очистка, резервные копии и управление лаунчером", onClick = onLegacyInstaller)',
     '')
