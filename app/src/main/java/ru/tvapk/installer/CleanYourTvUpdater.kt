@@ -10,8 +10,12 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
+import javax.net.ssl.SSLException
 import java.security.MessageDigest
 
 object CleanYourTvUpdater {
@@ -24,6 +28,14 @@ object CleanYourTvUpdater {
     private const val EXPECTED_SHA256 = "expected_sha256"
     private const val EXPECTED_SIZE = "expected_size"
     private const val EXPECTED_TAG = "expected_tag"
+
+    private fun updateFailureMessage(error: Exception): String = when (error) {
+        is SocketTimeoutException -> "Истекло время ожидания ответа GitHub. Проверь подключение к интернету."
+        is UnknownHostException -> "Не удалось связаться с GitHub. Проверь подключение к интернету."
+        is SSLException -> "Не удалось безопасно подключиться к GitHub."
+        is IOException -> "Ошибка сети при загрузке обновления: ${error.message ?: "нет подробностей"}"
+        else -> error.message ?: "не удалось загрузить APK"
+    }
 
     /** Checks GitHub metadata and downloads only a newer, verifiable full APK. */
     fun download(context: Context) {
@@ -99,7 +111,7 @@ object CleanYourTvUpdater {
                     .apply()
                 toast(context, "Загрузка Clean Your TV $tag началась. После завершения нажмите «Установить обновление».")
             } catch (e: Exception) {
-                toast(context, "Ошибка обновления: ${e.message ?: "не удалось загрузить APK"}")
+                toast(context, "Ошибка обновления: ${updateFailureMessage(e)}")
             }
         }.start()
     }
