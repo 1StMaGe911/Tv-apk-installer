@@ -100,7 +100,7 @@ class AdbStartupReceiverReader {
                 "echo '@@cyt-boot@@ locked'; " +
                 "if cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; then :; else echo '__cyt_query_unsupported__'; fi; " +
                 "for pkg in $( { cmd package query-receivers --brief -a android.intent.action.BOOT_COMPLETED 2>/dev/null; cmd package query-receivers --brief -a android.intent.action.LOCKED_BOOT_COMPLETED 2>/dev/null; } | sed -n 's#^\\([^/]*\\)/.*#\\1#p' | sort -u | head -n 30 ); do " +
-                "echo '@@cyt-state@@' \"$pkg\"; dumpsys package \"$pkg\" 2>/dev/null; done"
+                "echo '@@cyt-state@@' \"\$pkg\"; dumpsys package \"\$pkg\" 2>/dev/null; done"
         )
     }
 }
