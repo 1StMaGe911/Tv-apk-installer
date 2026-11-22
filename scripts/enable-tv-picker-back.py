@@ -5,6 +5,16 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 app_root = root / "vendor" / "cleanyourtv-app/app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 data = app_root.read_text(encoding="utf-8")
+for import_line in (
+    "import androidx.compose.foundation.layout.Column\\n",
+    "import androidx.compose.material3.AlertDialog\\n",
+    "import androidx.compose.material3.Text\\n",
+    "import androidx.compose.material3.TextButton\\n",
+):
+    if import_line.strip() not in data:
+        data = data.replace("import androidx.compose.foundation.layout.Box\\n", "import androidx.compose.foundation.layout.Box\\n" + import_line if "foundation.layout" in import_line else "import androidx.compose.foundation.layout.Box\\n")
+        if "material3" in import_line:
+            data = data.replace("import androidx.compose.material3.SnackbarHost\\n", "import androidx.compose.material3.SnackbarHost\\n" + import_line)
 
 replacements = [
     (
@@ -14,7 +24,7 @@ replacements = [
     ),
     (
         '                    ManageScreen(state, m::dispatch)\n',
-        '''                    BackHandler { showTvPicker = true }
+        '''                    BackHandler(enabled = !showTvPicker) { showTvPicker = true }
                     ManageScreen(state, m::dispatch)
                     if (showTvPicker) {
                         AlertDialog(
@@ -27,7 +37,7 @@ replacements = [
                                             showTvPicker = false
                                             m.dispatch(tv.cleanyour.core.flows.ManageIntent.Select(card.id))
                                         }) {
-                                            Text(if (card.room.isNullOrBlank()) card.name else "${card.name} · ${card.room}")
+                                            Text(card.name)
                                         }
                                     }
                                 }
@@ -52,7 +62,7 @@ for old, new, label in replacements:
     count = data.count(old)
     if count == 0 and label == "Manage screen Back handler and TV picker":
         import re
-        match = re.search(r"(?m)^(\\s*)ManageScreen\\(state, m::dispatch\\)\\s*$", data)
+        match = re.search(r"(?m)^(\s*)ManageScreen\(state, m::dispatch\)\s*$", data)
         if not match:
             raise SystemExit("Could not locate ManageScreen call for Back handler")
         indent = match.group(1)
