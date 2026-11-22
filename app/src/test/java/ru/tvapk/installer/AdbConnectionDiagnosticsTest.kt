@@ -59,8 +59,9 @@ class AdbConnectionDiagnosticsTest {
     fun unknownErrorsKeepOriginalDetailsAndGuidance() {
         val formatted = AdbConnectionDiagnostics.format("192.168.1.20", 5555, "broken pipe")
         assertTrue(formatted.contains("broken pipe"))
-        assertTrue(formatted.contains("Проверь"))
+        assertTrue(formatted.contains("Телевизор отклонил соединение"))
     }
+
     @Test
     fun retriesConnectionEstablishmentUntilConnected() {
         var attempts = 0
@@ -139,5 +140,4 @@ class AdbConnectionDiagnosticsTest {
         assertEquals(2, attempts)
         assertTrue(thrown is java.net.SocketTimeoutException)
     }
-
 }
