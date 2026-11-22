@@ -39,7 +39,8 @@ screen = root / "app/src/main/java/ru/tvapk/installer/TvDiagnosticsScreen.kt"
 screen.write_text("""
 package ru.tvapk.installer
 
-import androidx.compose.foundation.background\nimport androidx.compose.foundation.Canvas\nimport androidx.compose.ui.graphics.StrokeCap\nimport androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.background\nimport androidx.compose.foundation.Canvas\nimport androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,12 +84,35 @@ private fun parseMemory(raw: String): Pair<Long?, Long?> {
 }
 
 private fun parseStorage(raw: String): Pair<Long?, Long?> {
-    val row = raw.lineSequence().map { it.trim().split(Regex("\\\\s+")) }
-        .lastOrNull { it.size >= 6 && it.last() == "/data" } ?: return null to null
-    val totalKb = row[1].toLongOrNull() ?: return null to null
-    val usedKb = row[2].toLongOrNull() ?: return null to null
-    if (totalKb <= 0L || usedKb < 0L) return null to null
-    return (usedKb / 1024L) to (totalKb / 1024L)
+    // First try df: Android variants differ in column layout and may wrap long device names.
+    for (line in raw.substringBefore("__DATA_FS__").lineSequence()) {
+        val columns = line.trim().split(Regex("\\\\s+"))
+        val mountIndex = columns.indexOfFirst { it == "/data" || it.startsWith("/data/") }
+        if (mountIndex < 0) continue
+        val numbers = columns.take(mountIndex).mapNotNull { it.toLongOrNull() }
+        if (numbers.size >= 3) {
+            val totalKb = numbers[0]
+            val usedKb = numbers[1]
+            if (totalKb > 0L && usedKb >= 0L && usedKb <= totalKb) {
+                return (usedKb / 1024L) to (totalKb / 1024L)
+            }
+        }
+    }
+
+    // Fallback: stat reports filesystem block size, total blocks and available blocks.
+    val statLine = raw.substringAfter("__DATA_FS__", "")
+        .lineSequence().map { it.trim().split(Regex("\\\\s+")) }
+        .firstOrNull { it.size == 3 && it.all { value -> value.toLongOrNull() != null } }
+        ?: return null to null
+    val blockSize = statLine[0].toLongOrNull() ?: return null to null
+    val totalBlocks = statLine[1].toLongOrNull() ?: return null to null
+    val availableBlocks = statLine[2].toLongOrNull() ?: return null to null
+    if (blockSize <= 0L || totalBlocks <= 0L || availableBlocks < 0L || availableBlocks > totalBlocks) {
+        return null to null
+    }
+    val totalMb = (totalBlocks * blockSize) / (1024L * 1024L)
+    val usedMb = ((totalBlocks - availableBlocks) * blockSize) / (1024L * 1024L)
+    return usedMb to totalMb
 }
 
 private fun parseCpu(raw: String): Int? {
@@ -153,7 +177,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
                         mergeSavedTvAppsDevices(context, saved + TvDevice("Android TV", host, adbPort))
                         while (currentCoroutineContext().isActive) {
                             val memory = parseMemory(adb.shell("cat /proc/meminfo").output)
-                            val storage = parseStorage(adb.shell("df -kP /data").output)
+                            val storage = parseStorage(adb.shell("df -kP /data 2>/dev/null; echo __DATA_FS__; stat -f -c '%S %b %a' /data 2>/dev/null").output)
                             val cpu = parseCpu(adb.shell("cat /proc/stat; sleep 1; cat /proc/stat").output)
                             val uptime = formatUptime(adb.shell("cat /proc/uptime").output)
                             val temperature = parseTemperature(adb.shell("dumpsys thermalservice").output)
@@ -255,7 +279,7 @@ fun TvDiagnosticsScreen(onBack: () -> Unit) {
 private fun DiagnosticRadialMetric(title: String, used: Long?, total: Long?, caption: String, modifier: Modifier = Modifier) {
     val valid = used != null && total != null && total > 0L
     val fraction = if (valid) (used!!.toFloat() / total!!).coerceIn(0f, 1f) else 0f
-    val progressColor = when { fraction >= 0.9f -> MaterialTheme.colorScheme.error; fraction >= 0.75f -> MaterialTheme.colorScheme.tertiary; else -> MaterialTheme.colorScheme.primary }
+    val progressColor = Color(0xFF20B8B0)
     val trackColor = MaterialTheme.colorScheme.surfaceVariant\n    val textColor = MaterialTheme.colorScheme.onSurfaceVariant\n    Card(modifier, shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.fillMaxWidth().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
