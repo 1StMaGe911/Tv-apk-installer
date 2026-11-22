@@ -2209,7 +2209,7 @@ app_graph = upstream / "app" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / 
 replace_once(
     app_graph,
     "import tv.cleanyour.core.registry.IndexRegistry",
-    "import tv.cleanyour.core.registry.IndexRegistry\\nimport tv.cleanyour.core.registry.IndexSources",
+    "import tv.cleanyour.core.registry.IndexRegistry\nimport tv.cleanyour.core.registry.IndexSources",
 )
 replace_once(
     app_graph,
@@ -2223,13 +2223,13 @@ download_hosts = upstream / "core" / "trust" / "src" / "main" / "kotlin" / "tv" 
 replace_once(
     download_hosts,
     '        "api.github.com",',
-    '        "api.github.com",\\n        "raw.githubusercontent.com",',
+    '        "api.github.com",\n        "raw.githubusercontent.com",',
 )
 full_network_config = upstream / "app" / "src" / "full" / "res" / "xml" / "network_security_config.xml"
 replace_once(
     full_network_config,
     '        <domain includeSubdomains="false">api.github.com</domain>',
-    '        <domain includeSubdomains="false">api.github.com</domain>\\n        <domain includeSubdomains="false">raw.githubusercontent.com</domain>',
+    '        <domain includeSubdomains="false">api.github.com</domain>\n        <domain includeSubdomains="false">raw.githubusercontent.com</domain>',
 )
 
 # Keep a manual refresh action visible even while the current signed index is fresh.
@@ -2250,7 +2250,7 @@ modules_machine = upstream / "core" / "flows" / "src" / "main" / "kotlin" / "tv"
 replace_once(
     modules_machine,
     "    private var detectJob: Job? = null",
-    "    private var detectJob: Job? = null\\n    private var refreshJob: Job? = null",
+    "    private var detectJob: Job? = null\n    private var refreshJob: Job? = null",
 )
 replace_once(
     modules_machine,
