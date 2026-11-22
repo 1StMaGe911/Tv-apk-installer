@@ -171,7 +171,7 @@ print("Read-only startup receiver inventory integrated.")
 # Keep the startup inventory out of the Manage feature list: open it in its own dialog.
 screens_ui = root / "feature/manage/src/main/kotlin/tv/cleanyour/feature/manage/ManageScreens.kt"
 nl = chr(10)
-once(screens_ui, "import tv.cleanyour.core.probe.Prober" + nl, "import tv.cleanyour.core.probe.Prober" + nl + "import tv.cleanyour.core.probe.StartupComponentState" + nl)
+once(screens_ui, "package tv.cleanyour.feature.manage" + nl, "package tv.cleanyour.feature.manage" + nl + nl + "import tv.cleanyour.core.probe.StartupComponentState" + nl)
 once(screens_ui, "import androidx.compose.material3.ExperimentalMaterial3Api" + nl,
      "import androidx.compose.material3.ExperimentalMaterial3Api" + nl
      + "import androidx.compose.material3.AlertDialog" + nl
