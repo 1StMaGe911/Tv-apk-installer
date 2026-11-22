@@ -17,7 +17,7 @@ def once(path: Path, old: str, new: str) -> None:
 probe = upstream / "core/probe/src/main/kotlin/tv/cleanyour/core/probe/StartupReceivers.kt"
 once(probe,
     "data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean, val enabledState: StartupComponentState = StartupComponentState.UNKNOWN)",
-    "data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean, val enabledState: StartupComponentState = StartupComponentState.UNKNOWN, val protected: Boolean = false, val savedOriginalState: StartupComponentState? = null)")
+    "data class StartupReceiver(val component: String, val packageName: String, val lockedBoot: Boolean, val userInstalled: Boolean, val enabledState: StartupComponentState = StartupComponentState.UNKNOWN, val isProtected: Boolean = false, val savedOriginalState: StartupComponentState? = null)")
 once(probe,
     'if (name !in setOf("user", "boot", "locked") || name in sections)',
     'if (name !in setOf("user", "boot", "locked", "saved", "protected") || name in sections)')
@@ -47,7 +47,7 @@ once(probe,
         internal val SCRIPT = ShellLine(''',
     '''    suspend fun setEnabled(session: TvSession, receiver: StartupReceiver, enabled: Boolean) {
         if (!receiver.userInstalled) throw IllegalArgumentException("System-app receivers are view-only")
-        if (receiver.protected) throw IllegalArgumentException("This app provides a protected TV function")
+        if (receiver.isProtected) throw IllegalArgumentException("This app provides a protected TV function")
         if (!Regex("^[A-Za-z0-9_]+(?:\\\\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+$").matches(receiver.component)) throw IllegalArgumentException("Invalid receiver component")
         val key = java.security.MessageDigest.getInstance("SHA-256")
             .digest(receiver.component.toByteArray())
@@ -152,7 +152,7 @@ row_end += len(row_end_marker)
 new_receiver = """Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                     Text(buildString {
                                         append(if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app))
-                                        if (receiver.protected) append(" · " + stringResource(R.string.manage_startup_protected))
+                                        if (receiver.isProtected) append(" · " + stringResource(R.string.manage_startup_protected))
                                         append(" · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)))
                                         append(10.toChar())
                                         append(receiver.component)
@@ -164,10 +164,10 @@ new_receiver = """Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                             StartupComponentState.UNKNOWN -> "Состояние: неизвестно"
                                         })
                                     })
-                                    val canDisable = receiver.userInstalled && !receiver.protected &&
+                                    val canDisable = receiver.userInstalled && !receiver.isProtected &&
                                         (receiver.enabledState == StartupComponentState.DEFAULT || receiver.enabledState == StartupComponentState.ENABLED) &&
                                         receiver.savedOriginalState == null
-                                    val canRestore = receiver.userInstalled && !receiver.protected &&
+                                    val canRestore = receiver.userInstalled && !receiver.isProtected &&
                                         receiver.enabledState == StartupComponentState.DISABLED && receiver.savedOriginalState != null
                                     if (canDisable || canRestore) {
                                         TextButton(
