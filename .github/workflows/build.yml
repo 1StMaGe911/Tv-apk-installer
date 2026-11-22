@@ -37,6 +37,9 @@ jobs:
 
       - name: Добавить диагностику Android TV
         run: python3 scripts/enable-tv-diagnostics.py
+        
+      - name: Добавить состояние сети и общую оценку ТВ
+        run: python3 scripts/extend-tv-diagnostics.py
 
       - name: Добавить журнал изменений телевизора
         run: python3 scripts/enable-change-history.py
