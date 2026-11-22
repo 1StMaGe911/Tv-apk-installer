@@ -5,16 +5,14 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 app_root = root / "vendor" / "cleanyourtv-app/app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 data = app_root.read_text(encoding="utf-8")
-for import_line in (
-    "import androidx.compose.foundation.layout.Column\\n",
-    "import androidx.compose.material3.AlertDialog\\n",
-    "import androidx.compose.material3.Text\\n",
-    "import androidx.compose.material3.TextButton\\n",
+for import_line, anchor in (
+    ("import androidx.compose.foundation.layout.Column", "import androidx.compose.foundation.layout.Box"),
+    ("import androidx.compose.material3.AlertDialog", "import androidx.compose.material3.SnackbarHost"),
+    ("import androidx.compose.material3.Text", "import androidx.compose.material3.SnackbarHost"),
+    ("import androidx.compose.material3.TextButton", "import androidx.compose.material3.SnackbarHost"),
 ):
-    if import_line.strip() not in data:
-        data = data.replace("import androidx.compose.foundation.layout.Box\\n", "import androidx.compose.foundation.layout.Box\\n" + import_line if "foundation.layout" in import_line else "import androidx.compose.foundation.layout.Box\\n")
-        if "material3" in import_line:
-            data = data.replace("import androidx.compose.material3.SnackbarHost\\n", "import androidx.compose.material3.SnackbarHost\\n" + import_line)
+    if import_line not in data:
+        data = data.replace(anchor, anchor + "\\n" + import_line, 1)
 
 replacements = [
     (
