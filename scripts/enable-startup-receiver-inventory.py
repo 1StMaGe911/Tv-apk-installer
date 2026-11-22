@@ -160,7 +160,10 @@ merge(root / "feature/manage/src/main/res/values/strings.xml", """<string name="
 <string name="manage_startup_boot">After boot</string>
 <string name="manage_startup_locked">Before unlock</string>
 <string name="manage_startup_user_app">User app</string>
-<string name="manage_startup_system_app">System app · view only</string>""")
+<string name="manage_startup_system_app">System app · view only</string>
+<string name="manage_startup_user_system_counts">User apps: %1$d · system components: %2$d</string>
+<string name="manage_startup_no_user_apps">No user-installed apps with startup receivers were found. All listed entries are system components and are view-only.</string>
+<string name="manage_startup_no_controllable_apps">User apps were found, but none of their startup components can currently be safely disabled. System components remain view-only.</string>""")
 merge(root / "feature/manage/src/main/res/values-ru/strings.xml", """<string name="manage_startup_check">Проверить автозапуск</string>
 <string name="manage_startup_reading">Читаем список автозапуска…</string>
 <string name="manage_startup_error">Не удалось прочитать список автозапуска. Проверьте подключение к ТВ и повторите попытку.</string>
@@ -172,7 +175,10 @@ merge(root / "feature/manage/src/main/res/values-ru/strings.xml", """<string nam
 <string name="manage_startup_boot">После загрузки</string>
 <string name="manage_startup_locked">До разблокировки</string>
 <string name="manage_startup_user_app">Пользовательское приложение</string>
-<string name="manage_startup_system_app">Системное приложение · только просмотр</string>""")
+<string name="manage_startup_system_app">Системное приложение · только просмотр</string>
+<string name="manage_startup_user_system_counts">Пользовательских приложений: %1$d · системных компонентов: %2$d</string>
+<string name="manage_startup_no_user_apps">Пользовательские приложения с компонентами автозапуска не найдены. Все записи в списке — системные компоненты, доступные только для просмотра.</string>
+<string name="manage_startup_no_controllable_apps">Пользовательские приложения найдены, но среди их компонентов сейчас нет безопасных для отключения. Системные компоненты доступны только для просмотра.</string>""")
 
 print("Read-only startup receiver inventory integrated.")
 
@@ -222,10 +228,23 @@ dialog = """        if (startupDialogVisible) {
                             val unknown = stringResource(R.string.manage_startup_unknown)
                             val boot = when (inventory.bootQuerySupported) { true -> available; false -> unsupported; null -> unknown }
                             val locked = when (inventory.lockedBootQuerySupported) { true -> available; false -> unsupported; null -> unknown }
+                            val userAppCount = inventory.receivers.count { it.userInstalled }
+                            val controllableCount = inventory.receivers.count {
+                                it.userInstalled && !it.isProtected &&
+                                    (it.enabledState == StartupComponentState.DEFAULT || it.enabledState == StartupComponentState.ENABLED) &&
+                                    it.savedOriginalState == null
+                            }
+                            Text(stringResource(R.string.manage_startup_user_system_counts, userAppCount, inventory.receivers.size - userAppCount), Modifier.padding(top = 8.dp))
+                            if (controllableCount == 0) {
+                                Text(
+                                    stringResource(if (userAppCount == 0) R.string.manage_startup_no_user_apps else R.string.manage_startup_no_controllable_apps),
+                                    Modifier.padding(top = 6.dp)
+                                )
+                            }
                             Text(stringResource(R.string.manage_startup_boot) + ": " + boot)
                             Text(stringResource(R.string.manage_startup_locked) + ": " + locked)
                             if (inventory.receivers.isEmpty()) Text(stringResource(R.string.manage_startup_empty), Modifier.padding(top = 8.dp))
-                            else inventory.receivers.forEach { receiver ->
+                            else inventory.receivers.sortedBy { !it.userInstalled }.forEach { receiver ->
                                 Text((if (receiver.userInstalled) stringResource(R.string.manage_startup_user_app) else stringResource(R.string.manage_startup_system_app)) + " · " + receiver.packageName + " · " + (if (receiver.lockedBoot) stringResource(R.string.manage_startup_locked) else stringResource(R.string.manage_startup_boot)) + "\\n" + receiver.component + "\\n" + when (receiver.enabledState) {
                                         StartupComponentState.DEFAULT -> "Состояние: по умолчанию"
                                         StartupComponentState.ENABLED -> "Состояние: включён"
