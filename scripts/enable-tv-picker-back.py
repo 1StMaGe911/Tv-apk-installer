@@ -60,7 +60,7 @@ for old, new, label in replacements:
     count = data.count(old)
     if count == 0 and label == "Manage screen Back handler and TV picker":
         import re
-        match = re.search(r"(?m)^([ \\t]*)ManageScreen\\([^\\n]*\\)", data)
+        match = re.search(r"(?m)^([ \t]*)ManageScreen\([^\n]*\)", data)
         if not match:
             raise SystemExit("Could not locate ManageScreen call for Back handler")
         indent = match.group(1)
