@@ -196,6 +196,14 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                                 is InstallOutcome.Failed -> error("Не удалось установить клавиатуру: " + outcome.detail)
                             }
                         }
+                        val refreshedImes = checked("ime list -a")
+                        if (!refreshedImes.contains(component)) {
+                            error("Клавиатура не зарегистрировалась в Android. Компонент: " + component + "; найдено: " + refreshedImes.take(1200))
+                        }
+                        val providerCheck = checked("dumpsys package " + context.packageName)
+                        if (!providerCheck.contains(context.packageName + ".remoteinput")) {
+                            error("В установленном APK не найден канал удалённого ввода")
+                        }
                         val previous = checked("settings get secure default_input_method").trim()
                         if (previous.isNotBlank() && previous != "null" && previous != component) {
                             prefs.edit().putString("remote_ime_previous_" + id.value, previous).apply()
@@ -262,7 +270,8 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
             return
         }
         val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        val command = "am broadcast -n " + context.packageName + "/tv.cleanyour.app.remote.RemoteInputReceiver -a tv.cleanyour.app.REMOTE_INPUT_TEXT --es payload " + quoteShell(encoded)
+        val uri = "content://" + context.packageName + ".remoteinput"
+        val command = "content call --uri " + uri + " --method commit --arg " + quoteShell(encoded)
         runShell(command, "Введено: " + value)
     }
 
