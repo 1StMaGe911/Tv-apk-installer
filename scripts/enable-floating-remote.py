@@ -30,7 +30,7 @@ replace_once(
 )
 replace_once(
     app_root,
-    "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }\n                    // 0.4.8",
+    "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }",
     "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }\n                    // 0.4.8",
 )
 replace_once(
