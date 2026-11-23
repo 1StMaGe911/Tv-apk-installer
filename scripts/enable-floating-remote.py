@@ -175,7 +175,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                             if (reply.exit != 0) error(reply.stderr.ifBlank { reply.stdout.ifBlank { "Команда отклонена: $command" } })
                             return reply.stdout
                         }
-                        val component = "tv.cleanyour.app/.remote.RemoteInputMethodService"
+                        val component = context.packageName + "/tv.cleanyour.app.remote.RemoteInputMethodService"
                         val installedImes = checked("ime list -a")
                         if (!installedImes.contains(component)) {
                             val apk = File(context.applicationInfo.sourceDir)
@@ -262,7 +262,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
             return
         }
         val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        val command = "am broadcast -n tv.cleanyour.app/.remote.RemoteInputReceiver -a tv.cleanyour.app.REMOTE_INPUT_TEXT --es payload " + quoteShell(encoded)
+        val command = "am broadcast -n " + context.packageName + "/tv.cleanyour.app.remote.RemoteInputReceiver -a tv.cleanyour.app.REMOTE_INPUT_TEXT --es payload " + quoteShell(encoded)
         runShell(command, "Введено: " + value)
     }
 
