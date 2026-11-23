@@ -80,6 +80,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
+import android.util.Base64
+import java.io.File
+import java.io.FileInputStream
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -87,6 +91,8 @@ import tv.cleanyour.app.AppGraph
 import tv.cleanyour.core.model.RawShell
 import tv.cleanyour.core.model.ShellLine
 import tv.cleanyour.core.model.TvId
+import tv.cleanyour.core.model.Sha256
+import tv.cleanyour.core.session.InstallOutcome
 import tv.cleanyour.core.session.ExecSpec
 import kotlin.math.roundToInt
 
@@ -103,6 +109,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
     var symbols by remember { mutableStateOf(false) }
     var shifted by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var imeReady by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var x by remember { mutableStateOf(prefs.getFloat("floating_remote_x", Float.NaN)) }
     var y by remember { mutableStateOf(prefs.getFloat("floating_remote_y", Float.NaN)) }
@@ -140,9 +147,85 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
 
     fun key(code: Int, label: String) = runShell("input keyevent " + code, label)
     fun quoteShell(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    fun prepareIme() {
+        if (busy || imeReady) return
+        val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() }
+        if (id == null) {
+            status = "Сначала выбери телевизор в Clean Your TV"
+            return
+        }
+        busy = true
+        status = "Подготавливаю Unicode-клавиатуру на телевизоре…"
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val session = graph.access.live(id) ?: graph.access.quiet(id)
+                        ?: error("Телевизор сейчас не подключён")
+                    val hold = session.hold()
+                    try {
+                        suspend fun checked(command: String): String {
+                            val reply = session.exec(ShellLine(command), ExecSpec(timeoutMs = 15000, idleTimeoutMs = 8000))
+                            if (reply.exit != 0) error(reply.stderr.ifBlank { reply.stdout.ifBlank { "Команда отклонена: $command" } })
+                            return reply.stdout
+                        }
+                        val component = "tv.cleanyour.app/.remote.RemoteInputMethodService"
+                        val installedImes = checked("ime list -a")
+                        if (!installedImes.contains(component)) {
+                            val apk = File(context.applicationInfo.sourceDir)
+                            if (!apk.isFile || apk.length() <= 0L) error("Не удалось прочитать APK приложения на телефоне")
+                            val digest = MessageDigest.getInstance("SHA-256")
+                            FileInputStream(apk).use { input ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    val count = input.read(buffer)
+                                    if (count < 0) break
+                                    digest.update(buffer, 0, count)
+                                }
+                            }
+                            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+                            val blob = graph.blobs.put(Sha256(sha), FileInputStream(apk), apk.length())
+                            when (val outcome = session.installStream(blob, blob.size)) {
+                                InstallOutcome.Installed -> Unit
+                                is InstallOutcome.Failed -> error("Не удалось установить клавиатуру: " + outcome.detail)
+                            }
+                        }
+                        val previous = checked("settings get secure default_input_method").trim()
+                        if (previous.isNotBlank() && previous != "null" && previous != component) {
+                            prefs.edit().putString("remote_ime_previous_" + id.value, previous).apply()
+                        }
+                        checked("ime enable " + component)
+                        checked("ime set " + component)
+                    } finally {
+                        hold.close()
+                    }
+                }
+            }
+            result.fold(
+                { imeReady = true; status = "Unicode-клавиатура подключена. Можно печатать по-русски и по-английски." },
+                { status = "Ошибка клавиатуры: " + (it.message ?: "не удалось подготовить ввод") }
+            )
+            busy = false
+        }
+    }
+
+    fun restoreIme() {
+        val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() } ?: return
+        val previous = prefs.getString("remote_ime_previous_" + id.value, null) ?: return
+        if (previous.isBlank() || previous == "null") return
+        runShell("ime set " + quoteShell(previous), "Восстановлена клавиатура телевизора")
+        prefs.edit().remove("remote_ime_previous_" + id.value).apply()
+        imeReady = false
+    }
+
     fun typeText(value: String) {
-        val encoded = value.replace("%", "%25").replace(" ", "%s")
-        runShell("input text " + quoteShell(encoded), "Введено: " + value)
+        if (!imeReady) {
+            status = "Сначала включи клавиатуру и дождись её подключения"
+            return
+        }
+        val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        val command = "am broadcast -n tv.cleanyour.app/.remote.RemoteInputReceiver -a tv.cleanyour.app.REMOTE_INPUT_TEXT --es payload " + quoteShell(encoded)
+        runShell(command, "Введено: " + value)
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -197,6 +280,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
 
 
     if (panelOpen) Dialog(onDismissRequest = {
+        restoreIme()
         panelOpen = false
         tucked = true
         x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
@@ -216,6 +300,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ПУЛЬТ ТВ", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color(0xFFF4D58A))
                     TextButton(onClick = {
+                        restoreIme()
                         panelOpen = false
                         tucked = true
                         x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
@@ -229,8 +314,14 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                     fontSize = 12.sp
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!keyboardMode) Button(onClick = { keyboardMode = true }, Modifier.weight(1f)) { Text("Клавиатура") }
-                    else Button(onClick = { keyboardMode = false }, Modifier.weight(1f)) { Text("Кнопки пульта") }
+                    if (!keyboardMode) Button(onClick = {
+                        keyboardMode = true
+                        prepareIme()
+                    }, Modifier.weight(1f)) { Text("Клавиатура") }
+                    else Button(onClick = {
+                        restoreIme()
+                        keyboardMode = false
+                    }, Modifier.weight(1f)) { Text("Кнопки пульта") }
                     TextButton(onClick = {
                         language = if (language == "RU") "EN" else "RU"
                         prefs.edit().putString("remote_keyboard_language", language).apply()
@@ -254,14 +345,20 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         RemoteKey("Назад", busy, Modifier.weight(1f)) { key(4, "Назад") }
                         RemoteKey("Домой", busy, Modifier.weight(1f)) { key(3, "Домой") }
-                        RemoteKey("Меню", busy, Modifier.weight(1f)) { key(82, "Меню") }
+                        RemoteKey("Меню", busy, Modifier.weight(1f)) { key(256, "Меню ТВ") }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RemoteKey("Настройки", busy, Modifier.weight(1f)) { key(176, "Настройки") }
                         RemoteKey("Громкость −", busy, Modifier.weight(1f)) { key(25, "Громкость −") }
                         RemoteKey("Громкость +", busy, Modifier.weight(1f)) { key(24, "Громкость +") }
                         RemoteKey("Mute", busy, Modifier.weight(1f)) { key(164, "Звук переключён") }
                     }
                 } else {
+                    if (!imeReady && !busy) {
+                        OutlinedButton(onClick = { prepareIme() }, Modifier.fillMaxWidth()) {
+                            Text("Подключить клавиатуру к ТВ")
+                        }
+                    }
                     val rows = when {
                         symbols -> listOf("1234567890".map { it.toString() }, listOf("@", "#", "\$", "%", "&", "-", "+", "(", ")", "/"),
                             listOf("*", "\"", "'", ":", ";", "!", "?", "⌫"))
@@ -295,6 +392,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                 if (status.isNotBlank()) Text(status, color = if (status.startsWith("Ошибка")) Color(0xFFFF8888) else Color.LightGray, fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = {
+                        restoreIme()
                         tucked = true
                         panelOpen = false
                         x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
