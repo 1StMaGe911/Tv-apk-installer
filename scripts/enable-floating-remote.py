@@ -74,7 +74,7 @@ fun FloatingRemoteControlOverlay() {
                     }
                 }
             }
-            status = result.getOrElse { "Ошибка: \${it.message ?: "не удалось подключиться"}" }
+            status = result.getOrElse { "Ошибка: " + (it.message ?: "не удалось подключиться") }
             busy = false
         }
     }
@@ -96,8 +96,9 @@ fun FloatingRemoteControlOverlay() {
                     .pointerInput(maxX, maxY) {
                         detectDragGestures(
                             onDragEnd = {
-                                x = if (currentX + bubbleSize / 2f >= maxX / 2f) rightDock else leftDock
-                                y = currentY
+                                val dragX = if (x.isFinite()) x else currentX
+                                x = if (dragX + bubbleSize / 2f >= maxX / 2f) rightDock else leftDock
+                                y = if (y.isFinite()) y else currentY
                                 prefs.edit().putFloat("floating_remote_x", x).putFloat("floating_remote_y", y).apply()
                             },
                             onDrag = { change, amount ->
