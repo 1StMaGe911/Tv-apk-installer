@@ -56,4 +56,20 @@ replace_once(activity,"""                LaunchedEffect(Unit) {
                     }
                 }""")
 replace_once(worker,"flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK","flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP")
+
+# AppRoot keeps its first NavBackStack(start); changing start alone does not navigate.
+# Explicitly route to AppSettings when a notification requests the update screen.
+app_root=root/"vendor/cleanyourtv-app/app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
+replace_once(
+    app_root,
+    "    val backStack = rememberNavBackStack(start)\n",
+    """    val backStack = rememberNavBackStack(start)
+    LaunchedEffect(start) {
+        if (start == Dest.AppSettings) {
+            backStack.clear()
+            backStack.add(Dest.AppSettings)
+        }
+    }
+""",
+)
 print("Notification routing fixed for fresh and existing activities.")
