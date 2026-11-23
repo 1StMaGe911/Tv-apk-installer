@@ -193,7 +193,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                 if (!tucked) Text("🎮", fontSize = 23.sp)
             }
         }
-    }
+
 
     if (panelOpen) Dialog(onDismissRequest = { panelOpen = false }) {
         Surface(
@@ -291,6 +291,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                 }
             }
         }
+    }
     }
 }
 
