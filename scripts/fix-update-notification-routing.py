@@ -17,17 +17,24 @@ for import_line in (
     if import_line not in data:
         data=data.replace("import tv.cleanyour.core.flows.resolveStart","import tv.cleanyour.core.flows.resolveStart\n"+import_line,1)
 activity.write_text(data,encoding="utf-8")
-replace_once(activity,"class MainActivity : ComponentActivity() {\n    private val updateNotificationPermission","""class MainActivity : ComponentActivity() {
+replace_once(activity,"class MainActivity : ComponentActivity() {\n","""class MainActivity : ComponentActivity() {
     private var openUpdateSettings by mutableStateOf(false)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS", false)) openUpdateSettings = true
     }
-    private val graph""")
+""")
 replace_once(activity,"""                LaunchedEffect(Unit) {
                     graph.tvs.load()
-                    start = startKey(resolveStart(graph.tvs.tvs.value, graph.seams.journal))
+                    val openUpdateSettings = intent.getBooleanExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS", false)
+                    if (openUpdateSettings) {
+                        intent.removeExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS")
+                        start = Dest.AppSettings
+                        CleanYourTvUpdater.download(this@MainActivity)
+                    } else {
+                        start = startKey(resolveStart(graph.tvs.tvs.value, graph.seams.journal))
+                    }
                 }""","""                var graphLoaded by remember { mutableStateOf(false) }
                 LaunchedEffect(Unit) {
                     graph.tvs.load()
@@ -49,4 +56,4 @@ replace_once(activity,"""                LaunchedEffect(Unit) {
                     }
                 }""")
 replace_once(worker,"flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK","flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP")
-print("Notification routing fixed.")
+print("Notification routing fixed for fresh and existing activities.")
