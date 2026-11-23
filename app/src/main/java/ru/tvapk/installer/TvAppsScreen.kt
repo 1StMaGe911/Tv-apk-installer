@@ -40,7 +40,8 @@ data class TvInstalledApp(
     val versionCode: String?,
     val apkSizeBytes: Long?,
     val isSystem: Boolean = false,
-    val firstInstallTime: String? = null
+    val firstInstallTime: String? = null,
+    val isLaunchable: Boolean = false
 )
 
 private fun parseUserPackages(output: String): List<String> =
@@ -70,6 +71,16 @@ internal fun parseInstalledApp(packageName: String, details: String, sizeOutput:
     )
 }
 
+private fun parseLauncherPackages(output: String): Set<String> =
+    Regex("(?m)^\\s*([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)/")
+        .findAll(output).map { it.groupValues[1] }.toSet()
+
+private val protectedTvPackages = setOf(
+    "com.android.systemui", "com.android.settings",
+    "com.google.android.tvlauncher", "com.google.android.leanbacklauncher",
+    "com.android.providers.settings", "com.android.providers.media"
+)
+
 private fun formatApkSize(bytes: Long?): String {
     if (bytes == null || bytes <= 0L) return "Размер неизвестен"
     val mb = bytes / (1024.0 * 1024.0)
@@ -87,7 +98,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
     var selectedDevice by remember { mutableStateOf<TvDevice?>(null) }
     var packages by remember { mutableStateOf(emptyList<TvInstalledApp>()) }
     var appSearch by remember { mutableStateOf("") }
-    var appFilter by remember { mutableStateOf("Все") }
+    var appFilter by remember { mutableStateOf("Доступные") }
     var appSort by remember { mutableStateOf("Имя") }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var backupFolder by remember { mutableStateOf<Uri?>(null) }
@@ -133,6 +144,11 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                         )
                         val systemPackages = parseUserPackages(systemResponse.output).toSet()
                         val packageNames = parseUserPackages(response.output)
+                        val launcherOutput = listOf(
+                            adb.shell("cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER").allOutput,
+                            adb.shell("cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER").allOutput
+                        ).joinToString("\n")
+                        val launchablePackages = parseLauncherPackages(launcherOutput)
                         val installed = packageNames.mapIndexed { index, packageName ->
                             withContext(Dispatchers.Main) {
                                 status = "Получаем сведения: ${index + 1}/${packageNames.size}"
@@ -141,14 +157,16 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                             val sizes = adb.shell(
                                 "for p in $(pm path $packageName | sed 's/^package://'); do du -k \"\$p\"; done"
                             ).output
-                            parseInstalledApp(packageName, details, sizes, packageName in systemPackages)
+                            parseInstalledApp(packageName, details, sizes, packageName in systemPackages).copy(
+                                isLaunchable = packageName in launchablePackages
+                            )
                         }
                         info to installed
                     }
                 }
                 deviceInfo = result.first
                 packages = result.second
-                status = "Найдено приложений: ${result.second.size} (пользовательских: ${result.second.count { !it.isSystem }}, системных: ${result.second.count { it.isSystem }})."
+                status = "Найдено пакетов: ${result.second.size}. Приложений с кнопкой запуска: ${result.second.count { it.isLaunchable }}."
             } catch (failure: Exception) {
                 status = "Не удалось получить список: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
@@ -285,12 +303,14 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
             try {
                 val response = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
-                        adb.shell("monkey -p $packageName 1")
+                        val leanback = adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p $packageName")
+                        if (leanback.exitCode == 0 && !leanback.allOutput.contains("Error", ignoreCase = true) && !leanback.allOutput.contains("No activity found", ignoreCase = true)) leanback
+                        else adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
                     }
                 }
                 status = if (response.exitCode == 0) {
-                    TvAppsHistory.record(context, historyTvId, "Отправлена команда запуска приложения", packageName)
-                    "Команда запуска отправлена: $packageName"
+                    TvAppsHistory.record(context, historyTvId, "Запущено приложение", packageName)
+                    "Команда запуска выполнена: $packageName\n${response.allOutput.take(180)}"
                 } else "Не удалось запустить: ${response.allOutput.take(240)}"
             } catch (failure: Exception) {
                 status = "Ошибка запуска: ${failure.message ?: failure.javaClass.simpleName}"
@@ -301,7 +321,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
     fun stopApp(packageName: String) {
         if (!packageName.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+"))) return
         val app = packages.firstOrNull { it.packageName == packageName } ?: return
-        if (app.isSystem) return
+        if (!app.isLaunchable || packageName in protectedTvPackages) return
         val device = selectedDevice ?: return
         scope.launch {
             busy = true
@@ -392,7 +412,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                 )
                 Text("Фильтр приложений", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("Все", "Пользовательские", "Системные").forEach { option ->
+                    listOf("Доступные", "Все пакеты", "Пользовательские", "Системные").forEach { option ->
                         FilterChip(selected = appFilter == option, onClick = { appFilter = option }, label = { Text(option) }, enabled = !busy)
                     }
                 }
@@ -404,6 +424,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                 }
                 val visibleApps = packages.filter { app ->
                     val matchesFilter = when (appFilter) {
+                        "Доступные" -> app.isLaunchable
                         "Пользовательские" -> !app.isSystem
                         "Системные" -> app.isSystem
                         else -> true
@@ -460,7 +481,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
-                            OutlinedButton(onClick = { stopApp(app.packageName) }, enabled = !busy && !app.isSystem) { Text("Остановить") }
+                            OutlinedButton(onClick = { stopApp(app.packageName) }, enabled = !busy && app.isLaunchable && app.packageName !in protectedTvPackages) { Text("Остановить") }
                         }
                     }
                 }
