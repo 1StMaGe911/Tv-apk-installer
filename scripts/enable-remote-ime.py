@@ -53,7 +53,6 @@ service.parent.mkdir(parents=True, exist_ok=True)
 service.write_text(r'''package tv.cleanyour.app.remote
 
 import android.inputmethodservice.InputMethodService
-import android.os.Binder
 import android.os.Process
 import android.util.Base64
 import android.view.View
@@ -99,7 +98,7 @@ class RemoteInputMethodService : InputMethodService() {
 /** Explicit ADB broadcast endpoint; rejects broadcasts not sent by Android's shell UID. */
 class RemoteInputReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (Binder.getCallingUid() != Process.SHELL_UID) return
+        if (getSendingUid() != Process.SHELL_UID) return
         if (intent.action != "tv.cleanyour.app.REMOTE_INPUT_TEXT") return
         val encoded = intent.getStringExtra("payload") ?: return
         val value = runCatching {
