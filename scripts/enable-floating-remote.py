@@ -30,8 +30,8 @@ replace_once(
 )
 replace_once(
     app_root,
+    "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\n                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }",
     "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\n                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }",
-    "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }\n                    // 0.4.8",
 )
 replace_once(
     app_root,
