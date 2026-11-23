@@ -1,33 +1,73 @@
 #!/usr/bin/env python3
+"""Use Clean Your TV's selected, trusted ADB session for the floating remote."""
 from pathlib import Path
+
 root = Path(__file__).resolve().parents[1]
-legacy = root / "app/src/main/java/ru/tvapk/installer/MainActivity.kt"
-app_root = root / "vendor/cleanyourtv-app/app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
+upstream = root / "vendor/cleanyourtv-app"
+app_root = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 remote = root / "app/src/main/java/ru/tvapk/installer/FloatingRemoteControl.kt"
+
 def replace_once(path, old, new):
-    data=path.read_text(encoding="utf-8")
-    if new in data: return
-    if data.count(old)!=1: raise SystemExit(f"Expected one match in {path}: {old!r}; found {data.count(old)}")
-    path.write_text(data.replace(old,new,1),encoding="utf-8")
-replace_once(legacy,"private fun connectWithRetry(","internal fun connectWithRetry(")
-replace_once(legacy,"private fun sendTvKey(","internal fun sendTvKey(")
-replace_once(app_root,"import tv.cleanyour.feature.setup.SetupFlow","import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.FloatingRemoteControlOverlay")
-replace_once(app_root,"        // R5-W8 O2: a Manage write that paused left its run open;","        FloatingRemoteControlOverlay()\n        // R5-W8 O2: a Manage write that paused left its run open;")
+    data = path.read_text(encoding="utf-8")
+    if new in data:
+        return
+    count = data.count(old)
+    if count != 1:
+        raise SystemExit("Expected one match in " + str(path) + ": " + repr(old) + "; found " + str(count))
+    path.write_text(data.replace(old, new, 1), encoding="utf-8")
+
+# The selected TV ID follows the actual Manage selection and any TV-specific screen.
+replace_once(
+    app_root,
+    "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.FloatingRemoteControlOverlay",
+    "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.FloatingRemoteControlOverlay\nimport tv.cleanyour.core.model.TvId",
+)
+replace_once(
+    app_root,
+    "    val scope = rememberCoroutineScope()\n",
+    "    val scope = rememberCoroutineScope()\n    var remoteTvId by remember { mutableStateOf<String?>(null) }\n",
+)
+replace_once(
+    app_root,
+    "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }\n                    // 0.4.8",
+    "                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }\n                    LaunchedEffect(m) { m.effects.collect { onManageEffect(it) } }\n                    // 0.4.8",
+)
+replace_once(
+    app_root,
+    "    Box(Modifier.fillMaxSize()) {\n        NavDisplay(",
+    """    val remoteTargetId = when (val current = backStack.lastOrNull()) {
+        is Dest.Manage -> remoteTvId ?: current.tvId
+        is Dest.Home -> current.tvId
+        is Dest.Modules -> current.tvId
+        is Dest.Restore -> current.tvId
+        is Dest.TvSettings -> current.tvId
+        is Dest.SwitchedOff -> current.tvId
+        is Dest.Leftovers -> current.tvId
+        is Dest.Setup -> current.tvId ?: remoteTvId
+        is Dest.Report -> current.tvId ?: remoteTvId
+        else -> remoteTvId
+    }
+    Box(Modifier.fillMaxSize()) {
+        NavDisplay(""",
+)
+replace_once(app_root, "        FloatingRemoteControlOverlay()\n", "        FloatingRemoteControlOverlay(graph, remoteTargetId)\n")
+
 remote.write_text(r'''package ru.tvapk.installer
 
-import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -37,46 +77,66 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import tv.cleanyour.app.AppGraph
+import tv.cleanyour.core.model.RawShell
+import tv.cleanyour.core.model.ShellLine
+import tv.cleanyour.core.model.TvId
+import tv.cleanyour.core.session.ExecSpec
 import kotlin.math.roundToInt
 
+@OptIn(RawShell::class)
 @Composable
-fun FloatingRemoteControlOverlay() {
-    val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("tv_installer", Context.MODE_PRIVATE) }
+fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("tv_installer", android.content.Context.MODE_PRIVATE) }
     val scope = rememberCoroutineScope()
-    var visible by remember { mutableStateOf(prefs.getBoolean("floating_remote_visible", true)) }
+    var tucked by remember { mutableStateOf(prefs.getBoolean("floating_remote_tucked", false)) }
     var panelOpen by remember { mutableStateOf(false) }
-    var host by remember { mutableStateOf(prefs.getString("ip", "").orEmpty()) }
-    var port by remember { mutableStateOf(prefs.getString("port", "5555").orEmpty()) }
+    var keyboardMode by remember { mutableStateOf(false) }
+    var language by remember { mutableStateOf(prefs.getString("remote_keyboard_language", "RU") ?: "RU") }
+    var symbols by remember { mutableStateOf(false) }
+    var shifted by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var x by remember { mutableStateOf(prefs.getFloat("floating_remote_x", Float.NaN)) }
     var y by remember { mutableStateOf(prefs.getFloat("floating_remote_y", Float.NaN)) }
 
-    fun send(keyCode: Int, label: String) {
+    fun runShell(command: String, label: String) {
         if (busy) return
-        val target = host.trim()
-        val targetPort = port.toIntOrNull() ?: 5555
-        if (target.isBlank() || targetPort !in 1..65535) {
-            status = "Укажи IP телевизора и порт ADB (обычно 5555)"
+        val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() }
+        if (id == null) {
+            status = "Сначала выбери телевизор в Clean Your TV"
             panelOpen = true
             return
         }
         busy = true
-        status = "Отправляю команду…"
-        prefs.edit().putString("ip", target).putString("port", targetPort.toString()).apply()
+        status = "Отправляю на выбранный телевизор…"
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    connectWithRetry(context, target, targetPort) { adb ->
-                        sendTvKey(adb, keyCode)
-                        label
+                    // Reuse the app's own trusted session; if it has gone idle, quietly reconnect
+                    // to this exact saved TV identity. No second IP entry or independent pairing.
+                    val session = graph.access.live(id) ?: graph.access.quiet(id)
+                        ?: throw IllegalStateException("Телевизор сейчас не подключён. Открой его в Clean Your TV и повтори.")
+                    val hold = session.hold()
+                    try {
+                        val reply = session.exec(ShellLine(command), ExecSpec(timeoutMs = 6000, idleTimeoutMs = 4000))
+                        if (reply.exit != 0) throw IllegalStateException(reply.stderr.ifBlank { "Команда отклонена телевизором" })
+                    } finally {
+                        hold.close()
                     }
                 }
             }
-            status = result.getOrElse { "Ошибка: " + (it.message ?: "не удалось подключиться") }
+            status = result.fold({ label }, { "Ошибка: " + (it.message ?: "не удалось отправить команду") })
             busy = false
         }
+    }
+
+    fun key(code: Int, label: String) = runShell("input keyevent " + code, label)
+    fun quoteShell(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+    fun typeText(value: String) {
+        val encoded = value.replace("%", "%25").replace(" ", "%s")
+        runShell("input text " + quoteShell(encoded), "Введено: " + value)
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -89,81 +149,161 @@ fun FloatingRemoteControlOverlay() {
         val rightDock = maxX + bubbleSize - peek
         val currentX = (if (x.isFinite()) x else maxX).coerceIn(leftDock, rightDock)
         val currentY = (if (y.isFinite()) y else maxY * 0.45f).coerceIn(0f, maxY)
-        if (visible) {
-            Surface(
-                modifier = Modifier.offset { IntOffset(currentX.roundToInt(), currentY.roundToInt()) }
-                    .size(54.dp).zIndex(100f)
-                    .pointerInput(maxX, maxY) {
-                        detectDragGestures(
-                            onDragEnd = {
-                                val dragX = if (x.isFinite()) x else currentX
-                                x = if (dragX + bubbleSize / 2f >= maxX / 2f) rightDock else leftDock
-                                y = if (y.isFinite()) y else currentY
-                                prefs.edit().putFloat("floating_remote_x", x).putFloat("floating_remote_y", y).apply()
-                            },
-                            onDrag = { change, amount ->
-                                change.consume()
-                                x = ((if (x.isFinite()) x else currentX) + amount.x).coerceIn(leftDock, rightDock)
-                                y = ((if (y.isFinite()) y else currentY) + amount.y).coerceIn(0f, maxY)
-                            }
-                        )
-                    }.clickable { panelOpen = true },
-                shape = CircleShape, color = Color(0xFFD6A84F), contentColor = Color(0xFF171006),
-                shadowElevation = 12.dp, border = BorderStroke(1.dp, Color(0xFFF4D58A))
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("🎮", fontSize = 23.sp) }
+        Surface(
+            modifier = Modifier.offset { IntOffset(currentX.roundToInt(), currentY.roundToInt()) }
+                .size(54.dp).zIndex(100f)
+                .pointerInput(maxX, maxY) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            val dragX = if (x.isFinite()) x else currentX
+                            x = if (dragX + bubbleSize / 2f >= maxX / 2f) rightDock else leftDock
+                            y = if (y.isFinite()) y else currentY
+                            prefs.edit().putFloat("floating_remote_x", x).putFloat("floating_remote_y", y).apply()
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            x = ((if (x.isFinite()) x else currentX) + amount.x).coerceIn(leftDock, rightDock)
+                            y = ((if (y.isFinite()) y else currentY) + amount.y).coerceIn(0f, maxY)
+                        }
+                    )
+                }
+                .clickable {
+                    if (tucked) {
+                        tucked = false
+                        x = if (currentX < 0f) 0f else maxX
+                        prefs.edit().putBoolean("floating_remote_tucked", false)
+                            .putFloat("floating_remote_x", x).apply()
+                    } else {
+                        panelOpen = true
+                    }
+                },
+            shape = if (tucked) RoundedCornerShape(14.dp) else CircleShape,
+            color = if (tucked) Color(0xFFB98A38) else Color(0xFFD6A84F),
+            contentColor = Color(0xFF171006),
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, Color(0xFFF4D58A))
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (!tucked) Text("🎮", fontSize = 23.sp)
             }
         }
     }
 
     if (panelOpen) Dialog(onDismissRequest = { panelOpen = false }) {
-        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge,
-            color = Color(0xFF20242D), contentColor = Color.White) {
-            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            color = Color(0xFF20242D),
+            contentColor = Color.White
+        ) {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 720.dp).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ПУЛЬТ ТЕЛЕВИЗОРА", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color(0xFFF4D58A))
+                    Text("ПУЛЬТ ТВ", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color(0xFFF4D58A))
                     TextButton(onClick = { panelOpen = false }) { Text("Закрыть") }
                 }
-                TextField(host, { host = it }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("IP телевизора") })
-                TextField(port, { port = it.filter(Char::isDigit).take(5) }, Modifier.fillMaxWidth(), singleLine = true, label = { Text("Порт ADB") })
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { RemoteKey("▲", busy) { send(19, "Вверх") } }
+                Text(
+                    selectedTvId?.let { "Управление выбранным телевизором" } ?: "Телевизор не выбран",
+                    color = Color.LightGray,
+                    fontSize = 12.sp
+                )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RemoteKey("◀", busy, Modifier.weight(1f)) { send(21, "Влево") }
-                    RemoteKey("OK", busy, Modifier.weight(1f), true) { send(23, "OK") }
-                    RemoteKey("▶", busy, Modifier.weight(1f)) { send(22, "Вправо") }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { RemoteKey("▼", busy) { send(20, "Вниз") } }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RemoteKey("Назад", busy, Modifier.weight(1f)) { send(4, "Назад") }
-                    RemoteKey("Домой", busy, Modifier.weight(1f)) { send(3, "Домой") }
-                    RemoteKey("Меню", busy, Modifier.weight(1f)) { send(82, "Меню") }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    RemoteKey("Громкость −", busy, Modifier.weight(1f)) { send(25, "Громкость −") }
-                    RemoteKey("Громкость +", busy, Modifier.weight(1f)) { send(24, "Громкость +") }
-                    RemoteKey("Mute", busy, Modifier.weight(1f)) { send(164, "Звук переключён") }
-                }
-                if (status.isNotBlank()) Text(status, color = if (status.startsWith("Ошибка")) Color(0xFFFF8888) else Color.LightGray, fontSize = 12.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    if (!keyboardMode) Button(onClick = { keyboardMode = true }, Modifier.weight(1f)) { Text("Клавиатура") }
+                    else Button(onClick = { keyboardMode = false }, Modifier.weight(1f)) { Text("Кнопки пульта") }
                     TextButton(onClick = {
-                        visible = false
-                        prefs.edit().putBoolean("floating_remote_visible", false).apply()
+                        language = if (language == "RU") "EN" else "RU"
+                        prefs.edit().putString("remote_keyboard_language", language).apply()
+                        symbols = false
+                        shifted = false
+                    }, enabled = keyboardMode) { Text(language) }
+                }
+
+                if (!keyboardMode) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        RemoteKey("▲", busy) { key(19, "Вверх") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RemoteKey("◀", busy, Modifier.weight(1f)) { key(21, "Влево") }
+                        RemoteKey("OK", busy, Modifier.weight(1f), true) { key(23, "OK") }
+                        RemoteKey("▶", busy, Modifier.weight(1f)) { key(22, "Вправо") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                        RemoteKey("▼", busy) { key(20, "Вниз") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RemoteKey("Назад", busy, Modifier.weight(1f)) { key(4, "Назад") }
+                        RemoteKey("Домой", busy, Modifier.weight(1f)) { key(3, "Домой") }
+                        RemoteKey("Меню", busy, Modifier.weight(1f)) { key(82, "Меню") }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        RemoteKey("Громкость −", busy, Modifier.weight(1f)) { key(25, "Громкость −") }
+                        RemoteKey("Громкость +", busy, Modifier.weight(1f)) { key(24, "Громкость +") }
+                        RemoteKey("Mute", busy, Modifier.weight(1f)) { key(164, "Звук переключён") }
+                    }
+                } else {
+                    val rows = when {
+                        symbols -> listOf("1234567890".map { it.toString() }, listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "/"),
+                            listOf("*", "\"", "'", ":", ";", "!", "?", "⌫"))
+                        language == "RU" -> listOf("йцукенгшщзх".map { it.toString() }, "фывапролджэ".map { it.toString() },
+                            "ячсмитьбю".map { it.toString() })
+                        else -> listOf("qwertyuiop".map { it.toString() }, "asdfghjkl".map { it.toString() },
+                            "zxcvbnm".map { it.toString() })
+                    }
+                    rows.forEach { row ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            row.forEach { value ->
+                                RemoteKey(value, busy, Modifier.weight(1f)) {
+                                    when (value) {
+                                        "⌫" -> key(67, "Удаление")
+                                        else -> typeText(if (shifted) value.uppercase() else value)
+                                    }
+                                    if (shifted) shifted = false
+                                }
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        RemoteKey("⇧", busy, Modifier.weight(1f)) { shifted = !shifted }
+                        RemoteKey(if (symbols) "ABC" else "?123", busy, Modifier.weight(1f)) { symbols = !symbols; shifted = false }
+                        RemoteKey("Пробел", busy, Modifier.weight(2.5f)) { key(62, "Пробел") }
+                        RemoteKey("⌫", busy, Modifier.weight(1f)) { key(67, "Удаление") }
+                        RemoteKey("↵", busy, Modifier.weight(1f)) { key(66, "Ввод") }
+                    }
+                }
+
+                if (status.isNotBlank()) Text(status, color = if (status.startsWith("Ошибка")) Color(0xFFFF8888) else Color.LightGray, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = {
+                        tucked = true
                         panelOpen = false
-                    }) { Text("Скрыть кружок") }
-                    Button(onClick = {
-                        prefs.edit().putString("ip", host.trim()).putString("port", port.trim()).apply()
-                        status = "Адрес сохранён"
-                    }) { Text("Сохранить IP") }
+                        x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
+                        prefs.edit().putBoolean("floating_remote_tucked", true)
+                            .putFloat("floating_remote_x", x).apply()
+                    }) { Text("Скрыть к краю") }
                 }
             }
         }
     }
 }
 
+private fun currentBubbleIsRight(x: Float, maxX: Float, rightDock: Float): Boolean =
+    if (x.isFinite()) x > maxX / 2f else rightDock > maxX / 2f
+
 @Composable
-private fun RemoteKey(label: String, busy: Boolean, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
-    if (primary) Button(onClick, enabled = !busy, modifier = modifier.height(46.dp)) { Text(label) }
-    else OutlinedButton(onClick, enabled = !busy, modifier = modifier.height(46.dp)) { Text(label) }
+private fun RemoteKey(
+    label: String,
+    busy: Boolean,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+    onClick: () -> Unit
+) {
+    if (primary) Button(onClick, enabled = !busy, modifier = modifier.height(44.dp), contentPadding = PaddingValues(horizontal = 5.dp, vertical = 3.dp)) {
+        Text(label, fontSize = 13.sp)
+    } else OutlinedButton(onClick, enabled = !busy, modifier = modifier.height(44.dp), contentPadding = PaddingValues(horizontal = 5.dp, vertical = 3.dp)) {
+        Text(label, fontSize = 13.sp)
+    }
 }
-''',encoding="utf-8")
-print("Floating remote overlay installed.")
+''', encoding="utf-8")
+print("Selected-TV remote and keyboard integration written.")
