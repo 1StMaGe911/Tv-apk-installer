@@ -85,6 +85,10 @@ private fun parseLauncherPackages(output: String): Set<String> =
     Regex("(?m)^\\s*([A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+)/")
         .findAll(output).map { it.groupValues[1] }.toSet()
 
+internal fun parseResolvedTvActivity(output: String): String? =
+    Regex("""(?m)^\\s*([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)\\s*$""")
+        .findAll(output).lastOrNull()?.groupValues?.get(1)
+
 private val protectedTvPackages = setOf(
     "com.android.systemui", "com.android.settings",
     "com.google.android.tvlauncher", "com.google.android.leanbacklauncher",
@@ -313,19 +317,36 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
             try {
                 val response = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
-                        val monkey = adb.shell("monkey -p $packageName 1")
-                        if (monkey.exitCode == 0 && !monkey.allOutput.contains("No activities found", ignoreCase = true) && !monkey.allOutput.contains("Error", ignoreCase = true)) monkey
-                        else {
-                            val leanback = adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p $packageName")
-                            if (leanback.exitCode == 0 && !leanback.allOutput.contains("Error", ignoreCase = true) && !leanback.allOutput.contains("unable to resolve", ignoreCase = true)) leanback
-                            else adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
+                        val settingsAction = when (packageName) {
+                            "com.android.settings", "com.google.android.tv.settings" -> "android.settings.SETTINGS"
+                            else -> null
+                        }
+                        if (settingsAction != null) {
+                            adb.shell("am start -W -a $settingsAction")
+                        } else {
+                            val leanback = adb.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p $packageName")
+                            val launcher = adb.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
+                            val component = parseResolvedTvActivity(leanback.allOutput)
+                                ?: parseResolvedTvActivity(launcher.allOutput)
+                            if (component != null) {
+                                adb.shell("am start -W -n $component")
+                            } else {
+                                adb.shell("monkey -p $packageName 1")
+                            }
                         }
                     }
                 }
-                status = if (response.exitCode == 0) {
+                val output = response.allOutput
+                val failed = response.exitCode != 0 ||
+                    output.contains("Error:", ignoreCase = true) ||
+                    output.contains("unable to resolve", ignoreCase = true) ||
+                    output.contains("No activities found", ignoreCase = true) ||
+                    output.contains("No activity found", ignoreCase = true) ||
+                    output.contains("monkey aborted", ignoreCase = true)
+                status = if (!failed) {
                     TvAppsHistory.record(context, historyTvId, "Запущено приложение", packageName)
-                    "Команда запуска выполнена: $packageName\n${response.allOutput.take(180)}"
-                } else "Не удалось запустить: ${response.allOutput.take(240)}"
+                    "Приложение запущено: $packageName\\n${output.take(180)}"
+                } else "Не удалось запустить $packageName: ${output.take(240).ifBlank { "Android не нашёл активность запуска" }}"
             } catch (failure: Exception) {
                 status = "Ошибка запуска: ${failure.message ?: failure.javaClass.simpleName}"
             } finally { busy = false }
