@@ -85,6 +85,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.cleanyour.app.AppGraph
@@ -113,6 +114,11 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
     var status by remember { mutableStateOf("") }
     var x by remember { mutableStateOf(prefs.getFloat("floating_remote_x", Float.NaN)) }
     var y by remember { mutableStateOf(prefs.getFloat("floating_remote_y", Float.NaN)) }
+
+    LaunchedEffect(selectedTvId) {
+        imeReady = false
+        keyboardMode = false
+    }
 
     fun runShell(command: String, label: String) {
         if (busy) return
@@ -213,9 +219,41 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
         val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() } ?: return
         val previous = prefs.getString("remote_ime_previous_" + id.value, null) ?: return
         if (previous.isBlank() || previous == "null") return
-        runShell("ime set " + quoteShell(previous), "Восстановлена клавиатура телевизора")
-        prefs.edit().remove("remote_ime_previous_" + id.value).apply()
-        imeReady = false
+        if (busy) {
+            scope.launch {
+                while (busy) delay(100)
+                restoreIme()
+            }
+            return
+        }
+        busy = true
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val session = graph.access.live(id) ?: graph.access.quiet(id)
+                        ?: error("Телевизор сейчас не подключён")
+                    val hold = session.hold()
+                    try {
+                        val reply = session.exec(
+                            ShellLine("ime set " + quoteShell(previous)),
+                            ExecSpec(timeoutMs = 15000, idleTimeoutMs = 8000)
+                        )
+                        if (reply.exit != 0) error(reply.stderr.ifBlank { "Не удалось вернуть клавиатуру телевизора" })
+                    } finally {
+                        hold.close()
+                    }
+                }
+            }
+            result.fold(
+                {
+                    prefs.edit().remove("remote_ime_previous_" + id.value).apply()
+                    imeReady = false
+                    status = "Восстановлена клавиатура телевизора"
+                },
+                { status = "Не удалось вернуть клавиатуру ТВ: " + (it.message ?: "ошибка") }
+            )
+            busy = false
+        }
     }
 
     fun typeText(value: String) {
