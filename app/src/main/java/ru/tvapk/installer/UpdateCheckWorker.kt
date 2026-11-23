@@ -156,7 +156,8 @@ class UpdateCheckWorker(
             applicationContext,
             1001,
             Intent(applicationContext, tv.cleanyour.app.MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS", true)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -164,10 +165,10 @@ class UpdateCheckWorker(
         val notification = NotificationCompat.Builder(applicationContext, UPDATE_CHANNEL_ID)
             .setSmallIcon(applicationContext.applicationInfo.icon)
             .setContentTitle("Доступно обновление Clean Your TV")
-            .setContentText("Вышла версия $version. Открой приложение, чтобы скачать обновление.")
+            .setContentText("Вышла версия $version. Нажми, чтобы открыть настройки и начать загрузку.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "Вышла версия $version. Открой Clean Your TV и проверь обновления."
+                    "Вышла версия $version. Открой настройки Clean Your TV — загрузка начнётся автоматически."
                 )
             )
             .setContentIntent(openApp)
