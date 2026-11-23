@@ -17,11 +17,12 @@ def replace_once(path, old, new):
     path.write_text(data.replace(old, new, 1), encoding="utf-8")
 
 # The selected TV ID follows the actual Manage selection and any TV-specific screen.
-replace_once(
-    app_root,
-    "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.FloatingRemoteControlOverlay",
-    "import tv.cleanyour.feature.setup.SetupFlow\nimport ru.tvapk.installer.FloatingRemoteControlOverlay\nimport tv.cleanyour.core.model.TvId",
-)
+app_root_text = app_root.read_text(encoding="utf-8")
+if "import ru.tvapk.installer.FloatingRemoteControlOverlay" not in app_root_text:
+    anchor = "import tv.cleanyour.feature.setup.SetupFlow\n"
+    if app_root_text.count(anchor) != 1:
+        raise SystemExit("Could not locate AppRoot import anchor for floating remote")
+    app_root.write_text(app_root_text.replace(anchor, anchor + "import ru.tvapk.installer.FloatingRemoteControlOverlay\n", 1), encoding="utf-8")
 replace_once(
     app_root,
     "    val scope = rememberCoroutineScope()\n",
@@ -50,7 +51,11 @@ replace_once(
     Box(Modifier.fillMaxSize()) {
         NavDisplay(""",
 )
-replace_once(app_root, "        FloatingRemoteControlOverlay()\n", "        FloatingRemoteControlOverlay(graph, remoteTargetId)\n")
+replace_once(
+    app_root,
+    "        // R5-W8 O2: a Manage write that paused left its run open;",
+    "        FloatingRemoteControlOverlay(graph, remoteTargetId)\n        // R5-W8 O2: a Manage write that paused left its run open;",
+)
 
 remote.write_text(r'''package ru.tvapk.installer
 
@@ -244,7 +249,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                     }
                 } else {
                     val rows = when {
-                        symbols -> listOf("1234567890".map { it.toString() }, listOf("@", "#", "$", "%", "&", "-", "+", "(", ")", "/"),
+                        symbols -> listOf("1234567890".map { it.toString() }, listOf("@", "#", "\$", "%", "&", "-", "+", "(", ")", "/"),
                             listOf("*", "\"", "'", ":", ";", "!", "?", "⌫"))
                         language == "RU" -> listOf("йцукенгшщзх".map { it.toString() }, "фывапролджэ".map { it.toString() },
                             "ячсмитьбю".map { it.toString() })
