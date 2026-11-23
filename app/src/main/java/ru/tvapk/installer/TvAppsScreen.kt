@@ -86,7 +86,7 @@ private fun parseLauncherPackages(output: String): Set<String> =
         .findAll(output).map { it.groupValues[1] }.toSet()
 
 internal fun parseResolvedTvActivity(output: String): String? =
-    Regex("""(?m)^\\s*([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)\\s*$""")
+    Regex("""(?m)^\s*([A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+)\s*$""")
         .findAll(output).lastOrNull()?.groupValues?.get(1)
 
 private val protectedTvPackages = setOf(
