@@ -29,6 +29,10 @@ object CleanYourTvUpdater {
     private const val EXPECTED_SIZE = "expected_size"
     private const val EXPECTED_TAG = "expected_tag"
 
+    // Prevent simultaneous notification and Settings taps from creating competing downloads.
+    private val downloadLock = Any()
+    private var downloadInProgress = false
+
     private fun updateFailureMessage(error: Exception): String = when (error) {
         is SocketTimeoutException -> "Истекло время ожидания ответа GitHub. Проверь подключение к интернету."
         is UnknownHostException -> "Не удалось связаться с GitHub. Проверь подключение к интернету."
@@ -39,6 +43,13 @@ object CleanYourTvUpdater {
 
     /** Checks GitHub metadata and downloads only a newer, verifiable full APK. */
     fun download(context: Context) {
+        synchronized(downloadLock) {
+            if (downloadInProgress) {
+                toast(context, "Проверка или загрузка обновления уже выполняется.")
+                return
+            }
+            downloadInProgress = true
+        }
         toast(context, "Проверяем обновление…")
         Thread {
             try {
@@ -112,6 +123,8 @@ object CleanYourTvUpdater {
                 toast(context, "Загрузка Clean Your TV $tag началась. После завершения нажмите «Установить обновление».")
             } catch (e: Exception) {
                 toast(context, "Ошибка обновления: ${updateFailureMessage(e)}")
+            } finally {
+                synchronized(downloadLock) { downloadInProgress = false }
             }
         }.start()
     }
