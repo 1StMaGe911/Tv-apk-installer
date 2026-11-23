@@ -17,7 +17,7 @@ for import_line in (
     if import_line not in data:
         data=data.replace("import tv.cleanyour.core.flows.resolveStart","import tv.cleanyour.core.flows.resolveStart\n"+import_line,1)
 activity.write_text(data,encoding="utf-8")
-replace_once(activity,"class MainActivity : ComponentActivity() {\n    private val graph","""class MainActivity : ComponentActivity() {
+replace_once(activity,"class MainActivity : ComponentActivity() {\n    private val updateNotificationPermission","""class MainActivity : ComponentActivity() {
     private var openUpdateSettings by mutableStateOf(false)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
