@@ -62,11 +62,15 @@ replace_once(
 )
 
 main_activity = upstream / "app/src/main/kotlin/tv/cleanyour/app/MainActivity.kt"
-replace_once(
-    main_activity,
-    "import tv.cleanyour.core.flows.resolveStart",
-    "import tv.cleanyour.core.flows.resolveStart\nimport ru.tvapk.installer.CleanYourTvUpdater",
-)
+# The upstream app may already import this updater; never add a duplicate.
+main_activity_text = main_activity.read_text(encoding="utf-8")
+updater_import = "import ru.tvapk.installer.CleanYourTvUpdater"
+if updater_import not in main_activity_text:
+    replace_once(
+        main_activity,
+        "import tv.cleanyour.core.flows.resolveStart",
+        "import tv.cleanyour.core.flows.resolveStart\\n" + updater_import,
+    )
 replace_once(
     main_activity,
     "                    start = startKey(resolveStart(graph.tvs.tvs.value, graph.seams.journal))",
