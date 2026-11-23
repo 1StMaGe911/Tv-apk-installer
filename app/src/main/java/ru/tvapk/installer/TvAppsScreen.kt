@@ -52,8 +52,17 @@ private fun parseUserPackages(output: String): List<String> =
         .filter { it.matches(Regex("[A-Za-z0-9_]+(\\.[A-Za-z0-9_]+)+")) }
         .distinct().sorted().toList()
 
+private val knownTvAppLabels = mapOf(
+    "com.netflix.ninja" to "Netflix",
+    "com.google.android.youtube.tv" to "YouTube",
+    "com.google.android.youtube.tvleanback" to "YouTube",
+    "com.google.android.youtube" to "YouTube",
+    "com.amazon.amazonvideo.livingroom" to "Prime Video",
+    "com.amazon.avod.thirdpartyclient" to "Prime Video"
+)
+
 internal fun parseInstalledApp(packageName: String, details: String, sizeOutput: String, isSystem: Boolean = false): TvInstalledApp {
-    val appLabel = Regex("""(?m)^\s*application-label(?:-[^:]+)?:\s*['"]?(.*?)['"]?\s*$""").find(details)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+    val appLabel = knownTvAppLabels[packageName] ?: Regex("""(?m)^\s*application-label(?:-[^:]+)?:\s*['"]?(.*?)['"]?\s*$""").find(details)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
         ?: Regex("""nonLocalizedLabel=(?:'([^']*)'|"([^"]*)"|([^,}]+))""").find(details)?.let { it.groupValues.drop(1).firstOrNull(String::isNotBlank)?.trim() }?.takeIf { it.isNotBlank() }
         ?: packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }
     val versionName = Regex("""versionName=(\S+)""").find(details)?.groupValues?.get(1)
@@ -304,9 +313,13 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
             try {
                 val response = withContext(Dispatchers.IO) {
                     Dadb.create(device.ip, device.port, tvAppsKeyPair(context)).use { adb ->
-                        val leanback = adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p $packageName")
-                        if (leanback.exitCode == 0 && !leanback.allOutput.contains("Error", ignoreCase = true) && !leanback.allOutput.contains("No activity found", ignoreCase = true)) leanback
-                        else adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
+                        val monkey = adb.shell("monkey -p $packageName 1")
+                        if (monkey.exitCode == 0 && !monkey.allOutput.contains("No activities found", ignoreCase = true) && !monkey.allOutput.contains("Error", ignoreCase = true)) monkey
+                        else {
+                            val leanback = adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LEANBACK_LAUNCHER -p $packageName")
+                            if (leanback.exitCode == 0 && !leanback.allOutput.contains("Error", ignoreCase = true) && !leanback.allOutput.contains("unable to resolve", ignoreCase = true)) leanback
+                            else adb.shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
+                        }
                     }
                 }
                 status = if (response.exitCode == 0) {
@@ -455,7 +468,12 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                 Text("Пользовательские приложения не найдены или список ещё не загружен.")
             }
             val visibleApps = packages.filter { app ->
-                val matchesFilter = when (appFilter) { "Пользовательские" -> !app.isSystem; "Системные" -> app.isSystem; else -> true }
+                val matchesFilter = when (appFilter) {
+                    "Доступные" -> app.isLaunchable
+                    "Пользовательские" -> !app.isSystem
+                    "Системные" -> app.isSystem
+                    else -> true
+                }
                 val query = appSearch.trim()
                 matchesFilter && (query.isBlank() || app.appLabel.contains(query, ignoreCase = true) || app.packageName.contains(query, ignoreCase = true))
             }.let { list -> when (appSort) { "Размер" -> list.sortedByDescending { it.apkSizeBytes ?: -1L }; "Дата" -> list.sortedByDescending { it.firstInstallTime.orEmpty() }; else -> list.sortedBy { it.appLabel.lowercase() } } }
