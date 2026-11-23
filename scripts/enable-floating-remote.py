@@ -30,8 +30,8 @@ replace_once(
 )
 replace_once(
     app_root,
-    "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\\n                    val state by m.state.collectAsStateWithLifecycle()",
-    "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\\n                    val state by m.state.collectAsStateWithLifecycle()\\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }",
+    "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\n                    val state by m.state.collectAsStateWithLifecycle()",
+    "                    val m = rememberMachine(\"manage:${key.tvId}\") { graph.manage(it, key.tvId?.let(::TvId)) }\n                    val state by m.state.collectAsStateWithLifecycle()\n                    LaunchedEffect(state.current?.id) { remoteTvId = state.current?.id?.value }",
 )
 replace_once(
     app_root,
@@ -39,6 +39,7 @@ replace_once(
     """    val remoteTargetId = when (val current = backStack.lastOrNull()) {
         is Dest.Manage -> remoteTvId ?: current.tvId
         is Dest.Home -> current.tvId
+        is Dest.Customise -> current.tvId
         is Dest.Modules -> current.tvId
         is Dest.Restore -> current.tvId
         is Dest.TvSettings -> current.tvId
