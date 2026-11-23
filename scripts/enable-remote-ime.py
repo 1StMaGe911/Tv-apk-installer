@@ -22,14 +22,12 @@ addition = '''        <service
                 android:resource="@xml/remote_input_method" />
         </service>
 
-        <!-- Only the Android shell (the already paired ADB peer) may submit remote text. -->
-        <receiver
-            android:name="tv.cleanyour.app.remote.RemoteInputReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="tv.cleanyour.app.REMOTE_INPUT_TEXT" />
-            </intent-filter>
-        </receiver>
+        <!-- ADB shell-only IPC: shell holds DUMP; provider also verifies Binder UID. -->
+        <provider
+            android:name="tv.cleanyour.app.remote.RemoteInputProvider"
+            android:authorities="${applicationId}.remoteinput"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
 
 '''
 if "tv.cleanyour.app.remote.RemoteInputMethodService" not in text:
@@ -53,14 +51,17 @@ service.parent.mkdir(parents=True, exist_ok=True)
 service.write_text(r'''package tv.cleanyour.app.remote
 
 import android.inputmethodservice.InputMethodService
+import android.os.Binder
+import android.os.Bundle
 import android.os.Process
 import android.util.Base64
 import android.view.View
 import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
+import android.content.ContentProvider
+import android.content.ContentValues
+import android.database.Cursor
+import android.net.Uri
 
 /**
  * A deliberately invisible IME. The phone sends UTF-8 text through the paired ADB shell;
@@ -95,16 +96,28 @@ class RemoteInputMethodService : InputMethodService() {
     }
 }
 
-/** Explicit ADB broadcast endpoint; rejects broadcasts not sent by Android's shell UID. */
-class RemoteInputReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (android.os.Build.VERSION.SDK_INT < 34 || getSentFromUid() != Process.SHELL_UID) return
-        if (intent.action != "tv.cleanyour.app.REMOTE_INPUT_TEXT") return
-        val encoded = intent.getStringExtra("payload") ?: return
-        val value = runCatching {
-            String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8)
-        }.getOrNull() ?: return
-        if (value.isNotEmpty()) RemoteInputMethodService.commit(value)
+/**
+ * ADB shell IPC via ContentProvider.call(). Binder preserves the caller UID on all
+ * supported Android versions, unlike BroadcastReceiver.getSentFromUid() (API 34+).
+ * The manifest additionally requires android.permission.DUMP, held by com.android.shell.
+ */
+class RemoteInputProvider : ContentProvider() {
+    override fun onCreate(): Boolean = true
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+    override fun getType(uri: Uri): String? = null
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
+        check(Binder.getCallingUid() == Process.SHELL_UID) { "Only the ADB shell may send remote text" }
+        check(method == "commit") { "Unsupported method" }
+        val encoded = arg ?: throw IllegalArgumentException("Missing text payload")
+        require(encoded.length <= 16384) { "Text payload is too large" }
+        val value = String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8)
+        require(value.isNotEmpty()) { "Text payload is empty" }
+        check(RemoteInputMethodService.commit(value)) { "No active TV text field; focus an input field first" }
+        return Bundle().apply { putBoolean("committed", true) }
     }
 }
 ''', encoding="utf-8")
