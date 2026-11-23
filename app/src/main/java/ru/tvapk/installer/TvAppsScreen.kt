@@ -328,6 +328,13 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                             val launcher = adb.shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $packageName")
                             val component = parseResolvedTvActivity(leanback.allOutput)
                                 ?: parseResolvedTvActivity(launcher.allOutput)
+                                ?: when (packageName) {
+                                    // Prime Video for Android TV does not consistently expose a
+                                    // resolvable launcher intent on vendor firmware.
+                                    "com.amazon.amazonvideo.livingroom" ->
+                                        "com.amazon.amazonvideo.livingroom/com.amazon.ignition.IgnitionActivity"
+                                    else -> null
+                                }
                             if (component != null) {
                                 adb.shell("am start -W -n $component")
                             } else {
