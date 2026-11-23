@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -334,7 +335,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                 }
                 status = if (response.exitCode == 0) {
                     TvAppsHistory.record(context, historyTvId, "Остановлено приложение", packageName)
-                    "Команда остановки отправлена: $packageName"
+                    "Приложение остановлено: $packageName"
                 } else "Не удалось остановить: ${response.allOutput.take(240)}"
             } catch (failure: Exception) {
                 status = "Ошибка остановки: ${failure.message ?: failure.javaClass.simpleName}"
@@ -411,7 +412,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                     enabled = !busy
                 )
                 Text("Фильтр приложений", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("Доступные", "Все пакеты", "Пользовательские", "Системные").forEach { option ->
                         FilterChip(selected = appFilter == option, onClick = { appFilter = option }, label = { Text(option) }, enabled = !busy)
                     }
@@ -480,7 +481,7 @@ fun TvAppsScreen(historyTvId: String, onBack: () -> Unit, discoverDevices: suspe
                             Text(if (app.isSystem) "Системное приложение" else "Выбрать для резервной копии", modifier = Modifier.padding(top = 12.dp))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy) { Text("Запустить") }
+                            OutlinedButton(onClick = { launchApp(app.packageName) }, enabled = !busy && app.isLaunchable) { Text("Запустить") }
                             OutlinedButton(onClick = { stopApp(app.packageName) }, enabled = !busy && app.isLaunchable && app.packageName !in protectedTvPackages) { Text("Остановить") }
                         }
                     }
