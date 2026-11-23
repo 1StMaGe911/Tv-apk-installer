@@ -60,4 +60,23 @@ replace_once(
         }
         graph.credentialGate.attach(this)""",
 )
+
+main_activity = upstream / "app/src/main/kotlin/tv/cleanyour/app/MainActivity.kt"
+replace_once(
+    main_activity,
+    "import tv.cleanyour.core.flows.resolveStart",
+    "import tv.cleanyour.core.flows.resolveStart\\nimport ru.tvapk.installer.CleanYourTvUpdater",
+)
+replace_once(
+    main_activity,
+    "                    start = startKey(resolveStart(graph.tvs.tvs.value, graph.seams.journal))",
+    \"\"\"                    val openUpdateSettings = intent.getBooleanExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS", false)
+                    if (openUpdateSettings) {
+                        intent.removeExtra("ru.tvapk.installer.OPEN_UPDATE_SETTINGS")
+                        start = Dest.AppSettings
+                        CleanYourTvUpdater.download(this@MainActivity)
+                    } else {
+                        start = startKey(resolveStart(graph.tvs.tvs.value, graph.seams.journal))
+                    }\"\"\",
+)
 print("Automatic update checks are wired into the primary app launcher.")
