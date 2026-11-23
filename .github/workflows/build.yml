@@ -65,6 +65,12 @@ jobs:
       - name: Добавить плавающий пульт управления ТВ
         run: python3 scripts/enable-floating-remote.py
 
+      - name: Исправить пульт на главном экране Clean Your TV
+        run: python3 scripts/enable-floating-remote.py
+
+      - name: Исправить переход из уведомления об обновлении
+        run: python3 scripts/fix-update-notification-routing.py
+
       - name: Определить версию Clean Your TV
         id: version
         run: |
