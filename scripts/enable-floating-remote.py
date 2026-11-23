@@ -161,9 +161,10 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                 .pointerInput(maxX, maxY) {
                     detectDragGestures(
                         onDragEnd = {
-                            val dragX = if (x.isFinite()) x else currentX
-                            x = if (dragX + bubbleSize / 2f >= maxX / 2f) rightDock else leftDock
-                            y = if (y.isFinite()) y else currentY
+                            // A normal drag must preserve the exact visible position.
+                            // Docking is reserved for the explicit "Скрыть к краю" action.
+                            x = (if (x.isFinite()) x else currentX).coerceIn(0f, maxX)
+                            y = (if (y.isFinite()) y else currentY).coerceIn(0f, maxY)
                             prefs.edit().putFloat("floating_remote_x", x).putFloat("floating_remote_y", y).apply()
                         },
                         onDrag = { change, amount ->
@@ -195,7 +196,13 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
         }
 
 
-    if (panelOpen) Dialog(onDismissRequest = { panelOpen = false }) {
+    if (panelOpen) Dialog(onDismissRequest = {
+        panelOpen = false
+        tucked = true
+        x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
+        prefs.edit().putBoolean("floating_remote_tucked", true)
+            .putFloat("floating_remote_x", x).putFloat("floating_remote_y", currentY).apply()
+    }) {
         Surface(
             Modifier.fillMaxWidth(),
             shape = MaterialTheme.shapes.extraLarge,
@@ -208,7 +215,13 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ПУЛЬТ ТВ", Modifier.weight(1f), fontWeight = FontWeight.Bold, color = Color(0xFFF4D58A))
-                    TextButton(onClick = { panelOpen = false }) { Text("Закрыть") }
+                    TextButton(onClick = {
+                        panelOpen = false
+                        tucked = true
+                        x = if (currentBubbleIsRight(x, maxX, rightDock)) rightDock else leftDock
+                        prefs.edit().putBoolean("floating_remote_tucked", true)
+                            .putFloat("floating_remote_x", x).putFloat("floating_remote_y", currentY).apply()
+                    }) { Text("Закрыть") }
                 }
                 Text(
                     selectedTvId?.let { "Управление выбранным телевизором" } ?: "Телевизор не выбран",
