@@ -8,7 +8,15 @@ def replace_once(path,old,new):
     if new in data:return
     if data.count(old)!=1:raise SystemExit(f"Expected one match in {path}: {old!r}; found {data.count(old)}")
     path.write_text(data.replace(old,new,1),encoding="utf-8")
-replace_once(activity,"import tv.cleanyour.core.flows.resolveStart\n","import tv.cleanyour.core.flows.resolveStart\nimport ru.tvapk.installer.CleanYourTvUpdater\nimport androidx.compose.runtime.mutableStateOf\nimport androidx.compose.runtime.setValue\n")
+data=activity.read_text(encoding="utf-8")
+for import_line in (
+    "import ru.tvapk.installer.CleanYourTvUpdater",
+    "import androidx.compose.runtime.mutableStateOf",
+    "import androidx.compose.runtime.setValue",
+):
+    if import_line not in data:
+        data=data.replace("import tv.cleanyour.core.flows.resolveStart","import tv.cleanyour.core.flows.resolveStart\n"+import_line,1)
+activity.write_text(data,encoding="utf-8")
 replace_once(activity,"class MainActivity : ComponentActivity() {\n    private val graph","""class MainActivity : ComponentActivity() {
     private var openUpdateSettings by mutableStateOf(false)
     override fun onNewIntent(intent: Intent) {
