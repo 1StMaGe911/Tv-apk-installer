@@ -35,8 +35,14 @@ jobs:
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Добавить установку APK в Clean Your TV
         run: python3 scripts/enable-apk-install.py
+      - name: Добавить управление приложениями телевизора
+        run: python3 scripts/enable-tv-app-management.py
+      - name: Добавить Unicode-клавиатуру и плавающий пульт
+        run: |
+          python3 scripts/enable-remote-ime.py
+          python3 scripts/enable-floating-remote.py
       - name: Выполнить модульные тесты
-        run: gradle check --no-daemon
+        run: gradle :app:testFullDebugUnitTest --no-daemon
 
   build:
     name: Сборка именно TV APK Installer
@@ -62,6 +68,12 @@ jobs:
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Добавить установку APK в Clean Your TV
         run: python3 scripts/enable-apk-install.py
+      - name: Добавить управление приложениями телевизора
+        run: python3 scripts/enable-tv-app-management.py
+      - name: Добавить Unicode-клавиатуру и плавающий пульт
+        run: |
+          python3 scripts/enable-remote-ime.py
+          python3 scripts/enable-floating-remote.py
       - name: Подготовить ключ подписи
         env:
           KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -79,8 +91,16 @@ jobs:
           SIGNING_KEY_ALIAS: tvapk
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: gradle :app:assembleFullDebug --no-daemon
-      - name: Проверить APK
-        run: test -s app/build/outputs/apk/full/debug/app-full-debug.apk
+      - name: Проверить APK и канал удалённого ввода
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/full/debug/app-full-debug.apk
+          test -s "$APK"
+          APKANALYZER=$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)
+          "$APKANALYZER" manifest print "$APK" > "$RUNNER_TEMP/merged-manifest.xml"
+          grep -F 'tv.cleanyour.app.remote.RemoteInputMethodService' "$RUNNER_TEMP/merged-manifest.xml"
+          grep -F 'tv.cleanyour.app.remote.RemoteInputProvider' "$RUNNER_TEMP/merged-manifest.xml"
+          grep -F 'ru.tvapk.installer.remoteinput' "$RUNNER_TEMP/merged-manifest.xml"
       - name: Сохранить APK
         uses: actions/upload-artifact@v4
         with:

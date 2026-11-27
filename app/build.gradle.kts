@@ -104,6 +104,8 @@ tasks.named("check") { dependsOn("lintPlayDebug") }
 tasks.withType<Test>().configureEach {
     maxParallelForks = 1
     maxHeapSize = "1280m"
+    // Robolectric reflects into JDK internals when emulating Android shared memory on Java 21.
+    jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
