@@ -27,6 +27,17 @@ android {
     testOptions { unitTests { isIncludeAndroidResources = true } }
     lint { textReport = true }
 
+    ndkVersion = "27.2.12479018"
+    defaultConfig {
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     sourceSets {
         getByName("main") {
             kotlin.directories.add("../vendor/cleanyourtv-app/app/src/main/kotlin")
@@ -50,7 +61,12 @@ android {
 dependencies {
     // Keep the legacy TV APK Installer activity compilable while it remains an internal fallback.
     implementation("dev.mobile:dadb:2.0.0")
-    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // Android 11+ Wireless Debugging pairing and ADB identity management.
+    implementation("com.flyfishxu:kadb:2.1.5") {
+        // Kadb's optional SPAKE2 Java implementation is GPL-3.0; use our BoringSSL JNI bridge.
+        exclude(group = "com.github.Flyfish233", module = "spake2-java")
+    }
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     implementation("androidx.core:core:1.15.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.compose.material:material-icons-extended")
