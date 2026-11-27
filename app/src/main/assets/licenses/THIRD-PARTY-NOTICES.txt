@@ -1,0 +1,22 @@
+Third-party notices for in-app Android Wireless Debugging pairing
+
+Kadb
+----
+Source: https://github.com/flyfishxu/Kadb
+Version: 2.1.5
+License: Apache License 2.0. The license text is included in APACHE-2.0.txt.
+
+BoringSSL
+---------
+Source: https://github.com/google/boringssl
+Pinned revision: 5fa9e920fe867353a5a0a6eee4005e20aa3df85d
+The native SPAKE2 bridge links BoringSSL's crypto library. The license bundle
+for this revision is included in BORINGSSL-LICENSE.txt.
+
+Fiat-crypto
+-----------
+The pinned BoringSSL source includes Fiat-crypto support code. Its Apache
+License 2.0 notice is included in FIAT-CRYPTO-LICENSE.txt.
+
+The GPL-licensed spake2-java artifact is explicitly excluded from the Android
+runtime dependency graph. The app uses the JNI bridge in app/src/main/cpp.
