@@ -29,7 +29,7 @@ replace_once(
 replace_once(
     app_graph,
     "        restarts = restarts,       // 0.4.8\n    )",
-    "        restarts = restarts,       // 0.4.8\n        endpointForHost = { host -> WirelessAdbPairing.endpointForHost(app, host) },\n    )",
+    "        restarts = restarts,       // 0.4.8\n        endpointForTv = { tv -> WirelessAdbPairing.endpointForTv(app, tv) },\n    )",
 )
 replace_once(
     app_graph,
@@ -42,22 +42,22 @@ setup_machine = upstream / "core/flows/src/main/kotlin/tv/cleanyour/core/flows/S
 replace_once(
     setup_machine,
     "    val restarts: Restarts? = documents?.let { Restarts(it) },\n)",
-    "    val restarts: Restarts? = documents?.let { Restarts(it) },\n    // Android Wireless Debugging: non-null only for a host paired on this phone.\n    val endpointForHost: (String) -> Endpoint? = { null },\n)",
+    "    val restarts: Restarts? = documents?.let { Restarts(it) },\n    // Android Wireless Debugging: non-null only for a host paired on this phone.\n    val endpointForTv: (FoundTv) -> Endpoint? = { null },\n)",
 )
 replace_once(
     setup_machine,
     "    private fun door(tv: FoundTv): SetupState {\n        val pairingOnly = (tv.pairingService != null || tv.connectService != null) && tv.port5555Open != true",
-    "    private fun door(tv: FoundTv): SetupState {\n        val pairedEndpoint = deps.endpointForHost(tv.host)\n        if (pairedEndpoint is Endpoint.Tls) {\n            val family = Families.of(tv)\n            return SetupState.OpenDoor(tv, family, step = 2, phase = DoorPhase.CONNECTING, fingerprint = null, banner = bannerFor(family, tv), waitedMs = 0)\n        }\n        val pairingOnly = (tv.pairingService != null || tv.connectService != null) && tv.port5555Open != true",
+    "    private fun door(tv: FoundTv): SetupState {\n        val pairedEndpoint = deps.endpointForTv(tv)\n        if (pairedEndpoint is Endpoint.Tls) {\n            val family = Families.of(tv)\n            return SetupState.OpenDoor(tv, family, step = 2, phase = DoorPhase.CONNECTING, fingerprint = null, banner = bannerFor(family, tv), waitedMs = 0)\n        }\n        val pairingOnly = (tv.pairingService != null || tv.connectService != null) && tv.port5555Open != true",
 )
 replace_once(
     setup_machine,
     "        val waitingForPort = s is SetupState.OpenDoor && s.tv.host.isNotEmpty() && s.phase == DoorPhase.STEPS && !blocked",
-    "        val waitingForPort = s is SetupState.OpenDoor && s.tv.host.isNotEmpty() && s.phase == DoorPhase.STEPS && !blocked && deps.endpointForHost(s.tv.host) == null",
+    "        val waitingForPort = s is SetupState.OpenDoor && s.tv.host.isNotEmpty() && s.phase == DoorPhase.STEPS && !blocked && deps.endpointForTv(s.tv) == null",
 )
 replace_once(
     setup_machine,
     "            deps.sessions.open(Endpoint.PlainTcp(found.host), known?.id) { fp -> allowShown = true; send(Ev.Allow(fp)) }",
-    "            val endpoint = deps.endpointForHost(found.host) ?: Endpoint.PlainTcp(found.host)\n            deps.sessions.open(endpoint, known?.id) { fp -> allowShown = true; send(Ev.Allow(fp)) }",
+    "            val endpoint = deps.endpointForTv(found) ?: Endpoint.PlainTcp(found.host)\n            deps.sessions.open(endpoint, known?.id) { fp -> allowShown = true; send(Ev.Allow(fp)) }",
 )
 
 # The existing PairingNeeded dead end becomes a six-digit in-app pairing sheet.
