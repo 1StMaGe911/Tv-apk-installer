@@ -176,29 +176,30 @@ replace_once(
     "import tv.cleanyour.feature.connect.ConnectFlow\n",
     "import ru.tvapk.installer.WirelessAdbPairing\nimport tv.cleanyour.feature.connect.ConnectFlow\n",
 )
-# The upstream call can be reformatted by earlier integration scripts; match the whole
-# one-line invocation rather than depending on its exact whitespace.
+# The upstream call can be reformatted by earlier integration scripts; match its line
+# without depending on exact whitespace. Keep the pattern on one physical Python line.
 import re
 app_root_text = app_root.read_text(encoding="utf-8")
 if "onPair = { found, code, complete ->" not in app_root_text:
-    pattern = r'(?m)^(\\s*)if \\(isConnectState\\(state\\)\\) ConnectFlow\\([^\\n]*\\)
-
-print("Wireless Debugging pairing UI, persisted identity, and TLS session routing patched.")
-
-    replacement = r'''\\1if (isConnectState(state)) ConnectFlow(
-\\1    state, extras, m,
-\\1    onReturning = { go("returning") },
-\\1    onCopyError = { copyText(context, it, "error") },
-\\1    onPair = { found, code, complete ->
-\\1        scope.launch {
-\\1            val result = runCatching {
-\\1                withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code) }
-\\1            }
-\\1            complete(result)
-\\1        }
-\\1    },
-\\1)'''
-    app_root_text, count = re.subn(pattern, replacement, app_root_text)
+    pattern = r"(?m)^([ \t]*)if \(isConnectState\(state\)\) ConnectFlow\([^\n]*\)$"
+    def add_pairing(match):
+        indent = match.group(1)
+        return "\n".join((
+            indent + "if (isConnectState(state)) ConnectFlow(",
+            indent + "    state, extras, m,",
+            indent + '    onReturning = { go("returning") },',
+            indent + '    onCopyError = { copyText(context, it, "error") },',
+            indent + "    onPair = { found, code, complete ->",
+            indent + "        scope.launch {",
+            indent + "            val result = runCatching {",
+            indent + "                withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code) }",
+            indent + "            }",
+            indent + "            complete(result)",
+            indent + "        }",
+            indent + "    },",
+            indent + ")",
+        ))
+    app_root_text, count = re.subn(pattern, add_pairing, app_root_text)
     if count != 1:
         raise SystemExit(f"Expected one ConnectFlow call in {app_root}; found {count}")
     app_root.write_text(app_root_text, encoding="utf-8")
