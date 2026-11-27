@@ -2,6 +2,8 @@ pluginManagement {
     includeBuild("vendor/cleanyourtv-app/build-logic")
     repositories {
         google()
+        // Kadb 2.1.5 and its Android pairing implementation are published through JitPack.
+        maven { url = uri("https://jitpack.io") }
         mavenCentral()
         gradlePluginPortal()
     }
