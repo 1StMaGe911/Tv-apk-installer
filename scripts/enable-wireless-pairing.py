@@ -79,7 +79,6 @@ replace_once(
 )
 old_pairing = '''@Composable
 fun PairingScreen(state: SetupState.PairingNeeded, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier) {
-    var steps by rememberSaveable { mutableStateOf(false) }
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
         // "Show me" opens a sheet, "Back" goes back: neither acts on the TV, so neither is guarded.
         // 0.4.6: "Report a problem" opens the GitHub form with how the TV was found (no TV read yet).
@@ -92,7 +91,6 @@ fun PairingScreen(state: SetupState.PairingNeeded, extras: SetupExtras, actions:
             primaryGuarded = false,
         )
     }
-    if (steps) CytBottomSheet({ steps = false }) { PairingStepsContent() }
 }'''
 new_pairing = '''@Composable
 fun PairingScreen(
@@ -111,12 +109,12 @@ fun PairingScreen(
         val title = stringResource(R.string.pairing_title)
         StopCard(
             title,
-            stringResource(R.string.pairing_body),
+            "На телевизоре открой «Беспроводная отладка» → «Сопряжение устройства с помощью кода». Введи код прямо здесь — компьютер не нужен.",
             Modifier.padding(top = 20.dp),
             primaryLabel = "Сопрячь телевизор по коду",
             onPrimary = { pairingSheet = true },
-            secondaryLabel = stringResource(R.string.pairing_show_steps),
-            onSecondary = { steps = true },
+            secondaryLabel = stringResource(R.string.action_back),
+            onSecondary = { actions.back() },
             detailsLabel = stringResource(R.string.connect_report),
             onDetails = { actions.report(title) },
             primaryGuarded = false,
