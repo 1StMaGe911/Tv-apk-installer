@@ -13,8 +13,10 @@ app_root = vendor / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
 def replace_once(path: Path, old: str, new: str, label: str):
     data = path.read_text(encoding="utf-8")
     count = data.count(old)
+    if count == 0 and data.count(new) == 1:
+        return  # The integration step or a previous run already applied this exact patch.
     if count != 1:
-        raise SystemExit(f"{label}: expected one match in {path}, found {count}")
+        raise SystemExit(f"{label}: expected one original match in {path}, found {count}")
     path.write_text(data.replace(old, new, 1), encoding="utf-8")
 
 # Keep the unfinished wizard draft on disk, but do not force the app back into it on every launch.
