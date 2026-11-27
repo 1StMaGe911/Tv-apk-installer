@@ -17,13 +17,15 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.security.KeyFactory
-import java.security.KeyStore
+import java.security.Principal
+import java.security.PrivateKey
 import java.security.SecureRandom
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.security.spec.PKCS8EncodedKeySpec
 import java.util.Base64
-import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLEngine
+import javax.net.ssl.X509ExtendedKeyManager
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.X509TrustManager
@@ -82,13 +84,10 @@ internal class WirelessAdbSocketFactory(context: Context) : SocketFactory, TlsUp
             ByteArrayInputStream(identity.certificatePem)
         ) as X509Certificate
 
-        val keyStore = KeyStore.getInstance("PKCS12").apply {
-            load(null, null)
-            setKeyEntry("wireless-adb", privateKey, CharArray(0), arrayOf(certificate))
-        }
-        val keyManagers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply {
-            init(keyStore, CharArray(0))
-        }
+        // ADB uses a non-standard CA issuer name (O=AdbKey-0,CN=<key fingerprint>).
+        // The platform's default KeyManagerFactory often refuses that issuer; Kadb uses a
+        // custom X509ExtendedKeyManager for this exact ADB TLS client-certificate request.
+        val keyManager = WirelessAdbKeyManager(privateKey, certificate)
         // This matches Kadb's ADB TLS policy: the device's ephemeral TLS server
         // certificate is not a Web PKI certificate; client identity is the paired ADB cert.
         val trustManager = object : X509TrustManager {
@@ -97,7 +96,7 @@ internal class WirelessAdbSocketFactory(context: Context) : SocketFactory, TlsUp
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         }
         val sslContext = SSLContext.getInstance("TLS").apply {
-            init(keyManagers.keyManagers, arrayOf(trustManager), SecureRandom())
+            init(arrayOf(keyManager), arrayOf(trustManager), SecureRandom())
         }
 
         return withContext(Dispatchers.IO) {
@@ -130,6 +129,46 @@ internal class WirelessAdbSocketFactory(context: Context) : SocketFactory, TlsUp
             .replace("-----END $label-----", "")
         return Base64.getMimeDecoder().decode(text)
     }
+}
+
+private class WirelessAdbKeyManager(
+    private val privateKey: PrivateKey,
+    private val certificate: X509Certificate,
+) : X509ExtendedKeyManager() {
+    private val alias = "wireless-adb"
+    private val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(certificate.publicKey.encoded)
+        .joinToString("") { "%02X".format(it) }
+
+    private fun supportsRsa(keyType: String?): Boolean =
+        keyType == null || keyType.contains("RSA", ignoreCase = true)
+
+    private fun choose(keyTypes: Array<out String>?): String? =
+        if (keyTypes.isNullOrEmpty() || keyTypes.any(::supportsRsa)) alias else null
+
+    override fun getClientAliases(keyType: String?, issuers: Array<out Principal>?): Array<String>? =
+        if (supportsRsa(keyType)) arrayOf(alias) else emptyArray()
+
+    override fun chooseClientAlias(
+        keyTypes: Array<out String>?,
+        issuers: Array<out Principal>?,
+        socket: Socket?,
+    ): String? = choose(keyTypes)
+
+    override fun chooseEngineClientAlias(
+        keyTypes: Array<out String>?,
+        issuers: Array<out Principal>?,
+        engine: SSLEngine?,
+    ): String? = choose(keyTypes)
+
+    override fun getCertificateChain(alias: String?): Array<X509Certificate>? =
+        if (alias == this.alias) arrayOf(certificate) else null
+
+    override fun getPrivateKey(alias: String?): PrivateKey? =
+        if (alias == this.alias) privateKey else null
+
+    override fun getServerAliases(keyType: String?, issuers: Array<out Principal>?): Array<String>? = null
+    override fun chooseServerAlias(keyType: String?, issuers: Array<out Principal>?, socket: Socket?): String? = null
 }
 
 private open class SocketBackedAdbSocket(protected val socket: Socket) : AdbSocket {
