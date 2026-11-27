@@ -40,8 +40,7 @@ internal class WirelessAdbSocketFactory(private val context: Context) : SocketFa
             throw AdbException(AdbError.Transport.Protocol("This TLS endpoint has not been paired on this phone"))
         }
 
-        WirelessAdbPairing.configure(context)
-        val identity = KadbCert.ensureReady()
+        val identity = WirelessAdbPairing.ensureIdentity(context)
         val privateKey = parsePrivateKey(identity.privateKeyPem)
         val certificate = parseCertificate(identity.certificatePem)
         val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
