@@ -265,12 +265,13 @@ replace_once(
     """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
     """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
-        // Haier's RecoveryActivity can appear after the initial HOME snapshot even when
-        // setupwraith was not listed as a HOME claimant. Keep the stock launcher enabled
-        // unless this exact Haier profile explicitly identifies the wizard for takeover.
+        // Haier's RecoveryActivity can appear after the initial HOME snapshot, even on
+        // profiles with HOME_TAKEOVER_SETUPWRAITH. The video reports this on a Haier TV,
+        // so do not disable an active first-run wizard or switch HOME on this vendor path
+        // until that exact firmware has been verified across restarts.
         val haier = facts.brand.equals("Haier", ignoreCase = true) || facts.manufacturer.equals("Haier", ignoreCase = true)
-        val unlistedWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) && it != allowed }
-        if (haier && unlistedWizard != null) return Risk.WIZARD_STAYS_ON
+        val haierWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
+        if (haier && haierWizard != null) return Risk.WIZARD_STAYS_ON
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
 )
 print("Haier/unknown setup-wizard HOME guard patch applied.")
@@ -287,6 +288,12 @@ replace_once(
         )
         val cleanHaier = noWizard.copy(facts = haier.facts).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
         assertNull(HomeSwitchRisk.of(cleanHaier.facts, PlannerFixtures.profile(), cleanHaier, WizardWifi.NOT_OWNER))
+        val takeoverProfile = PlannerFixtures.profile(quirks = setOf(Quirk.HOME_TAKEOVER_SETUPWRAITH), setupWraith = wizard)
+        assertEquals(
+            Risk.WIZARD_STAYS_ON,
+            HomeSwitchRisk.of(haier.facts, takeoverProfile, haier, WizardWifi.NOT_OWNER),
+            "even a profile with the takeover quirk must not disable Haier's active recovery wizard before firmware verification"
+        )
     }
 
     // (b) Google's own hardware: the switch costs casting after every restart."""
