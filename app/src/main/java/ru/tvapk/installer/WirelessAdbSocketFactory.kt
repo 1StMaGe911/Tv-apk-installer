@@ -10,7 +10,6 @@ import tv.cleanyour.android.platform.TcpAdbSocket
 import tv.cleanyour.core.model.AdbError
 import tv.cleanyour.core.model.AdbException
 import tv.cleanyour.core.model.Endpoint
-import com.flyfishxu.kadb.cert.KadbCert
 import java.io.ByteArrayInputStream
 import java.net.InetSocketAddress
 import java.security.KeyFactory
@@ -35,6 +34,9 @@ internal class WirelessAdbSocketFactory(private val context: Context) : SocketFa
         if (endpoint is Endpoint.PlainTcp) return plain.connect(endpoint, timeoutMs)
         if (endpoint !is Endpoint.Tls) {
             throw AdbException(AdbError.Transport.Protocol("Unsupported ADB endpoint"))
+        }
+        if (!PlainSocketFactory.isLiteralAddress(endpoint.host)) {
+            throw AdbException(AdbError.Transport.Protocol("TLS ADB requires a literal local IP address"))
         }
         if (!WirelessAdbPairing.isPairedEndpoint(context, endpoint.host, endpoint.port)) {
             throw AdbException(AdbError.Transport.Protocol("This TLS endpoint has not been paired on this phone"))
