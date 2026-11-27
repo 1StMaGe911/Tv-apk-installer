@@ -28,6 +28,13 @@ android {
     testOptions { unitTests { isIncludeAndroidResources = true } }
     lint { textReport = true }
 
+    packaging {
+        resources {
+            // BouncyCastle ships the same license in bcprov, bcutil and bcpkix.
+            pickFirsts += "META-INF/LICENSE.md"
+        }
+    }
+
     ndkVersion = "27.2.12479018"
     externalNativeBuild {
         cmake {
