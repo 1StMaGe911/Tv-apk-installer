@@ -264,7 +264,7 @@ replace_once(
     home_switch_risk,
     """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
-    """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+    """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
         // Haier's RecoveryActivity can appear after the initial HOME snapshot, even on
         // profiles with HOME_TAKEOVER_SETUPWRAITH. The video reports this on a Haier TV,
         // so do not disable an active first-run wizard or switch HOME on this vendor path
