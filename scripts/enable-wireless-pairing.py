@@ -79,19 +79,22 @@ replace_once(
 )
 old_pairing = '''@Composable
 fun PairingScreen(state: SetupState.PairingNeeded, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier) {
+    var steps by rememberSaveable { mutableStateOf(false) }
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
         // "Show me" opens a sheet, "Back" goes back: neither acts on the TV, so neither is guarded.
         // 0.4.6: "Report a problem" opens the GitHub form with how the TV was found (no TV read yet).
-        val title = "Сопряжение телевизора"
+        val title = stringResource(R.string.pairing_title)
         StopCard(
             title, stringResource(R.string.pairing_body), Modifier.padding(top = 20.dp),
             primaryLabel = stringResource(R.string.pairing_show_steps), onPrimary = { steps = true },
-            secondaryLabel = "Назад", onSecondary = { actions.back() },
-            detailsLabel = "Сообщить о проблеме", onDetails = { actions.report(title) },
+            secondaryLabel = stringResource(R.string.action_back), onSecondary = { actions.back() },
+            detailsLabel = stringResource(R.string.connect_report), onDetails = { actions.report(title) },
             primaryGuarded = false,
         )
     }
+    if (steps) CytBottomSheet({ steps = false }) { PairingStepsContent() }
 }'''
+
 new_pairing = '''@Composable
 fun PairingScreen(
     state: SetupState.PairingNeeded,
@@ -100,22 +103,21 @@ fun PairingScreen(
     modifier: Modifier = Modifier,
     onPair: (FoundTv, String, (Result<Unit>) -> Unit) -> Unit,
 ) {
-    var steps by rememberSaveable { mutableStateOf(false) }
     var pairingSheet by rememberSaveable { mutableStateOf(false) }
     var code by rememberSaveable { mutableStateOf("") }
     var busy by rememberSaveable { mutableStateOf(false) }
     var status by rememberSaveable { mutableStateOf("") }
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
-        val title = stringResource(R.string.pairing_title)
+        val title = "Сопряжение телевизора"
         StopCard(
             title,
             "На телевизоре открой «Беспроводная отладка» → «Сопряжение устройства с помощью кода». Введи код прямо здесь — компьютер не нужен.",
             Modifier.padding(top = 20.dp),
             primaryLabel = "Сопрячь телевизор по коду",
             onPrimary = { pairingSheet = true },
-            secondaryLabel = stringResource(R.string.action_back),
+            secondaryLabel = "Назад",
             onSecondary = { actions.back() },
-            detailsLabel = stringResource(R.string.connect_report),
+            detailsLabel = "Сообщить о проблеме",
             onDetails = { actions.report(title) },
             primaryGuarded = false,
         )
@@ -127,7 +129,6 @@ fun PairingScreen(
         }
         if (status.isNotBlank()) Body(status, Modifier.padding(top = 12.dp))
     }
-    if (steps) CytBottomSheet({ steps = false }) { PairingStepsContent() }
     if (pairingSheet) CytBottomSheet({ if (!busy) pairingSheet = false }) {
         SheetHeader("Сопряжение телевизора")
         Body("Введи шестизначный код, который показывает телевизор. Компьютер и Termux не нужны.", Modifier.padding(top = 12.dp))
