@@ -88,6 +88,8 @@ internal object WirelessAdbPairing {
             .putString(hostKey(tv.host), connectHost)
             .putInt(portKey(tv.host), connectPort)
             .putString(serviceKey(tv.host), connect?.name ?: "_adb-tls-connect._tcp.")
+            // A manually entered TV port is authoritative; mDNS can publish a stale endpoint.
+            .putBoolean(manualPortKey(tv.host), connectPortOverride != null)
             .commit()
             .also { check(it) { "Не удалось сохранить сопряжение телевизора" } }
     }
@@ -103,6 +105,9 @@ internal object WirelessAdbPairing {
 
     fun endpointForTv(context: Context, tv: FoundTv): Endpoint.Tls? {
         val saved = endpointForHost(context, tv.host) ?: return null
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Never replace a port the user explicitly copied from the TV's Wireless Debugging screen.
+        if (prefs.getBoolean(manualPortKey(tv.host), false)) return saved
         val live = tv.connectService ?: return saved
         if (live.port !in 1..65535 || !sameAddress(tv.host, live.host)) return saved
         // Wireless Debugging can publish a new TLS port after a TV reboot. Refresh it from mDNS.
@@ -135,4 +140,5 @@ internal object WirelessAdbPairing {
     private fun hostKey(host: String) = "connect_host_" + key(host)
     private fun portKey(host: String) = "connect_port_" + key(host)
     private fun serviceKey(host: String) = "connect_service_" + key(host)
+    private fun manualPortKey(host: String) = "connect_manual_port_" + key(host)
 }
