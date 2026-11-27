@@ -30,18 +30,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InstallHistoryScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val currentLocale = LocalConfiguration.current.locales[0]
     val scope = rememberCoroutineScope()
     var entries by remember { mutableStateOf(emptyList<InstallHistoryEntry>()) }
     var loading by remember { mutableStateOf(true) }
@@ -108,7 +109,7 @@ fun InstallHistoryScreen(onBack: () -> Unit) {
                                 color = if (entry.success) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                             Text(
-                                SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", Locale.getDefault()).format(Date(entry.timestamp)),
+                                SimpleDateFormat("dd.MM.yyyy · HH:mm:ss", currentLocale).format(Date(entry.timestamp)),
                                 style = MaterialTheme.typography.bodySmall
                             )
                             entry.packageName?.let { Text("Пакет: $it", style = MaterialTheme.typography.bodySmall) }
