@@ -274,6 +274,16 @@ replace_once(
         if (haier && haierWizard != null) return Risk.WIZARD_STAYS_ON
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
 )
+replace_once(
+    home_switch_risk,
+    """            val risk = wizardWifiRisk(profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)""",
+    """            val risk = wizardWifiRisk(facts, profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)"""
+)
+replace_once(
+    home_switch_risk,
+    """    private fun wizardWifiRisk(profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {""",
+    """    private fun wizardWifiRisk(facts: DeviceFacts, profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {"""
+)
 print("Haier/unknown setup-wizard HOME guard patch applied.")
 
 home_switch_risk_test = upstream / "core" / "planner" / "src" / "test" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRiskTest.kt"
