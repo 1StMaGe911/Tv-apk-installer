@@ -7,6 +7,7 @@ import com.flyfishxu.kadb.cert.KadbIdentitySnapshot
 import tv.cleanyour.core.discovery.FoundTv
 import tv.cleanyour.core.model.Endpoint
 import java.security.MessageDigest
+import java.net.InetAddress
 
 /**
  * Owns Kadb's process-wide Wireless Debugging identity and the per-TV TLS connect endpoint map.
@@ -101,8 +102,16 @@ internal object WirelessAdbPairing {
     fun isPairedEndpoint(context: Context, host: String, port: Int): Boolean =
         endpointForHost(context, host)?.port == port
 
-    private fun sameAddress(a: String, b: String): Boolean =
-        a.trim().substringBefore('%').equals(b.trim().substringBefore('%'), ignoreCase = true)
+    private fun sameAddress(a: String, b: String): Boolean {
+        val first = a.trim().substringBefore('%')
+        val second = b.trim().substringBefore('%')
+        if (!tv.cleanyour.android.platform.PlainSocketFactory.isLiteralAddress(first) ||
+            !tv.cleanyour.android.platform.PlainSocketFactory.isLiteralAddress(second)
+        ) return false
+        return runCatching {
+            InetAddress.getByName(first).address.contentEquals(InetAddress.getByName(second).address)
+        }.getOrDefault(false)
+    }
 
     private fun key(host: String): String =
         MessageDigest.getInstance("SHA-256").digest(host.trim().toByteArray(Charsets.UTF_8))
