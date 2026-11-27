@@ -176,22 +176,31 @@ replace_once(
     "import tv.cleanyour.feature.connect.ConnectFlow\n",
     "import ru.tvapk.installer.WirelessAdbPairing\nimport tv.cleanyour.feature.connect.ConnectFlow\n",
 )
-replace_once(
-    app_root,
-    'if (isConnectState(state)) ConnectFlow(state, extras, m, onReturning = { go("returning") }, onCopyError = { copyText(context, it, "error") })',
-    '''if (isConnectState(state)) ConnectFlow(
-                        state, extras, m,
-                        onReturning = { go("returning") },
-                        onCopyError = { copyText(context, it, "error") },
-                        onPair = { found, code, complete ->
-                            scope.launch {
-                                val result = runCatching {
-                                    withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code) }
-                                }
-                                complete(result)
-                            }
-                        },
-                    )''',
-)
+# The upstream call can be reformatted by earlier integration scripts; match the whole
+# one-line invocation rather than depending on its exact whitespace.
+import re
+app_root_text = app_root.read_text(encoding="utf-8")
+if "onPair = { found, code, complete ->" not in app_root_text:
+    pattern = r'(?m)^(\\s*)if \\(isConnectState\\(state\\)\\) ConnectFlow\\([^\\n]*\\)
+
+print("Wireless Debugging pairing UI, persisted identity, and TLS session routing patched.")
+
+    replacement = r'''\\1if (isConnectState(state)) ConnectFlow(
+\\1    state, extras, m,
+\\1    onReturning = { go("returning") },
+\\1    onCopyError = { copyText(context, it, "error") },
+\\1    onPair = { found, code, complete ->
+\\1        scope.launch {
+\\1            val result = runCatching {
+\\1                withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code) }
+\\1            }
+\\1            complete(result)
+\\1        }
+\\1    },
+\\1)'''
+    app_root_text, count = re.subn(pattern, replacement, app_root_text)
+    if count != 1:
+        raise SystemExit(f"Expected one ConnectFlow call in {app_root}; found {count}")
+    app_root.write_text(app_root_text, encoding="utf-8")
 
 print("Wireless Debugging pairing UI, persisted identity, and TLS session routing patched.")
