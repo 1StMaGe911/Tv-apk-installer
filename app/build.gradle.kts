@@ -11,6 +11,7 @@ android {
         versionCode = 273
         versionName = "0.9.83" // 24-hour offline license grace period
         // Back from a recovered TV operation returns to TV management.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
     }
 
     flavorDimensions += "store"
@@ -28,9 +29,6 @@ android {
     lint { textReport = true }
 
     ndkVersion = "27.2.12479018"
-    defaultConfig {
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
-    }
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
