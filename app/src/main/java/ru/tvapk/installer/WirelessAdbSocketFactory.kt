@@ -3,13 +3,13 @@ package ru.tvapk.installer
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import tv.cleanyour.adb.wire.AdbError
-import tv.cleanyour.adb.wire.AdbException
 import tv.cleanyour.adb.wire.AdbSocket
-import tv.cleanyour.adb.wire.Endpoint
 import tv.cleanyour.adb.wire.SocketFactory
 import tv.cleanyour.android.platform.PlainSocketFactory
 import tv.cleanyour.android.platform.TcpAdbSocket
+import tv.cleanyour.core.model.AdbError
+import tv.cleanyour.core.model.AdbException
+import tv.cleanyour.core.model.Endpoint
 import com.flyfishxu.kadb.cert.KadbCert
 import java.io.ByteArrayInputStream
 import java.net.InetSocketAddress
