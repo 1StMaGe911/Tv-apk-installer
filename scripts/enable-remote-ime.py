@@ -78,7 +78,10 @@ class RemoteInputMethodService : InputMethodService() {
         super.onDestroy()
     }
 
-    override fun onEvaluateInputViewShown(): Boolean = false
+    override fun onEvaluateInputViewShown(): Boolean {
+        super.onEvaluateInputViewShown()
+        return false
+    }
 
     override fun onCreateInputView(): View = FrameLayout(this).apply {
         layoutParams = FrameLayout.LayoutParams(1, 1)
