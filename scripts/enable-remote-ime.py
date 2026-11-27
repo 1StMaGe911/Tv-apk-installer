@@ -110,7 +110,10 @@ class RemoteInputProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
-        check(Binder.getCallingUid() == Process.SHELL_UID) { "Only the ADB shell may send remote text" }
+        check(Binder.getCallingUid() == Process.SHELL_UID) { "Only the ADB shell may access remote input" }
+        if (method == "ping") {
+            return Bundle().apply { putBoolean("ready", true) }
+        }
         check(method == "commit") { "Unsupported method" }
         val encoded = arg ?: throw IllegalArgumentException("Missing text payload")
         require(encoded.length <= 16384) { "Text payload is too large" }
