@@ -246,6 +246,71 @@ replace_once(
 )
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.3 (193).")
 
+# 0.9.88: Fail closed when an enabled first-run wizard is present but the exact
+# device profile does not identify it as the wizard that may safely be switched off.
+# RecoveryActivity can claim HOME after the stock launcher is disabled even when
+# setupwraith was not reported as a HOME claimant during the initial snapshot.
+home_switch_risk = upstream / "core" / "planner" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRisk.kt"
+replace_once(
+    home_switch_risk,
+    """            val wizard = snapshot.packages.keys.firstOrNull { it.value in Denylist.setupWizards && on(it) }
+                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
+            return if (wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON""",
+    """            val wizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
+                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
+            return if (wizard.value in Denylist.setupWizards && wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON"""
+)
+replace_once(
+    home_switch_risk,
+    """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
+    """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+        // Haier's RecoveryActivity can appear after the initial HOME snapshot, even on
+        // profiles with HOME_TAKEOVER_SETUPWRAITH. The video reports this on a Haier TV,
+        // so do not disable an active first-run wizard or switch HOME on this vendor path
+        // until that exact firmware has been verified across restarts.
+        val haier = facts.brand.equals("Haier", ignoreCase = true) || facts.manufacturer.equals("Haier", ignoreCase = true)
+        val haierWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
+        if (haier && haierWizard != null) return Risk.WIZARD_STAYS_ON
+        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
+)
+replace_once(
+    home_switch_risk,
+    """            val risk = wizardWifiRisk(profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)""",
+    """            val risk = wizardWifiRisk(facts, profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)"""
+)
+replace_once(
+    home_switch_risk,
+    """    private fun wizardWifiRisk(profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {""",
+    """    private fun wizardWifiRisk(facts: DeviceFacts, profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {"""
+)
+print("Haier/unknown setup-wizard HOME guard patch applied.")
+
+home_switch_risk_test = upstream / "core" / "planner" / "src" / "test" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRiskTest.kt"
+replace_once(
+    home_switch_risk_test,
+    """    // (b) Google's own hardware: the switch costs casting after every restart.""",
+    """    @Test fun haierWithAnUnlistedSetupWizardKeepsItsStockHome() {
+        val haier = withFacts(facts("haier-tv", "Haier"))
+        assertEquals(
+            Risk.WIZARD_STAYS_ON,
+            HomeSwitchRisk.of(haier.facts, PlannerFixtures.profile(), haier, WizardWifi.NOT_OWNER)
+        )
+        val cleanHaier = noWizard.copy(facts = haier.facts).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
+        assertNull(HomeSwitchRisk.of(cleanHaier.facts, PlannerFixtures.profile(), cleanHaier, WizardWifi.NOT_OWNER))
+        val takeoverProfile = PlannerFixtures.profile(quirks = setOf(Quirk.HOME_TAKEOVER_SETUPWRAITH), setupWraith = wizard)
+        assertEquals(
+            Risk.WIZARD_STAYS_ON,
+            HomeSwitchRisk.of(haier.facts, takeoverProfile, haier, WizardWifi.NOT_OWNER),
+            "even a profile with the takeover quirk must not disable Haier's active recovery wizard before firmware verification"
+        )
+    }
+
+    // (b) Google's own hardware: the switch costs casting after every restart."""
+)
+
+
+
 
 # Show each discovered TV's resolved IPv4 address as the picker subtitle.
 # FoundTv.host is populated by NSD discovery and is already a literal LAN address.
