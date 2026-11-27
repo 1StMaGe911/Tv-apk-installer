@@ -92,6 +92,9 @@ internal object WirelessAdbPairing {
         val connectPort = connectPortOverride ?: connect?.port
             ?: error("Укажи порт подключения, который показывает телевизор")
         require(pairing.port in 1..65535 && connectPort in 1..65535) { "Порт должен быть от 1 до 65535" }
+        require(connectPort != pairing.port) {
+            "Указан порт сопряжения рядом с кодом. Нужен отдельный TLS-порт из главного экрана «Беспроводная отладка» телевизора."
+        }
         require(tv.host.isNotBlank() && pairing.host.isNotBlank()) { "Не удалось определить адрес телевизора" }
         val connectHost = connect?.host ?: tv.host
         require(sameAddress(tv.host, connectHost)) { "Адрес TLS-подключения не совпадает с адресом телевизора" }
