@@ -15,11 +15,19 @@ checks = {
         "val wirelessAdbTransport = WirelessAdbSocketFactory(app)",
         "tls = wirelessAdbTransport",
         "endpointForTv = { tv -> WirelessAdbPairing.endpointForTv(app, tv) }",
+        "signerForEndpoint = { endpoint -> if (endpoint is Endpoint.Tls) WirelessAdbPairing.adbSigner(app) else signer }",
     ),
     "core/flows/src/main/kotlin/tv/cleanyour/core/flows/SetupMachine.kt": (
         "SetupIntent.PairingCompleted",
         "deps.endpointForTv(tv)",
         "deps.sessions.open(endpoint, known?.id)",
+    ),
+    "adb/session/src/main/kotlin/tv/cleanyour/adb/session/AdbSessionManager.kt": (
+        "private val signerForEndpoint: (Endpoint) -> AdbSigner = { signer }",
+        "socket, signerForEndpoint(endpoint), tls",
+    ),
+    "adb/session/src/main/kotlin/tv/cleanyour/adb/session/AdbTvSession.kt": (
+        "link.signerForEndpoint(endpoint)",
     ),
     "core/flows/src/main/kotlin/tv/cleanyour/core/flows/Flows.kt": (
         "data object PairingCompleted : SetupIntent",
@@ -51,10 +59,8 @@ if not transport.is_file():
     missing.append("app/src/main/java/ru/tvapk/installer/WirelessAdbSocketFactory.kt: file is missing")
 else:
     source = transport.read_text(encoding="utf-8")
-    for marker in ("override suspend fun upgrade(", "A_STLS", "TLSv1.3", "StartTlsAdbSocket"):
+    for marker in ("override suspend fun upgrade(", "TLSv1.3", "StartTlsAdbSocket"):
         # A_STLS is handled by adb:wire; the transport's upgrade method is called from that handshake.
-        if marker == "A_STLS":
-            continue
         if marker not in source:
             missing.append(f"WirelessAdbSocketFactory.kt: missing {marker!r}")
 
