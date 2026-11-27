@@ -1,134 +1,219 @@
-import org.gradle.api.tasks.testing.Test
+#!/usr/bin/env python3
+"""Wire in-app Android 11+ Wireless Debugging pairing to Clean Your TV's session stack."""
+from pathlib import Path
 
-plugins {
-    // Use upstream's tested Android application convention (toolchain, Compose, signing and APK checks).
-    id("cleanyourtv.android.app")
-    id("cleanyourtv.serialization")
-}
+root = Path(__file__).resolve().parents[1]
+upstream = root / "vendor" / "cleanyourtv-app"
 
-android {
-    defaultConfig {
-        versionCode = 274
-        versionName = "0.9.85" // 24-hour offline license grace period
-        // Back from a recovered TV operation returns to TV management.
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
+def replace_once(path: Path, old: str, new: str) -> None:
+    data = path.read_text(encoding="utf-8")
+    if new in data:
+        return
+    count = data.count(old)
+    if count != 1:
+        raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
+    path.write_text(data.replace(old, new, 1), encoding="utf-8")
+
+# The app graph owns the same TLS-capable SocketFactory used by every Clean Your TV operation.
+app_graph = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppGraph.kt"
+replace_once(
+    app_graph,
+    "import tv.cleanyour.android.platform.PlainSocketFactory\n",
+    "import ru.tvapk.installer.WirelessAdbPairing\nimport ru.tvapk.installer.WirelessAdbSocketFactory\n",
+)
+replace_once(
+    app_graph,
+    "val sessions = AdbSessionManager(PlainSocketFactory(), signer, tls = null, clock = clock, scope = workScope, log = { CytLog.i(it) })",
+    "val sessions = AdbSessionManager(WirelessAdbSocketFactory(app), signer, tls = null, clock = clock, scope = workScope, log = { CytLog.i(it) })",
+)
+replace_once(
+    app_graph,
+    "        restarts = restarts,       // 0.4.8\n    )",
+    "        restarts = restarts,       // 0.4.8\n        endpointForTv = { tv -> WirelessAdbPairing.endpointForTv(app, tv) },\n    )",
+)
+replace_once(
+    app_graph,
+    "    init {\n        // At start and off the main thread: the key (the first launch makes it),",
+    "    init {\n        WirelessAdbPairing.configure(app)\n        // At start and off the main thread: the key (the first launch makes it),",
+)
+
+# SetupDeps remains platform-agnostic: the Android app supplies an optional paired endpoint resolver.
+setup_machine = upstream / "core/flows/src/main/kotlin/tv/cleanyour/core/flows/SetupMachine.kt"
+replace_once(
+    setup_machine,
+    "    val restarts: Restarts? = documents?.let { Restarts(it) },\n)",
+    "    val restarts: Restarts? = documents?.let { Restarts(it) },\n    // Android Wireless Debugging: non-null only for a host paired on this phone.\n    val endpointForTv: (FoundTv) -> Endpoint? = { null },\n)",
+)
+replace_once(
+    setup_machine,
+    "    private fun door(tv: FoundTv): SetupState {\n        val pairingOnly = (tv.pairingService != null || tv.connectService != null) && tv.port5555Open != true",
+    "    private fun door(tv: FoundTv): SetupState {\n        val pairedEndpoint = deps.endpointForTv(tv)\n        if (pairedEndpoint is Endpoint.Tls) {\n            val family = Families.of(tv)\n            return SetupState.OpenDoor(tv, family, step = 2, phase = DoorPhase.CONNECTING, fingerprint = null, banner = bannerFor(family, tv), waitedMs = 0)\n        }\n        val pairingOnly = (tv.pairingService != null || tv.connectService != null) && tv.port5555Open != true",
+)
+replace_once(
+    setup_machine,
+    "        val waitingForPort = s is SetupState.OpenDoor && s.tv.host.isNotEmpty() && s.phase == DoorPhase.STEPS && !blocked",
+    "        val waitingForPort = s is SetupState.OpenDoor && s.tv.host.isNotEmpty() && s.phase == DoorPhase.STEPS && !blocked && deps.endpointForTv(s.tv) == null",
+)
+replace_once(
+    setup_machine,
+    "            deps.sessions.open(Endpoint.PlainTcp(found.host), known?.id) { fp -> allowShown = true; send(Ev.Allow(fp)) }",
+    "            val endpoint = deps.endpointForTv(found) ?: Endpoint.PlainTcp(found.host)\n            deps.sessions.open(endpoint, known?.id) { fp -> allowShown = true; send(Ev.Allow(fp)) }",
+)
+
+# The existing PairingNeeded dead end becomes a six-digit in-app pairing sheet.
+connect_screens = upstream / "feature/connect/src/main/kotlin/tv/cleanyour/feature/connect/ConnectScreens.kt"
+replace_once(
+    connect_screens,
+    "import androidx.compose.foundation.layout.Arrangement\n",
+    "import androidx.compose.foundation.layout.Arrangement\nimport androidx.compose.foundation.text.KeyboardOptions\nimport androidx.compose.material3.OutlinedTextField\nimport androidx.compose.ui.text.input.KeyboardType\n",
+)
+replace_once(
+    connect_screens,
+    "fun ConnectFlow(state: SetupState, extras: SetupExtras, actions: SetupActions, onReturning: () -> Unit, modifier: Modifier = Modifier, onCopyError: (String) -> Unit = {}) {",
+    "fun ConnectFlow(state: SetupState, extras: SetupExtras, actions: SetupActions, onReturning: () -> Unit, modifier: Modifier = Modifier, onCopyError: (String) -> Unit = {}, onPair: (FoundTv, String, Int, (Result<Unit>) -> Unit) -> Unit = { _, _, _, done -> done(Result.failure(IllegalStateException(\"Pairing is unavailable\"))) }) {",
+)
+replace_once(
+    connect_screens,
+    "is SetupState.PairingNeeded -> PairingScreen(state, extras, actions, modifier)",
+    "is SetupState.PairingNeeded -> PairingScreen(state, extras, actions, modifier, onPair)",
+)
+old_pairing = '''@Composable
+fun PairingScreen(state: SetupState.PairingNeeded, extras: SetupExtras, actions: SetupActions, modifier: Modifier = Modifier) {
+    var steps by rememberSaveable { mutableStateOf(false) }
+    ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
+        // "Show me" opens a sheet, "Back" goes back: neither acts on the TV, so neither is guarded.
+        // 0.4.6: "Report a problem" opens the GitHub form with how the TV was found (no TV read yet).
+        val title = stringResource(R.string.pairing_title)
+        StopCard(
+            title, stringResource(R.string.pairing_body), Modifier.padding(top = 20.dp),
+            primaryLabel = stringResource(R.string.pairing_show_steps), onPrimary = { steps = true },
+            secondaryLabel = stringResource(R.string.action_back), onSecondary = { actions.back() },
+            detailsLabel = stringResource(R.string.connect_report), onDetails = { actions.report(title) },
+            primaryGuarded = false,
+        )
     }
+    if (steps) CytBottomSheet({ steps = false }) { PairingStepsContent() }
+}'''
 
-    flavorDimensions += "store"
-    productFlavors {
-        create("full") {
-            dimension = "store"
-            isDefault = true
+new_pairing = '''@Composable
+fun PairingScreen(
+    state: SetupState.PairingNeeded,
+    extras: SetupExtras,
+    actions: SetupActions,
+    modifier: Modifier = Modifier,
+    onPair: (FoundTv, String, (Result<Unit>) -> Unit) -> Unit,
+) {
+    var pairingSheet by rememberSaveable { mutableStateOf(false) }
+    var code by rememberSaveable { mutableStateOf("") }
+    var connectPort by rememberSaveable { mutableStateOf(state.tv.connectService?.port?.toString().orEmpty()) }
+    var busy by rememberSaveable { mutableStateOf(false) }
+    var status by rememberSaveable { mutableStateOf("") }
+    ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
+        val title = "Сопряжение телевизора"
+        StopCard(
+            title,
+            "На телевизоре открой «Беспроводная отладка» → «Сопряжение устройства с помощью кода». Введи код прямо здесь — компьютер не нужен.",
+            Modifier.padding(top = 20.dp),
+            primaryLabel = "Сопрячь телевизор по коду",
+            onPrimary = { pairingSheet = true },
+            secondaryLabel = "Назад",
+            onSecondary = { actions.back() },
+            detailsLabel = "Сообщить о проблеме",
+            onDetails = { actions.report(title) },
+            primaryGuarded = false,
+        )
+        if (state.tv.pairingService == null) {
+            Body("На телевизоре открой «Беспроводная отладка» → «Сопряжение устройства с помощью кода», затем повтори поиск.")
         }
-        create("play") {
-            dimension = "store"
+        if (state.tv.connectService == null) {
+            Body("Порт подключения не найден автоматически. Введи его вручную по значению на экране телевизора.")
         }
+        if (status.isNotBlank()) Body(status, Modifier.padding(top = 12.dp))
     }
-
-    testOptions { unitTests { isIncludeAndroidResources = true } }
-    lint { textReport = true }
-
-    packaging {
-        resources {
-            // BouncyCastle ships the same license in bcprov, bcutil and bcpkix.
-            pickFirsts += "META-INF/LICENSE.md"
-        }
+    if (pairingSheet) CytBottomSheet({ if (!busy) pairingSheet = false }) {
+        SheetHeader("Сопряжение телевизора")
+        Body("Введи шестизначный код, который показывает телевизор. Компьютер и Termux не нужны.", Modifier.padding(top = 12.dp))
+        OutlinedTextField(
+            value = code,
+            onValueChange = { code = it.filter { ch -> ch in '0'..'9' }.take(6) },
+            label = { androidx.compose.material3.Text("Код сопряжения") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        )
+        OutlinedTextField(
+            value = connectPort,
+            onValueChange = { connectPort = it.filter { ch -> ch in '0'..'9' }.take(5) },
+            label = { androidx.compose.material3.Text("Порт подключения (на ТВ)") },
+            placeholder = { androidx.compose.material3.Text("Например, 42025") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        )
+        PrimaryButton(
+            if (busy) "Выполняется сопряжение…" else "Сопрячь",
+            onClick = {
+                if (!busy && code.length == 6 && state.tv.pairingService != null && connectPort.toIntOrNull() in 1..65535) {
+                    busy = true
+                    status = ""
+                    onPair(state.tv, code, connectPort.toInt()) { result ->
+                        busy = false
+                        result.fold(
+                            {
+                                pairingSheet = false
+                                actions.intent(SetupIntent.EnterAddress(state.tv.host))
+                            },
+                            { status = "Не удалось выполнить сопряжение: " + (it.message ?: "проверь код и повтори") }
+                        )
+                    }
+                } else if (code.length != 6) {
+                    status = "Введи все 6 цифр кода."
+                } else if (connectPort.toIntOrNull() !in 1..65535) {
+                    status = "Укажи порт подключения от 1 до 65535."
+                } else {
+                    status = "Не найден порт сопряжения. Повтори поиск при открытой странице сопряжения на ТВ."
+                }
+            },
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        if (status.isNotBlank()) Body(status, Modifier.padding(top = 12.dp))
     }
+}'''
+replace_once(connect_screens, old_pairing, new_pairing)
 
-    ndkVersion = "27.2.12479018"
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
+# Pass the pairing action through the active Setup entry; network work stays off the UI thread.
+app_root = upstream / "app/src/main/kotlin/tv/cleanyour/app/AppRoot.kt"
+replace_once(
+    app_root,
+    "import tv.cleanyour.feature.connect.ConnectFlow\n",
+    "import ru.tvapk.installer.WirelessAdbPairing\nimport tv.cleanyour.feature.connect.ConnectFlow\n",
+)
+# The upstream call can be reformatted by earlier integration scripts; match its line
+# without depending on exact whitespace. Keep the pattern on one physical Python line.
+import re
+app_root_text = app_root.read_text(encoding="utf-8")
+if "onPair = { found, code, complete ->" not in app_root_text:
+    pattern = r"(?m)^([ \t]*)if \(isConnectState\(state\)\) ConnectFlow\([^\n]*\)$"
+    def add_pairing(match):
+        indent = match.group(1)
+        return "\n".join((
+            indent + "if (isConnectState(state)) ConnectFlow(",
+            indent + "    state, extras, m,",
+            indent + '    onReturning = { go("returning") },',
+            indent + '    onCopyError = { copyText(context, it, "error") },',
+            indent + "    onPair = { found, code, complete ->",
+            indent + "        scope.launch {",
+            indent + "            val result = runCatching {",
+            indent + "                withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code, connectPort) }",
+            indent + "            }",
+            indent + "            complete(result)",
+            indent + "        }",
+            indent + "    },",
+            indent + ")",
+        ))
+    app_root_text, count = re.subn(pattern, add_pairing, app_root_text)
+    if count != 1:
+        raise SystemExit(f"Expected one ConnectFlow call in {app_root}; found {count}")
+    app_root.write_text(app_root_text, encoding="utf-8")
 
-    sourceSets {
-        getByName("main") {
-            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/main/kotlin")
-            res.srcDir("../vendor/cleanyourtv-app/app/src/main/res")
-            assets.srcDir("../vendor/cleanyourtv-app/app/src/main/assets")
-        }
-        getByName("full") {
-            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/full/kotlin")
-            res.srcDir("../vendor/cleanyourtv-app/app/src/full/res")
-        }
-        getByName("play") {
-            kotlin.directories.add("../vendor/cleanyourtv-app/app/src/play/kotlin")
-            res.srcDir("../vendor/cleanyourtv-app/app/src/play/res")
-        }
-        getByName("debug") {
-            manifest.srcFile("../vendor/cleanyourtv-app/app/src/debug/AndroidManifest.xml")
-        }
-    }
-}
-
-dependencies {
-    // Keep the legacy TV APK Installer activity compilable while it remains an internal fallback.
-    implementation("dev.mobile:dadb:2.0.0")
-    // Android 11+ Wireless Debugging pairing and ADB identity management.
-    implementation("com.flyfishxu:kadb:2.1.5") {
-        // Kadb's optional SPAKE2 Java implementation is GPL-3.0; use our BoringSSL JNI bridge.
-        exclude(group = "com.github.Flyfish233", module = "spake2-java")
-    }
-    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
-    implementation("androidx.core:core:1.15.0")
-    implementation("androidx.work:work-runtime-ktx:2.10.0")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation(project(":feature:connect"))
-    implementation(project(":feature:setup"))
-    implementation(project(":feature:manage"))
-    implementation(project(":feature:launcher"))
-    implementation(project(":feature:modules"))
-    implementation(project(":feature:backup"))
-    implementation(project(":ui:design"))
-    implementation(project(":core:flows"))
-    implementation(project(":android:work"))
-    implementation(project(":android:platform"))
-    implementation(project(":adb:session"))
-    implementation(project(":adb:wire"))
-    implementation(project(":core:ops"))
-    implementation(project(":core:spec"))
-    implementation(project(":core:probe"))
-    implementation(project(":core:planner"))
-    implementation(project(":core:engine"))
-    implementation(project(":core:backup"))
-    implementation(project(":core:trust"))
-    implementation(project(":core:registry"))
-
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.androidx.navigation3.ui)
-    implementation(libs.kotlinx.serialization.core)
-    implementation(libs.kotlinx.coroutines.android)
-
-    testImplementation(project(":testing:fixtures"))
-    testImplementation(project(":testing:fake-adbd"))
-    testImplementation(libs.robolectric)
-    testImplementation(libs.androidx.test.ext.junit)
-    testImplementation(libs.junit4)
-    testImplementation(libs.kotlin.test.junit)
-    testImplementation(libs.kotlinx.coroutines.test)
-}
-
-androidComponents {
-    beforeVariants(selector().withBuildType("benchmark")) { variant ->
-        if (variant.productFlavors.contains("store" to "play")) variant.enable = false
-        variant.hostTests[com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE]?.enable = false
-    }
-}
-
-tasks.named("check") { dependsOn("lintPlayDebug") }
-tasks.withType<Test>().configureEach {
-    maxParallelForks = 1
-    maxHeapSize = "1280m"
-    // Robolectric reflects into JDK internals when emulating Android shared memory on Java 21.
-    jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
-    testLogging {
-        events("failed")
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-    }
-}
+print("Wireless Debugging pairing UI, persisted identity, and TLS session routing patched.")
