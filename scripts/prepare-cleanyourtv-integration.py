@@ -246,6 +246,32 @@ replace_once(
 )
 print("Clean Your TV integration patched: applicationId ru.tvapk.installer, version 0.9.3 (193).")
 
+# 0.9.88: Fail closed when an enabled first-run wizard is present but the exact
+# device profile does not identify it as the wizard that may safely be switched off.
+# RecoveryActivity can claim HOME after the stock launcher is disabled even when
+# setupwraith was not reported as a HOME claimant during the initial snapshot.
+home_switch_risk = upstream / "core" / "planner" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRisk.kt"
+replace_once(
+    home_switch_risk,
+    """            val wizard = snapshot.packages.keys.firstOrNull { it.value in Denylist.setupWizards && on(it) }
+                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
+            return if (wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON""",
+    """            val wizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
+                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
+            return if (wizard.value in Denylist.setupWizards && wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON"""
+)
+replace_once(
+    home_switch_risk,
+    """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
+    """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+        val unlistedWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) && it != allowed }
+        if (unlistedWizard != null) return Risk.WIZARD_STAYS_ON
+        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
+)
+print("Haier/unknown setup-wizard HOME guard patch applied.")
+
+
 
 # Show each discovered TV's resolved IPv4 address as the picker subtitle.
 # FoundTv.host is populated by NSD discovery and is already a literal LAN address.
