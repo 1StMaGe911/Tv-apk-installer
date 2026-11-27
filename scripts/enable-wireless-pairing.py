@@ -59,7 +59,7 @@ if not transport.is_file():
     missing.append("app/src/main/java/ru/tvapk/installer/WirelessAdbSocketFactory.kt: file is missing")
 else:
     source = transport.read_text(encoding="utf-8")
-    for marker in ("override suspend fun upgrade(", "TLSv1.3", "StartTlsAdbSocket"):
+    for marker in ("override suspend fun upgrade(", "TLSv1.3", "StartTlsAdbSocket", "WirelessAdbKeyManager"):
         # A_STLS is handled by adb:wire; the transport's upgrade method is called from that handshake.
         if marker not in source:
             missing.append(f"WirelessAdbSocketFactory.kt: missing {marker!r}")
