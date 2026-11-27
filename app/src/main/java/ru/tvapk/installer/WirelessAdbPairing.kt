@@ -89,7 +89,7 @@ internal object WirelessAdbPairing {
             .putInt(portKey(tv.host), connectPort)
             .putString(serviceKey(tv.host), connect?.name ?: "_adb-tls-connect._tcp.")
             // A manually entered TV port is authoritative; mDNS can publish a stale endpoint.
-            .putBoolean(manualPortKey(tv.host), connectPortOverride != null)
+            .putBoolean(manualPortKey(tv.host), connectPortOverride != null && (connect == null || connectPortOverride != connect.port))
             .commit()
             .also { check(it) { "Не удалось сохранить сопряжение телевизора" } }
     }
