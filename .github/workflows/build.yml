@@ -68,6 +68,9 @@ jobs:
       - name: Добавить плавающий пульт управления ТВ
         run: python3 scripts/enable-floating-remote.py
 
+      - name: Добавить сопряжение Android TV по коду
+        run: python3 scripts/enable-wireless-pairing.py
+
       - name: Исправить переход из уведомления об обновлении
         run: python3 scripts/fix-update-notification-routing.py
 
@@ -88,6 +91,11 @@ jobs:
         with:
           gradle-version: '9.6.0'
           cache-disabled: false
+
+      - name: Установить Android NDK и CMake для SPAKE2
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1"
 
       - name: Проверить versionCode относительно опубликованного APK
         env:
