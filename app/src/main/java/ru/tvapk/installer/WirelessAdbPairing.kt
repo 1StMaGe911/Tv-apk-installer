@@ -58,18 +58,20 @@ internal object WirelessAdbPairing {
         }
     }
 
-    suspend fun pair(context: Context, tv: FoundTv, pairingCode: String) {
+    suspend fun pair(context: Context, tv: FoundTv, pairingCode: String, connectPortOverride: Int? = null) {
         require(Regex("^[0-9]{6}$").matches(pairingCode)) {
             "Код сопряжения должен содержать ровно 6 цифр"
         }
         val pairing = tv.pairingService ?: error(
             "Телевизор не объявил порт сопряжения. На ТВ открой «Сопряжение устройства с помощью кода»."
         )
-        val connect = tv.connectService ?: error(
-            "Не найден TLS-порт подключения. Оставь на телевизоре включённой беспроводную отладку и повтори поиск."
-        )
-        require(pairing.port in 1..65535 && connect.port in 1..65535) { "Телевизор сообщил неверный ADB-порт" }
+        val connect = tv.connectService
+        val connectPort = connectPortOverride ?: connect?.port
+            ?: error("Укажи порт подключения, который показывает телевизор")
+        require(pairing.port in 1..65535 && connectPort in 1..65535) { "Порт должен быть от 1 до 65535" }
         require(tv.host.isNotBlank() && pairing.host.isNotBlank()) { "Не удалось определить адрес телевизора" }
+        val connectHost = connect?.host ?: tv.host
+        require(sameAddress(tv.host, connectHost)) { "Адрес TLS-подключения не совпадает с адресом телевизора" }
 
         ensureIdentity(context)
         Kadb.pair(
@@ -83,9 +85,9 @@ internal object WirelessAdbPairing {
         // Save only after Kadb reports a completed SPAKE2 + peer-certificate exchange.
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .putString(hostKey(tv.host), connect.host)
-            .putInt(portKey(tv.host), connect.port)
-            .putString(serviceKey(tv.host), connect.name)
+            .putString(hostKey(tv.host), connectHost)
+            .putInt(portKey(tv.host), connectPort)
+            .putString(serviceKey(tv.host), connect?.name ?: "_adb-tls-connect._tcp.")
             .commit()
             .also { check(it) { "Не удалось сохранить сопряжение телевизора" } }
     }
