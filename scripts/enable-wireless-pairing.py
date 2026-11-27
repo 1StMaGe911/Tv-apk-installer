@@ -101,7 +101,7 @@ fun PairingScreen(
     extras: SetupExtras,
     actions: SetupActions,
     modifier: Modifier = Modifier,
-    onPair: (FoundTv, String, (Result<Unit>) -> Unit) -> Unit,
+    onPair: (FoundTv, String, Int, (Result<Unit>) -> Unit) -> Unit,
 ) {
     var pairingSheet by rememberSaveable { mutableStateOf(false) }
     var code by rememberSaveable { mutableStateOf("") }
@@ -153,7 +153,7 @@ fun PairingScreen(
         PrimaryButton(
             if (busy) "Выполняется сопряжение…" else "Сопрячь",
             onClick = {
-                if (!busy && code.length == 6 && state.tv.pairingService != null && connectPort.toIntOrNull() in 1..65535) {
+                if (!busy && code.length == 6 && state.tv.pairingService != null && connectPort.toIntOrNull()?.let { it in 1..65535 } == true) {
                     busy = true
                     status = ""
                     onPair(state.tv, code, connectPort.toInt()) { result ->
@@ -168,7 +168,7 @@ fun PairingScreen(
                     }
                 } else if (code.length != 6) {
                     status = "Введи все 6 цифр кода."
-                } else if (connectPort.toIntOrNull() !in 1..65535) {
+                } else if (connectPort.toIntOrNull()?.let { it in 1..65535 } != true) {
                     status = "Укажи порт подключения от 1 до 65535."
                 } else {
                     status = "Не найден порт сопряжения. Повтори поиск при открытой странице сопряжения на ТВ."
@@ -192,7 +192,7 @@ replace_once(
 # without depending on exact whitespace. Keep the pattern on one physical Python line.
 import re
 app_root_text = app_root.read_text(encoding="utf-8")
-if "onPair = { found, code, complete ->" not in app_root_text:
+if "onPair = { found, code, connectPort, complete ->" not in app_root_text:
     pattern = r"(?m)^([ \t]*)if \(isConnectState\(state\)\) ConnectFlow\([^\n]*\)$"
     def add_pairing(match):
         indent = match.group(1)
