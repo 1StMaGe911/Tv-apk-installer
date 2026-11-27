@@ -56,8 +56,8 @@ replace_once(
 # Route the Welcome screen's existing "returning" action to Manage as well, replacing the setup stack.
 replace_once(
     app_root,
-    'ConnectFlow(state, extras, m, onReturning = { go("returning") }, onCopyError = { copyText(context, it, "error") })',
-    'ConnectFlow(state, extras, m, onReturning = { go("manage") }, onCopyError = { copyText(context, it, "error") })',
+    '                        onReturning = { go("returning") },\n',
+    '                        onReturning = { go("manage") },\n',
     "returning route",
 )
 
