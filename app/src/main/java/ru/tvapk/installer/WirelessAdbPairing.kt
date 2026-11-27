@@ -5,6 +5,7 @@ import com.flyfishxu.kadb.Kadb
 import com.flyfishxu.kadb.cert.KadbCert
 import com.flyfishxu.kadb.cert.KadbIdentitySnapshot
 import tv.cleanyour.core.discovery.FoundTv
+import tv.cleanyour.adb.wire.AdbSigner
 import tv.cleanyour.core.model.Endpoint
 import java.security.MessageDigest
 import java.net.InetAddress
@@ -21,6 +22,7 @@ internal object WirelessAdbPairing {
     @Volatile private var identityReady = false
     private var identityStore: AndroidKeystoreAdbPrivateKeyStore? = null
     private val lock = Any()
+    @Volatile private var cachedAdbSigner: AdbSigner? = null
 
     fun configure(context: Context) {
         if (configured) return
@@ -58,6 +60,27 @@ internal object WirelessAdbPairing {
         }
     }
 
+    fun adbSigner(context: Context): AdbSigner {
+        val identity = ensureIdentity(context)
+        synchronized(lock) {
+            return cachedAdbSigner ?: WirelessAdbIdentitySigner(context.applicationContext, identity) {
+                resetIdentity(context.applicationContext)
+            }.also { cachedAdbSigner = it }
+        }
+    }
+
+    fun resetIdentity(context: Context) {
+        configure(context)
+        synchronized(lock) {
+            val rotated = KadbCert.rotate()
+            checkNotNull(identityStore).writeCertificatePemAtomic(rotated.certificatePem)
+            identityReady = true
+            cachedAdbSigner = null
+            check(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().clear().commit()) { "Не удалось очистить сопряжения телевизоров" }
+        }
+    }
+
     suspend fun pair(context: Context, tv: FoundTv, pairingCode: String, connectPortOverride: Int? = null) {
         require(Regex("^[0-9]{6}$").matches(pairingCode)) {
             "Код сопряжения должен содержать ровно 6 цифр"
@@ -89,7 +112,7 @@ internal object WirelessAdbPairing {
             .putInt(portKey(tv.host), connectPort)
             .putString(serviceKey(tv.host), connect?.name ?: "_adb-tls-connect._tcp.")
             // A manually entered TV port is authoritative; mDNS can publish a stale endpoint.
-            .putBoolean(manualPortKey(tv.host), connectPortOverride != null)
+            .putBoolean(manualPortKey(tv.host), connectPortOverride != null && (connect == null || connectPortOverride != connect.port))
             .commit()
             .also { check(it) { "Не удалось сохранить сопряжение телевизора" } }
     }
