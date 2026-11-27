@@ -15,6 +15,7 @@ internal interface AdbIdentityPreferences {
     fun getString(key: String): String?
     fun writeEncryptedIdentity(encryptedKey: String, initializationVector: String): Boolean
     fun clearIdentity(): Boolean
+    fun writeCertificatePem(encodedCertificate: String): Boolean
 }
 
 internal interface AdbIdentitySecretKeyProvider {
@@ -67,6 +68,17 @@ internal class AndroidKeystoreAdbPrivateKeyStore internal constructor(
     }
 
     @Synchronized
+    fun readCertificatePem(): ByteArray? =
+        preferences.getString(CERTIFICATE_PEM)?.let { Base64.getDecoder().decode(it) }
+
+    @Synchronized
+    fun writeCertificatePemAtomic(certificatePem: ByteArray) {
+        require(certificatePem.isNotEmpty()) { "ADB certificate must not be empty" }
+        val encoded = Base64.getEncoder().encodeToString(certificatePem)
+        check(preferences.writeCertificatePem(encoded)) { "Unable to persist the ADB certificate" }
+    }
+
+    @Synchronized
     override fun clear() {
         check(preferences.clearIdentity()) { "Unable to clear the saved ADB identity" }
     }
@@ -75,6 +87,7 @@ internal class AndroidKeystoreAdbPrivateKeyStore internal constructor(
         const val PREFERENCES_NAME = "wireless_adb_identity"
         const val ENCRYPTED_KEY = "encrypted_private_key"
         const val INITIALIZATION_VECTOR = "private_key_iv"
+        const val CERTIFICATE_PEM = "certificate_pem"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TAG_LENGTH_BITS = 128
     }
@@ -88,7 +101,10 @@ private class SharedPreferencesAdbIdentityPreferences(
         preferences.edit().putString("encrypted_private_key", encryptedKey)
             .putString("private_key_iv", initializationVector).commit()
     override fun clearIdentity(): Boolean =
-        preferences.edit().remove("encrypted_private_key").remove("private_key_iv").commit()
+        preferences.edit().remove("encrypted_private_key").remove("private_key_iv").remove("certificate_pem").commit()
+
+    override fun writeCertificatePem(encodedCertificate: String): Boolean =
+        preferences.edit().putString("certificate_pem", encodedCertificate).commit()
 }
 
 private class AndroidKeystoreAdbIdentitySecretKeyProvider : AdbIdentitySecretKeyProvider {
