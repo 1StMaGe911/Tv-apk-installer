@@ -201,7 +201,7 @@ if "onPair = { found, code, connectPort, complete ->" not in app_root_text:
             indent + "    state, extras, m,",
             indent + '    onReturning = { go("returning") },',
             indent + '    onCopyError = { copyText(context, it, "error") },',
-            indent + "    onPair = { found, code, complete ->",
+            indent + "    onPair = { found, code, connectPort, complete ->",
             indent + "        scope.launch {",
             indent + "            val result = runCatching {",
             indent + "                withContext(Dispatchers.IO) { WirelessAdbPairing.pair(context, found, code, connectPort) }",
