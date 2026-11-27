@@ -136,10 +136,6 @@ private class WirelessAdbKeyManager(
     private val certificate: X509Certificate,
 ) : X509ExtendedKeyManager() {
     private val alias = "wireless-adb"
-    private val fingerprint = java.security.MessageDigest.getInstance("SHA-256")
-        .digest(certificate.publicKey.encoded)
-        .joinToString("") { "%02X".format(it) }
-
     private fun supportsRsa(keyType: String?): Boolean =
         keyType == null || keyType.contains("RSA", ignoreCase = true)
 
