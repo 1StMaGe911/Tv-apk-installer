@@ -157,6 +157,12 @@ private class WirelessAdbKeyManager(
         engine: SSLEngine?,
     ): String? = choose(keyTypes)
 
+    override fun chooseEngineServerAlias(
+        keyType: String?,
+        issuers: Array<out Principal>?,
+        engine: SSLEngine?,
+    ): String? = null
+
     override fun getCertificateChain(alias: String?): Array<X509Certificate>? =
         if (alias == this.alias) arrayOf(certificate) else null
 
