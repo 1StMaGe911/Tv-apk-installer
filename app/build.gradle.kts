@@ -8,8 +8,8 @@ plugins {
 
 android {
     defaultConfig {
-        versionCode = 275
-        versionName = "0.9.85" // 24-hour offline license grace period
+        versionCode = 276
+        versionName = "0.9.86" // 24-hour offline license grace period
         // Back from a recovered TV operation returns to TV management.
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64") }
     }
