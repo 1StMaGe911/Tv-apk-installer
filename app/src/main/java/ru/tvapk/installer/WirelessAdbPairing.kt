@@ -5,6 +5,7 @@ import com.flyfishxu.kadb.Kadb
 import com.flyfishxu.kadb.cert.KadbCert
 import com.flyfishxu.kadb.cert.KadbIdentitySnapshot
 import tv.cleanyour.core.discovery.FoundTv
+import tv.cleanyour.adb.wire.AdbSigner
 import tv.cleanyour.core.model.Endpoint
 import java.security.MessageDigest
 import java.net.InetAddress
@@ -21,6 +22,7 @@ internal object WirelessAdbPairing {
     @Volatile private var identityReady = false
     private var identityStore: AndroidKeystoreAdbPrivateKeyStore? = null
     private val lock = Any()
+    @Volatile private var cachedAdbSigner: AdbSigner? = null
 
     fun configure(context: Context) {
         if (configured) return
@@ -55,6 +57,27 @@ internal object WirelessAdbPairing {
             }
             return KadbCert.exportIdentityOrNull()
                 ?: throw IllegalStateException("ADB pairing identity is unavailable")
+        }
+    }
+
+    fun adbSigner(context: Context): AdbSigner {
+        val identity = ensureIdentity(context)
+        synchronized(lock) {
+            return cachedAdbSigner ?: WirelessAdbIdentitySigner(context.applicationContext, identity) {
+                resetIdentity(context.applicationContext)
+            }.also { cachedAdbSigner = it }
+        }
+    }
+
+    fun resetIdentity(context: Context) {
+        configure(context)
+        synchronized(lock) {
+            val rotated = KadbCert.rotate()
+            checkNotNull(identityStore).writeCertificatePemAtomic(rotated.certificatePem)
+            identityReady = true
+            cachedAdbSigner = null
+            check(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().clear().commit()) { "Не удалось очистить сопряжения телевизоров" }
         }
     }
 
