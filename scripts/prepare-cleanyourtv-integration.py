@@ -265,8 +265,12 @@ replace_once(
     """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
     """        val allowed = profile?.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
+        // Haier's RecoveryActivity can appear after the initial HOME snapshot even when
+        // setupwraith was not listed as a HOME claimant. Keep the stock launcher enabled
+        // unless this exact Haier profile explicitly identifies the wizard for takeover.
+        val haier = facts.brand.equals("Haier", ignoreCase = true) || facts.manufacturer.equals("Haier", ignoreCase = true)
         val unlistedWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) && it != allowed }
-        if (unlistedWizard != null) return Risk.WIZARD_STAYS_ON
+        if (haier && unlistedWizard != null) return Risk.WIZARD_STAYS_ON
         if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
 )
 print("Haier/unknown setup-wizard HOME guard patch applied.")
