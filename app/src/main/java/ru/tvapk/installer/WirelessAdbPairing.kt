@@ -99,6 +99,19 @@ internal object WirelessAdbPairing {
         return Endpoint.Tls(host, port, prefs.getString(serviceKey(host), "_adb-tls-connect._tcp."))
     }
 
+    fun endpointForTv(context: Context, tv: FoundTv): Endpoint.Tls? {
+        val saved = endpointForHost(context, tv.host) ?: return null
+        val live = tv.connectService ?: return saved
+        if (live.port !in 1..65535 || !sameAddress(tv.host, live.host)) return saved
+        // Wireless Debugging can publish a new TLS port after a TV reboot. Refresh it from mDNS.
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(hostKey(tv.host), live.host)
+            .putInt(portKey(tv.host), live.port)
+            .putString(serviceKey(tv.host), live.name)
+            .apply()
+        return Endpoint.Tls(tv.host, live.port, live.name)
+    }
+
     fun isPairedEndpoint(context: Context, host: String, port: Int): Boolean =
         endpointForHost(context, host)?.port == port
 
