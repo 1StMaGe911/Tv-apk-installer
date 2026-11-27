@@ -3,6 +3,7 @@ package ru.tvapk.installer
 import android.content.Context
 import com.flyfishxu.kadb.Kadb
 import com.flyfishxu.kadb.cert.KadbCert
+import com.flyfishxu.kadb.cert.KadbIdentitySnapshot
 import tv.cleanyour.core.discovery.FoundTv
 import tv.cleanyour.core.model.Endpoint
 import java.security.MessageDigest
@@ -16,14 +17,43 @@ internal object WirelessAdbPairing {
     private const val DEFAULT_DEVICE_NAME = "Clean Your TV"
 
     @Volatile private var configured = false
+    @Volatile private var identityReady = false
+    private var identityStore: AndroidKeystoreAdbPrivateKeyStore? = null
     private val lock = Any()
 
     fun configure(context: Context) {
         if (configured) return
         synchronized(lock) {
             if (configured) return
-            KadbCert.configure(AndroidKeystoreAdbPrivateKeyStore(context.applicationContext))
+            val store = AndroidKeystoreAdbPrivateKeyStore(context.applicationContext)
+            identityStore = store
+            KadbCert.configure(store)
             configured = true
+        }
+    }
+
+    fun ensureIdentity(context: Context): KadbIdentitySnapshot {
+        configure(context)
+        synchronized(lock) {
+            if (!identityReady) {
+                val store = checkNotNull(identityStore)
+                val privateKey = store.readPrivateKeyPem()
+                val certificate = store.readCertificatePem()
+                check((privateKey == null) == (certificate == null)) {
+                    "Saved Wireless Debugging identity is incomplete; refusing to replace it"
+                }
+                val snapshot = if (privateKey != null && certificate != null) {
+                    KadbCert.importIdentity(privateKey, certificate)
+                } else {
+                    KadbCert.ensureReady()
+                }
+                // Kadb's default certificate is regenerated from the private key after process death.
+                // Persist the certificate too so the TV sees the exact same TLS client identity.
+                store.writeCertificatePemAtomic(snapshot.certificatePem)
+                identityReady = true
+            }
+            return KadbCert.exportIdentityOrNull()
+                ?: throw IllegalStateException("ADB pairing identity is unavailable")
         }
     }
 
@@ -40,8 +70,7 @@ internal object WirelessAdbPairing {
         require(pairing.port in 1..65535 && connect.port in 1..65535) { "Телевизор сообщил неверный ADB-порт" }
         require(tv.host.isNotBlank() && pairing.host.isNotBlank()) { "Не удалось определить адрес телевизора" }
 
-        configure(context)
-        KadbCert.ensureReady()
+        ensureIdentity(context)
         Kadb.pair(
             host = pairing.host,
             port = pairing.port,
