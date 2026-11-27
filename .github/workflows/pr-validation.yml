@@ -79,6 +79,7 @@ jobs:
         run: |
           python3 scripts/enable-remote-ime.py
           python3 scripts/enable-floating-remote.py
+          python3 scripts/enable-wireless-pairing.py
       - name: Подготовить ключ подписи
         env:
           KEY_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
