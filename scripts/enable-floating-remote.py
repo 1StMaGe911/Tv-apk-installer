@@ -176,8 +176,19 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                             return reply.stdout
                         }
                         val component = context.packageName + "/tv.cleanyour.app.remote.RemoteInputMethodService"
+                        val providerAuthority = context.packageName + ".remoteinput"
+                        suspend fun providerAvailable(): Boolean {
+                            val probe = session.exec(
+                                ShellLine("content call --uri content://" + providerAuthority + " --method ping"),
+                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
+                            )
+                            return probe.exit == 0 && probe.stdout.contains("ready=true")
+                        }
                         val installedImes = checked("ime list -a")
-                        if (!installedImes.contains(component)) {
+                        val hasProvider = providerAvailable()
+                        // Older builds may already have registered the IME service but not
+                        // the ContentProvider. Checking only "ime list" skips the APK upgrade.
+                        if (!installedImes.contains(component) || !hasProvider) {
                             val apk = File(context.applicationInfo.sourceDir)
                             if (!apk.isFile || apk.length() <= 0L) error("Не удалось прочитать APK приложения на телефоне")
                             val digest = MessageDigest.getInstance("SHA-256")
@@ -200,9 +211,13 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         if (!refreshedImes.contains(component)) {
                             error("Клавиатура не зарегистрировалась в Android. Компонент: " + component + "; найдено: " + refreshedImes.take(1200))
                         }
-                        val providerCheck = checked("dumpsys package " + context.packageName)
-                        if (!providerCheck.contains(context.packageName + ".remoteinput")) {
-                            error("В установленном APK не найден канал удалённого ввода")
+                        if (!providerAvailable()) {
+                            val providerCheck = checked("dumpsys package " + context.packageName)
+                            error(
+                                "В установленном APK не найден или недоступен канал удалённого ввода. " +
+                                    "Ожидался authority " + providerAuthority + ". " +
+                                    providerCheck.take(900)
+                            )
                         }
                         val previous = checked("settings get secure default_input_method").trim()
                         if (previous.isNotBlank() && previous != "null" && previous != component) {
