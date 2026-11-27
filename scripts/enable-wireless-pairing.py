@@ -15,7 +15,7 @@ checks = {
         "val wirelessAdbTransport = WirelessAdbSocketFactory(app)",
         "tls = wirelessAdbTransport",
         "endpointForTv = { tv -> WirelessAdbPairing.endpointForTv(app, tv) }",
-        "signerForEndpoint = { endpoint -> if (endpoint is Endpoint.Tls) WirelessAdbPairing.adbSigner(app) else signer }",
+        "signerForEndpoint = { endpoint -> if (endpoint is Endpoint.Tls || WirelessAdbPairing.endpointForHost(app, endpoint.host) != null) WirelessAdbPairing.adbSigner(app) else signer }",
     ),
     "core/flows/src/main/kotlin/tv/cleanyour/core/flows/SetupMachine.kt": (
         "SetupIntent.PairingCompleted",
