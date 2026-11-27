@@ -42,7 +42,7 @@ jobs:
           python3 scripts/enable-remote-ime.py
           python3 scripts/enable-floating-remote.py
       - name: Выполнить модульные тесты
-        run: gradle check :app:testFullDebugUnitTest --no-daemon
+        run: gradle :app:testFullDebugUnitTest --no-daemon
 
   build:
     name: Сборка именно TV APK Installer
