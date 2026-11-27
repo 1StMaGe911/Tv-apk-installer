@@ -82,12 +82,12 @@ fun PairingScreen(state: SetupState.PairingNeeded, extras: SetupExtras, actions:
     ScreenScaffold(Glow.Tv, modifier, topBar = { CytTopBar(onBack = { actions.back() }) }) {
         // "Show me" opens a sheet, "Back" goes back: neither acts on the TV, so neither is guarded.
         // 0.4.6: "Report a problem" opens the GitHub form with how the TV was found (no TV read yet).
-        val title = stringResource(R.string.pairing_title)
+        val title = "Сопряжение телевизора"
         StopCard(
             title, stringResource(R.string.pairing_body), Modifier.padding(top = 20.dp),
             primaryLabel = stringResource(R.string.pairing_show_steps), onPrimary = { steps = true },
-            secondaryLabel = stringResource(R.string.action_back), onSecondary = { actions.back() },
-            detailsLabel = stringResource(R.string.connect_report), onDetails = { actions.report(title) },
+            secondaryLabel = "Назад", onSecondary = { actions.back() },
+            detailsLabel = "Сообщить о проблеме", onDetails = { actions.report(title) },
             primaryGuarded = false,
         )
     }
