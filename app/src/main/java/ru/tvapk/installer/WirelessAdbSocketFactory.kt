@@ -45,7 +45,7 @@ internal class WirelessAdbSocketFactory(private val context: Context) : SocketFa
         val identity = WirelessAdbPairing.ensureIdentity(context)
         val privateKey = parsePrivateKey(identity.privateKeyPem)
         val certificate = parseCertificate(identity.certificatePem)
-        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+        val keyStore = KeyStore.getInstance("PKCS12").apply {
             load(null, null)
             setKeyEntry("wireless-adb", privateKey, CharArray(0), arrayOf(certificate))
         }
