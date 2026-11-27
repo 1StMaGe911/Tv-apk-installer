@@ -40,7 +40,7 @@ module_rules = upstream / "build-logic" / "convention" / "src" / "main" / "kotli
 replace_once(
     module_rules,
     '":app" to androidCommon,',
-    '":app" to androidCommon + "dev.mobile:dadb" + "org.bouncycastle:bcprov-jdk18on",',
+    '":app" to androidCommon + "dev.mobile:dadb" + "org.bouncycastle:bcprov-jdk18on" + "com.flyfishxu:kadb",',
 )
 
 # Sign the debug variant with the existing TV APK Installer key when CI supplies it.
