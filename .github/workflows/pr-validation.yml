@@ -41,6 +41,7 @@ jobs:
         run: |
           python3 scripts/enable-remote-ime.py
           python3 scripts/enable-floating-remote.py
+          python3 scripts/enable-wireless-pairing.py
       - name: Выполнить модульные тесты
         run: gradle :app:testFullDebugUnitTest --no-daemon
 
@@ -64,6 +65,10 @@ jobs:
         with:
           gradle-version: '9.6.0'
           cache-disabled: false
+      - name: Установить Android NDK и CMake для SPAKE2
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018" "cmake;3.22.1"
       - name: Настроить исходники Clean Your TV
         run: python3 scripts/prepare-cleanyourtv-integration.py
       - name: Добавить установку APK в Clean Your TV
