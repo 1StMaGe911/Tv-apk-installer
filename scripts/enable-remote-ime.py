@@ -68,6 +68,9 @@ import android.inputmethodservice.InputMethodService
 import android.os.Binder
 import android.os.Bundle
 import android.os.Process
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import android.util.Base64
 import android.view.View
 import android.view.inputmethod.InputConnection
