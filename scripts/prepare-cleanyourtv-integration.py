@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Apply the small, reproducible product-identity patch to the pinned upstream source."""
 from pathlib import Path
+import re
 
 root = Path(__file__).resolve().parents[1]
 upstream = root / "vendor" / "cleanyourtv-app"
@@ -17,8 +18,19 @@ def replace_once(path: Path, old: str, new: str) -> None:
         raise SystemExit(f"Expected exactly one occurrence in {path}: {old!r}; found {count}")
     path.write_text(data.replace(old, new), encoding="utf-8")
 
-replace_once(app_gradle, "versionCode = 32", "versionCode = 193")
-replace_once(app_gradle, 'versionName = "0.5.0-beta1"', 'versionName = "0.9.3"')
+def set_gradle_value(path: Path, key: str, value: str) -> None:
+    data = path.read_text(encoding="utf-8")
+    pattern = rf'(?m)^(\\s*{re.escape(key)}\\s*=\\s*)(?:\\d+|"(?:[^"]*)")'
+    updated, count = re.subn(pattern, lambda match: match.group(1) + value, data, count=1)
+    if count != 1:
+        raise SystemExit(f"Expected one Gradle setting {key!r} in {path}; found {count}")
+    path.write_text(updated, encoding="utf-8")
+
+# The pinned upstream has advanced beyond the original beta1 values (32 / 0.5.0-beta1).
+# Set our integration identity from whatever upstream version is present instead of
+# requiring one historical literal; this keeps the build reproducible across source updates.
+set_gradle_value(app_gradle, "versionCode", "193")
+set_gradle_value(app_gradle, "versionName", '"0.9.3"')
 store_source = upstream / "app" / "src" / "full" / "kotlin" / "tv" / "cleanyour" / "app" / "Store.kt"
 replace_once(store_source, "https://api.github.com/repos/udhaykumarbala/cleanyourtv-app/releases/latest", "https://api.github.com/repos/1StMaGe911/Tv-apk-installer/releases/latest")
 replace_once(store_source, "https://github.com/udhaykumarbala/cleanyourtv-app/releases.atom", "https://github.com/1StMaGe911/Tv-apk-installer/releases.atom")
