@@ -33,7 +33,22 @@ if "tv.cleanyour.app.remote.RemoteInputMethodService" not in text:
     if text.count(anchor) != 1:
         raise SystemExit("Could not find manifest receiver insertion point")
     text = text.replace(anchor, addition + anchor, 1)
-    manifest.write_text(text, encoding="utf-8")
+if "tv.cleanyour.app.remote.RemoteInputReceiver" not in text:
+    if text.count(anchor) != 1:
+        raise SystemExit("Could not find update receiver insertion point")
+    receiver = '''        <receiver
+            android:name="tv.cleanyour.app.remote.RemoteInputReceiver"
+            android:permission="android.permission.DUMP"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="tv.cleanyour.app.remote.PING" />
+                <action android:name="tv.cleanyour.app.remote.COMMIT" />
+            </intent-filter>
+        </receiver>
+
+'''
+    text = text.replace(anchor, receiver + anchor, 1)
+manifest.write_text(text, encoding="utf-8")
 
 metadata.parent.mkdir(parents=True, exist_ok=True)
 metadata.write_text('''<?xml version="1.0" encoding="utf-8"?>
@@ -95,6 +110,7 @@ class RemoteInputMethodService : InputMethodService() {
         @Volatile private var active: RemoteInputMethodService? = null
 
         fun commit(value: String): Boolean = active?.commitRemoteText(value) ?: false
+        fun isActive(): Boolean = active != null
     }
 }
 
@@ -123,6 +139,39 @@ class RemoteInputProvider : ContentProvider() {
         require(value.isNotEmpty()) { "Text payload is empty" }
         check(RemoteInputMethodService.commit(value)) { "No active TV text field; focus an input field first" }
         return Bundle().apply { putBoolean("committed", true) }
+    }
+}
+
+/** Explicit, shell-permission-protected IPC. This avoids ContentResolver authority lookup. */
+class RemoteInputReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+        try {
+            when (intent?.action) {
+                ACTION_PING -> {
+                    check(RemoteInputMethodService.isActive()) { "IME service is not active" }
+                    setResultCode(android.app.Activity.RESULT_OK)
+                    setResultData("ready=true")
+                }
+                ACTION_COMMIT -> {
+                    val encoded = intent.getStringExtra("payload") ?: error("Missing text payload")
+                    require(encoded.length <= 16384) { "Text payload is too large" }
+                    val value = String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8)
+                    require(value.isNotEmpty()) { "Text payload is empty" }
+                    check(RemoteInputMethodService.commit(value)) { "No active TV text field; focus an input field first" }
+                    setResultCode(android.app.Activity.RESULT_OK)
+                    setResultData("committed=true")
+                }
+                else -> error("Unsupported remote input action")
+            }
+        } catch (error: Throwable) {
+            setResultCode(android.app.Activity.RESULT_CANCELED)
+            setResultData("error=" + (error.message ?: "remote input failed"))
+        }
+    }
+
+    companion object {
+        const val ACTION_PING = "tv.cleanyour.app.remote.PING"
+        const val ACTION_COMMIT = "tv.cleanyour.app.remote.COMMIT"
     }
 }
 ''', encoding="utf-8")
