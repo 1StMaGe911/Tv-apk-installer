@@ -20,7 +20,7 @@ def replace_once(path: Path, old: str, new: str) -> None:
 
 def set_gradle_value(path: Path, key: str, value: str) -> None:
     data = path.read_text(encoding="utf-8")
-    pattern = rf'(?m)^(\\s*{re.escape(key)}\\s*=\\s*)(?:\\d+|"(?:[^"]*)")'
+    pattern = rf'(?m)^(\s*{re.escape(key)}\s*=\s*)(?:\d+|"(?:[^"]*)")'
     updated, count = re.subn(pattern, lambda match: match.group(1) + value, data, count=1)
     if count != 1:
         raise SystemExit(f"Expected one Gradle setting {key!r} in {path}; found {count}")
