@@ -98,6 +98,10 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         "com.android.providers.blockednumber"
     )
     return packageName in protected ||
+        // LERAN 32SN4500 uses Yandex TV as its stock Home and platform stack.
+        // Keep all Yandex TV framework packages and CVTE firmware components protected.
+        packageName.startsWith("com.yandex.tv.") ||
+        packageName.startsWith("com.cvte.") ||
         (packageName.startsWith("com.android.providers.") && packageName !in allowedProviders) ||
         packageName.startsWith("com.android.systemui.") ||
         packageName.startsWith("com.google.android.gms.") ||
