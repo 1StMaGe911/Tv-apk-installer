@@ -2160,7 +2160,7 @@ replace_once(
 replace_once(
     setup_machine,
     "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved) }",
-    "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved, it.bytes) }",
+    "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved) }",
 )
 replace_once(setup_machine, "        val showOnTv = draft.level == Level.SIMPLE || draft.curtain", "        val showOnTv = !cleanOnly && (draft.level == Level.SIMPLE || draft.curtain)")
 replace_once(
@@ -2192,7 +2192,7 @@ replace_once(
 )
 replace_once(
     setup_screens,
-    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
     "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
 )
 replace_once(
