@@ -141,6 +141,9 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                     try {
                         val reply = session.exec(ShellLine(command), ExecSpec(timeoutMs = 6000, idleTimeoutMs = 4000))
                         if (reply.exit != 0) throw IllegalStateException(reply.stderr.ifBlank { "Команда отклонена телевизором" })
+                        if (command.contains("tv.cleanyour.app.remote.COMMIT") && !reply.stdout.contains("committed=true")) {
+                            throw IllegalStateException(reply.stdout.ifBlank { "Телевизор не подтвердил ввод текста" })
+                        }
                     } finally {
                         hold.close()
                     }
@@ -176,24 +179,22 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                             return reply.stdout
                         }
                         val component = context.packageName + "/tv.cleanyour.app.remote.RemoteInputMethodService"
-                        val providerAuthority = context.packageName + ".remoteinput"
-                        // content uses the shell's current Android user; without --user it may
-                        // query the default profile and report a registered provider as missing.
+                        val receiver = context.packageName + "/tv.cleanyour.app.remote.RemoteInputReceiver"
+                        val actionPing = "tv.cleanyour.app.remote.PING"
+                        val actionCommit = "tv.cleanyour.app.remote.COMMIT"
                         val shellUserId = checked("am get-current-user").trim().ifBlank { "0" }
                         prefs.edit().putString("remote_input_user_" + id.value, shellUserId).apply()
-                        suspend fun providerProbe() = session.exec(
-                            ShellLine("content call --user " + shellUserId + " --uri content://" + providerAuthority + " --method ping"),
+                        suspend fun receiverProbe() = session.exec(
+                            ShellLine("am broadcast --user " + shellUserId + " -n " + receiver + " -a " + actionPing),
                             ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
                         )
-                        suspend fun providerAvailable(): Boolean {
-                            val probe = providerProbe()
+                        suspend fun receiverAvailable(): Boolean {
+                            val probe = receiverProbe()
                             return probe.exit == 0 && probe.stdout.contains("ready=true")
                         }
                         val installedImes = checked("ime list -a")
-                        val hasProvider = providerAvailable()
-                        // Older builds may already have registered the IME service but not
-                        // the ContentProvider. Checking only "ime list" skips the APK upgrade.
-                        if (!installedImes.contains(component) || !hasProvider) {
+                        val hasReceiver = receiverAvailable()
+                        if (!installedImes.contains(component) || !hasReceiver) {
                             val apk = File(context.applicationInfo.sourceDir)
                             if (!apk.isFile || apk.length() <= 0L) error("Не удалось прочитать APK приложения на телефоне")
                             val digest = MessageDigest.getInstance("SHA-256")
@@ -216,43 +217,14 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         if (!refreshedImes.contains(component)) {
                             error("Клавиатура не зарегистрировалась в Android. Компонент: " + component + "; найдено: " + refreshedImes.take(1200))
                         }
-                        val providerStatus = providerProbe()
-                        if (providerStatus.exit != 0 || !providerStatus.stdout.contains("ready=true")) {
-                            // Collect targeted PackageManager evidence instead of truncating the
-                            // beginning of dumpsys package (which usually hides the Providers section).
-                            val packageDump = session.exec(
-                                ShellLine("dumpsys package " + context.packageName),
-                                ExecSpec(timeoutMs = 12000, idleTimeoutMs = 8000)
-                            )
-                            val providerLines = packageDump.stdout.lineSequence()
-                                .filter { line ->
-                                    line.contains(providerAuthority, ignoreCase = true) ||
-                                        line.contains("RemoteInputProvider", ignoreCase = true) ||
-                                        line.contains("Providers:", ignoreCase = true)
-                                }
-                                .take(24)
-                                .joinToString("\\n")
-                                .ifBlank { "Запись провайдера в dumpsys package не найдена." }
-                            val apkPath = session.exec(
-                                ShellLine("pm path " + context.packageName),
-                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
-                            )
-                            val resolve = session.exec(
-                                ShellLine("cmd package resolve-content-provider --brief " + providerAuthority),
-                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
-                            )
+                        val receiverStatus = receiverProbe()
+                        if (receiverStatus.exit != 0 || !receiverStatus.stdout.contains("ready=true")) {
                             error(
-                                "Канал удалённого ввода недоступен. Authority: " + providerAuthority +
-                                    "\\nПроверка content call: exit=" + providerStatus.exit +
-                                    "\\nstdout: " + providerStatus.stdout.take(500) +
-                                    "\\nstderr: " + providerStatus.stderr.take(700) +
-                                    "\\nAPK: " + apkPath.stdout.take(300) +
-                                    "\\nPackageManager resolve: exit=" + resolve.exit +
-                                    ", stdout=" + resolve.stdout.take(500) +
-                                    ", stderr=" + resolve.stderr.take(500) +
-                                    "\\nЗаписи провайдера:\\n" + providerLines.take(1800) +
-                                    "\\nВывод dumpsys: exit=" + packageDump.exit +
-                                    ", stderr=" + packageDump.stderr.take(300)
+                                "Канал удалённого ввода через Broadcast недоступен." +
+                                    "\\nПроверка am broadcast: exit=" + receiverStatus.exit +
+                                    "\\nstdout: " + receiverStatus.stdout.take(900) +
+                                    "\\nstderr: " + receiverStatus.stderr.take(500) +
+                                    "\\nReceiver: " + receiver
                             )
                         }
                         val previous = checked("settings get secure default_input_method").trim()
@@ -321,10 +293,11 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
             return
         }
         val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        val uri = "content://" + context.packageName + ".remoteinput"
         val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() }
         val shellUserId = id?.let { prefs.getString("remote_input_user_" + it.value, "0") } ?: "0"
-        val command = "content call --user " + shellUserId + " --uri " + uri + " --method commit --arg " + quoteShell(encoded)
+        val receiver = context.packageName + "/tv.cleanyour.app.remote.RemoteInputReceiver"
+        val command = "am broadcast --user " + shellUserId + " -n " + receiver +
+            " -a tv.cleanyour.app.remote.COMMIT --es payload " + quoteShell(encoded)
         runShell(command, "Введено: " + value)
     }
 
