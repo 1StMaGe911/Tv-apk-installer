@@ -90,6 +90,13 @@ class TvPlatformClassifierTest {
     }
 
     @Test
+    fun profileLabelRecognizesLeranAndroidTv() {
+        assertEquals("LERAN • Android TV / Android", TvPlatformClassifier.profileLabel(
+            "manufacturer=LERAN; brand=LERAN; model=32SN4500; build=Android 11; package=com.yandex.tv.home"
+        ))
+    }
+
+    @Test
     fun profileLabelDoesNotMatchShortOemNamesInsideUnrelatedWords() {
         assertEquals("Универсальный профиль • Android TV / Android", TvPlatformClassifier.profileLabel(
             "manufacturer=Google; model=bulge; build=android"
