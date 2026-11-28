@@ -141,7 +141,7 @@ jobs:
       - name: Проверить логику автоматизации
         env:
           JAVA_TOOL_OPTIONS: "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED"
-        run: gradle :app:testFullDebugUnitTest --no-daemon
+        run: gradle -Pcyt.candidates=true :app:testFullDebugUnitTest --no-daemon
 
       - name: Проверить и подготовить постоянный ключ подписи
         env:
@@ -170,7 +170,7 @@ jobs:
           CYT_RELEASE_KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           GRADLE_OPTS: "-Dorg.gradle.internal.http.connectionTimeout=60000 -Dorg.gradle.internal.http.socketTimeout=120000"
         run: |
-          gradle :app:assembleFullDebug --no-daemon
+          gradle -Pcyt.candidates=true :app:assembleFullDebug --no-daemon
 
       - name: Проверить подпись APK
         run: |
