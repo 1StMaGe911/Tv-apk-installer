@@ -22,12 +22,11 @@ addition = '''        <service
                 android:resource="@xml/remote_input_method" />
         </service>
 
-        <!-- ADB shell-only IPC: shell holds DUMP; provider also verifies Binder UID. -->
+        <!-- ADB shell-only IPC: provider verifies the caller Binder UID. -->
         <provider
             android:name="tv.cleanyour.app.remote.RemoteInputProvider"
             android:authorities="${applicationId}.remoteinput"
-            android:exported="true"
-            android:permission="android.permission.DUMP" />
+            android:exported="true" />
 
 '''
 if "tv.cleanyour.app.remote.RemoteInputMethodService" not in text:
