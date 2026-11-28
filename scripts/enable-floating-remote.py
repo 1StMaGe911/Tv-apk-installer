@@ -177,11 +177,12 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         }
                         val component = context.packageName + "/tv.cleanyour.app.remote.RemoteInputMethodService"
                         val providerAuthority = context.packageName + ".remoteinput"
+                        suspend fun providerProbe() = session.exec(
+                            ShellLine("content call --uri content://" + providerAuthority + " --method ping"),
+                            ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
+                        )
                         suspend fun providerAvailable(): Boolean {
-                            val probe = session.exec(
-                                ShellLine("content call --uri content://" + providerAuthority + " --method ping"),
-                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
-                            )
+                            val probe = providerProbe()
                             return probe.exit == 0 && probe.stdout.contains("ready=true")
                         }
                         val installedImes = checked("ime list -a")
@@ -211,12 +212,43 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         if (!refreshedImes.contains(component)) {
                             error("Клавиатура не зарегистрировалась в Android. Компонент: " + component + "; найдено: " + refreshedImes.take(1200))
                         }
-                        if (!providerAvailable()) {
-                            val providerCheck = checked("dumpsys package " + context.packageName)
+                        val providerStatus = providerProbe()
+                        if (providerStatus.exit != 0 || !providerStatus.stdout.contains("ready=true")) {
+                            // Collect targeted PackageManager evidence instead of truncating the
+                            // beginning of dumpsys package (which usually hides the Providers section).
+                            val packageDump = session.exec(
+                                ShellLine("dumpsys package " + context.packageName),
+                                ExecSpec(timeoutMs = 12000, idleTimeoutMs = 8000)
+                            )
+                            val providerLines = packageDump.stdout.lineSequence()
+                                .filter { line ->
+                                    line.contains(providerAuthority, ignoreCase = true) ||
+                                        line.contains("RemoteInputProvider", ignoreCase = true) ||
+                                        line.contains("Providers:", ignoreCase = true)
+                                }
+                                .take(24)
+                                .joinToString("\\n")
+                                .ifBlank { "Запись провайдера в dumpsys package не найдена." }
+                            val apkPath = session.exec(
+                                ShellLine("pm path " + context.packageName),
+                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
+                            )
+                            val resolve = session.exec(
+                                ShellLine("cmd package resolve-content-provider --brief " + providerAuthority),
+                                ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
+                            )
                             error(
-                                "В установленном APK не найден или недоступен канал удалённого ввода. " +
-                                    "Ожидался authority " + providerAuthority + ". " +
-                                    providerCheck.take(900)
+                                "Канал удалённого ввода недоступен. Authority: " + providerAuthority +
+                                    "\\nПроверка content call: exit=" + providerStatus.exit +
+                                    "\\nstdout: " + providerStatus.stdout.take(500) +
+                                    "\\nstderr: " + providerStatus.stderr.take(700) +
+                                    "\\nAPK: " + apkPath.stdout.take(300) +
+                                    "\\nPackageManager resolve: exit=" + resolve.exit +
+                                    ", stdout=" + resolve.stdout.take(500) +
+                                    ", stderr=" + resolve.stderr.take(500) +
+                                    "\\nЗаписи провайдера:\\n" + providerLines.take(1800) +
+                                    "\\nВывод dumpsys: exit=" + packageDump.exit +
+                                    ", stderr=" + packageDump.stderr.take(300)
                             )
                         }
                         val previous = checked("settings get secure default_input_method").trim()
