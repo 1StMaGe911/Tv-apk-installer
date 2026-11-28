@@ -2170,8 +2170,8 @@ replace_once(
 )
 replace_once(
     setup_machine,
-    "helperOffer = helperStock != null, helperOn = helper, helperWhyNot = helperWhyNot,",
-    "helperOffer = helperStock != null && !cleanOnly, helperOn = helper, helperWhyNot = helperWhyNot, cleanOnly = cleanOnly,",
+    "helperOffer = helperStock != null, helperOn = helper,",
+    "helperOffer = helperStock != null && !cleanOnly, helperOn = helper, cleanOnly = cleanOnly,",
 )
 
 # S3: expose the choice, and make the primary action say what this plan will actually do.
