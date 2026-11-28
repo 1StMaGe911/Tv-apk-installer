@@ -1068,6 +1068,23 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun protectsLeranYandexTvAndCvtePlatformPackages() {
+        listOf(
+            "com.yandex.tv.home",
+            "com.yandex.tv.settings",
+            "com.yandex.tv.services",
+            "com.yandex.tv.services.platform",
+            "com.yandex.tv.services.privileged",
+            "com.yandex.tv.setupwizard",
+            "com.yandex.tv.alice",
+            "com.cvte.hotkey.dispatcher"
+        ).forEach { packageName ->
+            assertTrue(TvAutomationEngine.isProtectedSystemPackage(packageName), packageName)
+            assertFalse(TvAutomationEngine.isCleanupCandidate(packageName), packageName)
+        }
+    }
+
+    @Test
     fun doesNotOverprotectExplicitlyAllowedProvidersOrThirdPartyApps() {
         assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.calendar"))
         assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.contacts"))
