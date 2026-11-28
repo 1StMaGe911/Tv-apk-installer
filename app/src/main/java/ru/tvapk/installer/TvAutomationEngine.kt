@@ -85,7 +85,11 @@ internal fun isProtectedSystemPackage(packageName: String): Boolean {
         "com.mediatek.tv.agent",
         // Fire OS protects its own Home apps; disabling either can leave the TV without a usable Home.
         "com.amazon.tv.launcher",
-        "com.amazon.firehomestarter"
+        "com.amazon.firehomestarter",
+        // LERAN 32SN4500 reports Yandex TV as its stock Home and platform services.
+        // Until this firmware has a reviewed, reboot-tested profile, keep its advertising-ID service
+        // out of automatic cleanup candidates.
+        "com.yandex.android.advid"
     )
     val allowedProviders = setOf(
         "com.android.providers.calendar",
