@@ -265,36 +265,34 @@ print("Clean Your TV integration patched: applicationId ru.tvapk.installer, vers
 home_switch_risk = upstream / "core" / "planner" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRisk.kt"
 replace_once(
     home_switch_risk,
-    """            val wizard = snapshot.packages.keys.firstOrNull { it.value in Denylist.setupWizards && on(it) }
-                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
-            return if (wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON""",
-    """            val wizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
-                ?: return if (homeWizards.isEmpty() && !firstRunClaims) null else Risk.WIZARD_STAYS_ON
-            return if (wizard.value in Denylist.setupWizards && wizardWifi == WizardWifi.OWNER && on(wizard)) Risk.WIZARD_WIFI else Risk.WIZARD_STAYS_ON"""
+    """            val risk = wizardWifiRisk(profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)
+            if (risk != null && blocker == R0Blocker.OTHER_HOME) Risk.OTHER_HOME else risk""",
+    """            // Haier's RecoveryActivity can take HOME after the stock launcher is disabled,
+            // even when it was not reported as a HOME claimant in the initial snapshot.
+            // Keep the stock home whenever an enabled first-run wizard is present on Haier.
+            val haier = facts.brand.equals("Haier", ignoreCase = true) || facts.manufacturer.equals("Haier", ignoreCase = true)
+            val haierWizard = snapshot.packages.keys.any { p ->
+                isWizard(p) && snapshot.packages[p]?.enabled.let { it != EnabledState.DISABLED_USER && it != EnabledState.DISABLED }
+            }
+            if (haier && haierWizard) Risk.WIZARD_STAYS_ON else {
+                val risk = wizardWifiRisk(profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)
+                if (risk != null && blocker == R0Blocker.OTHER_HOME) Risk.OTHER_HOME else risk
+            }"""
 )
 replace_once(
-    home_switch_risk,
-    """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
-        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {""",
-    """        val allowed = profile.setupWraith?.takeIf { Denylist.isWizardAllowed(it, profile) }
-        // Haier's RecoveryActivity can appear after the initial HOME snapshot, even on
-        // profiles with HOME_TAKEOVER_SETUPWRAITH. The video reports this on a Haier TV,
-        // so do not disable an active first-run wizard or switch HOME on this vendor path
-        // until that exact firmware has been verified across restarts.
-        val haier = facts.brand.equals("Haier", ignoreCase = true) || facts.manufacturer.equals("Haier", ignoreCase = true)
-        val haierWizard = snapshot.packages.keys.firstOrNull { isWizard(it) && on(it) }
-        if (haier && haierWizard != null) return Risk.WIZARD_STAYS_ON
-        if (wizardWifi != WizardWifi.NOT_OWNER && allowed != null && on(allowed)) {"""
-)
-replace_once(
-    home_switch_risk,
-    """            val risk = wizardWifiRisk(profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)""",
-    """            val risk = wizardWifiRisk(facts, profile?.takeUnless { it.isCandidate }, snapshot, wizardWifi, r0 = blocker == null)"""
-)
-replace_once(
-    home_switch_risk,
-    """    private fun wizardWifiRisk(profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {""",
-    """    private fun wizardWifiRisk(facts: DeviceFacts, profile: Profile?, snapshot: Snapshot, wizardWifi: WizardWifi, r0: Boolean = false): Risk? {"""
+    home_switch_risk_test,
+    """    // (b) Google's own hardware: the switch costs casting after every restart.""",
+    """    @Test fun haierWithAnEnabledSetupWizardKeepsItsStockHome() {
+        val haier = withFacts(facts("haier-tv", "Haier"))
+        assertEquals(
+            Risk.WIZARD_STAYS_ON,
+            HomeSwitchRisk.of(haier.facts, PlannerFixtures.profile(), haier, WizardWifi.NOT_OWNER)
+        )
+        val cleanHaier = noWizard.copy(facts = haier.facts).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
+        assertNull(HomeSwitchRisk.of(cleanHaier.facts, PlannerFixtures.profile(), cleanHaier, WizardWifi.NOT_OWNER))
+    }
+
+    // (b) Google's own hardware: the switch costs casting after every restart."""
 )
 print("Haier/unknown setup-wizard HOME guard patch applied.")
 
