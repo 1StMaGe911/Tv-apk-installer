@@ -483,7 +483,29 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                     }
                 }
 
-                if (status.isNotBlank()) Text(status, color = if (status.startsWith("Ошибка")) Color(0xFFFF8888) else Color.LightGray, fontSize = 12.sp)
+                if (status.isNotBlank()) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            status,
+                            Modifier.weight(1f),
+                            color = if (status.startsWith("Ошибка")) Color(0xFFFF8888) else Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                        if (status.startsWith("Ошибка")) {
+                            TextButton(onClick = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Ошибка Clean Your TV", status))
+                                android.widget.Toast.makeText(context, "Текст ошибки скопирован", android.widget.Toast.LENGTH_SHORT).show()
+                            }) {
+                                Text("Копировать")
+                            }
+                        }
+                    }
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = {
                         restoreIme()
