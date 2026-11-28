@@ -1062,6 +1062,12 @@ class TvAutomationEngineTest {
     }
 
     @Test
+    fun protectsLeranYandexTvAdvertisingIdUntilFirmwareProfileIsReviewed() {
+        assertTrue(TvAutomationEngine.isProtectedSystemPackage("com.yandex.android.advid"))
+        assertFalse(TvAutomationEngine.isCleanupCandidate("com.yandex.android.advid"))
+    }
+
+    @Test
     fun doesNotOverprotectExplicitlyAllowedProvidersOrThirdPartyApps() {
         assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.calendar"))
         assertFalse(TvAutomationEngine.isProtectedSystemPackage("com.android.providers.contacts"))
