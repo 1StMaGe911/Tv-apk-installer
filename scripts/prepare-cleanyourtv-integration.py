@@ -279,6 +279,7 @@ replace_once(
                 if (risk != null && blocker == R0Blocker.OTHER_HOME) Risk.OTHER_HOME else risk
             }"""
 )
+home_switch_risk_test = upstream / "core" / "planner" / "src" / "test" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRiskTest.kt"
 replace_once(
     home_switch_risk_test,
     """    // (b) Google's own hardware: the switch costs casting after every restart.""",
