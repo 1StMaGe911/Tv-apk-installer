@@ -75,6 +75,7 @@ internal object TvPlatformClassifier {
         val brand = when {
             containsToken("tcl") -> "TCL"
             containsToken("hisense") -> "Hisense"
+            containsToken("leran") -> "LERAN"
             containsToken("xiaomi") || containsToken("redmi") -> "Xiaomi"
             containsToken("sony") -> "Sony"
             containsToken("philips") -> "Philips"
