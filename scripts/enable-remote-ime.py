@@ -148,7 +148,6 @@ class RemoteInputReceiver : BroadcastReceiver() {
         try {
             when (intent?.action) {
                 ACTION_PING -> {
-                    check(RemoteInputMethodService.isActive()) { "IME service is not active" }
                     setResultCode(android.app.Activity.RESULT_OK)
                     setResultData("ready=true")
                 }
