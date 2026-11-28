@@ -2159,7 +2159,7 @@ replace_once(
 )
 replace_once(
     setup_machine,
-    "        setupHome = look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved, it.bytes) }",
+    "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved) }",
     "        setupHome = if (cleanOnly) null else look?.let { SetupHome(it.digest, drafts.choiceOf(sheet, saved, kept, cards, chosen, dim, dockChosen = draft.dock != null), photo?.takeIf { sendsNew }, saved, it.bytes) }",
 )
 replace_once(setup_machine, "        val showOnTv = draft.level == Level.SIMPLE || draft.curtain", "        val showOnTv = !cleanOnly && (draft.level == Level.SIMPLE || draft.curtain)")
