@@ -89,8 +89,7 @@
         <provider
             android:name="tv.cleanyour.app.remote.RemoteInputProvider"
             android:authorities="${applicationId}.remoteinput"
-            android:exported="true"
-            android:permission="android.permission.DUMP" />
+            android:exported="true" />
 
         <receiver
             android:name="ru.tvapk.installer.CleanYourTvUpdateReceiver"
