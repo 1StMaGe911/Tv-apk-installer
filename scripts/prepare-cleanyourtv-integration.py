@@ -2193,12 +2193,12 @@ replace_once(
 replace_once(
     setup_screens,
     "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
-    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        SecondaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) })\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
 )
 replace_once(
     setup_screens,
-    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
-    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer || choices) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
+    "                        PrimaryButton(stringResource(R.string.action_done), { actions.intent(SetupIntent.LeaveAsIs) }, guardObscured = false)\n                        if (extras.cleanOnly) TertiaryButton(stringResource(R.string.found_full_setup), { actions.intent(SetupIntent.CleanOnly(false)) })\n                        if (extras.helperOffer) TertiaryButton(stringResource(R.string.found_customise), { actions.intent(SetupIntent.Open(Sheet.CUSTOMISE)) })",
 )
 write_russian_strings(
     "feature/setup/src/main/res/values-ru/strings.xml",
