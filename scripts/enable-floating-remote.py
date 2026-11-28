@@ -186,7 +186,7 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         prefs.edit().putString("remote_input_user_" + id.value, shellUserId).apply()
                         suspend fun receiverProbe() = session.exec(
                             ShellLine("am broadcast --user " + shellUserId + " -n " + receiver + " -a " + actionPing),
-                            ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
+                            ExecSpec(timeoutMs = 20000, idleTimeoutMs = 10000)
                         )
                         suspend fun receiverAvailable(): Boolean {
                             val probe = receiverProbe()
