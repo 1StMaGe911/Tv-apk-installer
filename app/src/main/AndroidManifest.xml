@@ -92,6 +92,16 @@
             android:exported="true" />
 
         <receiver
+            android:name="tv.cleanyour.app.remote.RemoteInputReceiver"
+            android:permission="android.permission.DUMP"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="tv.cleanyour.app.remote.PING" />
+                <action android:name="tv.cleanyour.app.remote.COMMIT" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name="ru.tvapk.installer.CleanYourTvUpdateReceiver"
             android:exported="false">
             <intent-filter>
