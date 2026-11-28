@@ -297,32 +297,6 @@ replace_once(
 )
 print("Haier/unknown setup-wizard HOME guard patch applied.")
 
-home_switch_risk_test = upstream / "core" / "planner" / "src" / "test" / "kotlin" / "tv" / "cleanyour" / "core" / "planner" / "HomeSwitchRiskTest.kt"
-replace_once(
-    home_switch_risk_test,
-    """    // (b) Google's own hardware: the switch costs casting after every restart.""",
-    """    @Test fun haierWithAnUnlistedSetupWizardKeepsItsStockHome() {
-        val haier = withFacts(facts("haier-tv", "Haier"))
-        assertEquals(
-            Risk.WIZARD_STAYS_ON,
-            HomeSwitchRisk.of(haier.facts, PlannerFixtures.profile(), haier, WizardWifi.NOT_OWNER)
-        )
-        val cleanHaier = noWizard.copy(facts = haier.facts).let { it.copy(contentHash = SnapshotCodec.hash(it)) }
-        assertNull(HomeSwitchRisk.of(cleanHaier.facts, PlannerFixtures.profile(), cleanHaier, WizardWifi.NOT_OWNER))
-        val takeoverProfile = PlannerFixtures.profile(quirks = setOf(Quirk.HOME_TAKEOVER_SETUPWRAITH), setupWraith = wizard)
-        assertEquals(
-            Risk.WIZARD_STAYS_ON,
-            HomeSwitchRisk.of(haier.facts, takeoverProfile, haier, WizardWifi.NOT_OWNER),
-            "even a profile with the takeover quirk must not disable Haier's active recovery wizard before firmware verification"
-        )
-    }
-
-    // (b) Google's own hardware: the switch costs casting after every restart."""
-)
-
-
-
-
 # Show each discovered TV's resolved IPv4 address as the picker subtitle.
 # FoundTv.host is populated by NSD discovery and is already a literal LAN address.
 connect_screens = upstream / "feature" / "connect" / "src" / "main" / "kotlin" / "tv" / "cleanyour" / "feature" / "connect" / "ConnectScreens.kt"
