@@ -414,7 +414,7 @@ write_russian_strings(
     <string name="action_back">Назад</string>
     <string name="action_cancel">Отмена</string>
     <string name="action_ok">ОК</string>
-    <string name="welcome_overline" translatable="false">Очистка ТВ</string>
+    <string name="welcome_overline" translatable="false">Clean Your TV</string>
     <string name="welcome_title">Приведём ваш телевизор в порядок</string>
     <string name="welcome_body">Отключите лишнее, сохраните нужные приложения и получите спокойный главный экран. Это займёт около пяти минут. Все изменения можно отменить.</string>
     <string name="welcome_hero_cd">Главный экран телевизора с рекламными рядами превращается в чистый экран с четырьмя приложениями внизу</string>
@@ -662,7 +662,7 @@ write_russian_strings(
     "app/src/main/res/values-ru/strings.xml",
     r'''<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Очистка ТВ</string>
+    <string name="app_name" translatable="false">Clean Your TV</string>
     <string name="app_channel_setup_name">Настройка телевизора</string>
     <string name="app_channel_setup_description">Показывает ход настройки телевизора с телефона и сообщает, когда нужно посмотреть на экран телевизора.</string>
     <string name="app_restore_read_failed">Не удалось прочитать точку восстановления</string>
@@ -913,7 +913,7 @@ write_russian_strings(
     "tv/curtain/src/main/res/values-ru/strings.xml",
     r'''<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Очистка ТВ</string>
+    <string name="app_name">Clean Your TV</string>
     <string name="caption">Очистка ТВ</string>
     <string name="hint">Не выключайте телевизор. Подробности отображаются на телефоне.</string>
     <string name="chip">Точка восстановления</string>
