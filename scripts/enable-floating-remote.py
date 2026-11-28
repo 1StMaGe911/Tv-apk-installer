@@ -177,8 +177,12 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
                         }
                         val component = context.packageName + "/tv.cleanyour.app.remote.RemoteInputMethodService"
                         val providerAuthority = context.packageName + ".remoteinput"
+                        // content uses the shell's current Android user; without --user it may
+                        // query the default profile and report a registered provider as missing.
+                        val shellUserId = checked("am get-current-user").trim().ifBlank { "0" }
+                        prefs.edit().putString("remote_input_user_" + id.value, shellUserId).apply()
                         suspend fun providerProbe() = session.exec(
-                            ShellLine("content call --uri content://" + providerAuthority + " --method ping"),
+                            ShellLine("content call --user " + shellUserId + " --uri content://" + providerAuthority + " --method ping"),
                             ExecSpec(timeoutMs = 8000, idleTimeoutMs = 4000)
                         )
                         suspend fun providerAvailable(): Boolean {
@@ -318,7 +322,9 @@ fun FloatingRemoteControlOverlay(graph: AppGraph, selectedTvId: String?) {
         }
         val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
         val uri = "content://" + context.packageName + ".remoteinput"
-        val command = "content call --uri " + uri + " --method commit --arg " + quoteShell(encoded)
+        val id = selectedTvId?.let { runCatching { TvId(it) }.getOrNull() }
+        val shellUserId = id?.let { prefs.getString("remote_input_user_" + it.value, "0") } ?: "0"
+        val command = "content call --user " + shellUserId + " --uri " + uri + " --method commit --arg " + quoteShell(encoded)
         runShell(command, "Введено: " + value)
     }
 
